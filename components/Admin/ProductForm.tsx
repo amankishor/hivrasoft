@@ -9,32 +9,55 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  useRouter,
+} from "next/navigation";
+
 /* =========================================================
    TYPES
 ========================================================= */
 
+type ProductFormProps = {
+  mode?:
+    | "create"
+    | "edit";
+
+  productId?: string;
+};
+
 type CategoryNode = {
   id: string;
+
+  _id?: string;
+
   name: string;
+
   slug: string;
+
   level: number;
+
   children: CategoryNode[];
 };
 
 type ImageInput = {
   url: string;
+
   publicId: string;
 };
 
 type SizeInput = {
   size: string;
+
   sku: string;
+
   stock: string;
+
   isActive: boolean;
 };
 
 type ColorInput = {
   name: string;
+
   hex: string;
 
   images: [
@@ -52,6 +75,66 @@ type ProductStatus =
   | "active"
   | "inactive";
 
+type ProductApiData = {
+  _id?: string;
+
+  id?: string;
+
+  name?: string;
+
+  shortDescription?: string;
+
+  description?: string;
+
+  categories?: Array<
+    | string
+    | {
+        _id?: string;
+        id?: string;
+      }
+  >;
+
+  price?: number;
+
+  compareAtPrice?: number;
+
+  costPrice?: number;
+
+  mainImages?: ImageInput[];
+
+  colors?: Array<{
+    name?: string;
+
+    hex?: string;
+
+    images?: ImageInput[];
+
+    sizes?: Array<{
+      size?: string;
+
+      sku?: string;
+
+      stock?: number;
+
+      isActive?: boolean;
+    }>;
+
+    isActive?: boolean;
+  }>;
+
+  status?: ProductStatus;
+
+  isFeatured?: boolean;
+
+  isNewLaunch?: boolean;
+
+  tags?: string[];
+
+  seoTitle?: string;
+
+  seoDescription?: string;
+};
+
 /* =========================================================
    API
 ========================================================= */
@@ -61,42 +144,60 @@ const API_URL =
   "http://localhost:5000";
 
 /* =========================================================
-   EMPTY DATA
+   EMPTY
 ========================================================= */
 
-const emptyImage = (): ImageInput => ({
-  url: "",
-  publicId: "",
-});
+const emptyImage =
+  (): ImageInput => ({
+    url: "",
 
-const emptySize = (): SizeInput => ({
-  size: "",
-  sku: "",
-  stock: "0",
-  isActive: true,
-});
+    publicId: "",
+  });
 
-const emptyColor = (): ColorInput => ({
-  name: "",
-  hex: "#000000",
+const emptySize =
+  (): SizeInput => ({
+    size: "",
 
-  images: [
-    emptyImage(),
-    emptyImage(),
-  ],
+    sku: "",
 
-  sizes: [
-    emptySize(),
-  ],
+    stock: "0",
 
-  isActive: true,
-});
+    isActive: true,
+  });
+
+const emptyColor =
+  (): ColorInput => ({
+    name: "",
+
+    hex: "#000000",
+
+    images: [
+      emptyImage(),
+      emptyImage(),
+    ],
+
+    sizes: [
+      emptySize(),
+    ],
+
+    isActive: true,
+  });
 
 /* =========================================================
    PRODUCT FORM
 ========================================================= */
 
-export default function ProductForm() {
+export default function ProductForm({
+  mode = "create",
+
+  productId,
+}: ProductFormProps) {
+  const router =
+    useRouter();
+
+  const isEdit =
+    mode === "edit";
+
   /* =======================================================
      CATEGORY
   ======================================================= */
@@ -104,12 +205,16 @@ export default function ProductForm() {
   const [
     categories,
     setCategories,
-  ] = useState<CategoryNode[]>([]);
+  ] = useState<
+    CategoryNode[]
+  >([]);
 
   const [
     selectedCategories,
     setSelectedCategories,
-  ] = useState<string[]>([]);
+  ] = useState<
+    string[]
+  >([]);
 
   const [
     categoriesLoading,
@@ -117,7 +222,7 @@ export default function ProductForm() {
   ] = useState(true);
 
   /* =======================================================
-     BASIC PRODUCT
+     BASIC
   ======================================================= */
 
   const [
@@ -155,13 +260,15 @@ export default function ProductForm() {
   ] = useState("");
 
   /* =======================================================
-     MAIN IMAGES
+     IMAGES
   ======================================================= */
 
   const [
     mainImages,
     setMainImages,
-  ] = useState<ImageInput[]>([
+  ] = useState<
+    ImageInput[]
+  >([
     emptyImage(),
     emptyImage(),
     emptyImage(),
@@ -169,13 +276,15 @@ export default function ProductForm() {
   ]);
 
   /* =======================================================
-     COLOR VARIANTS
+     COLORS
   ======================================================= */
 
   const [
     colors,
     setColors,
-  ] = useState<ColorInput[]>([
+  ] = useState<
+    ColorInput[]
+  >([
     emptyColor(),
   ]);
 
@@ -188,7 +297,7 @@ export default function ProductForm() {
     setStatus,
   ] =
     useState<ProductStatus>(
-      "draft"
+      "draft",
     );
 
   const [
@@ -221,8 +330,15 @@ export default function ProductForm() {
   ] = useState("");
 
   /* =======================================================
-     FORM STATE
+     FORM
   ======================================================= */
+
+  const [
+    productLoading,
+    setProductLoading,
+  ] = useState(
+    isEdit,
+  );
 
   const [
     saving,
@@ -240,7 +356,7 @@ export default function ProductForm() {
   ] = useState("");
 
   /* =========================================================
-     LOAD CATEGORY TREE
+     LOAD CATEGORIES
   ========================================================= */
 
   useEffect(() => {
@@ -248,19 +364,22 @@ export default function ProductForm() {
       async () => {
         try {
           setCategoriesLoading(
-            true
+            true,
           );
 
           const response =
             await fetch(
               `${API_URL}/api/categories/tree`,
               {
-                method: "GET",
+                method:
+                  "GET",
+
                 credentials:
                   "include",
+
                 cache:
                   "no-store",
-              }
+              },
             );
 
           const data =
@@ -269,23 +388,26 @@ export default function ProductForm() {
           if (!response.ok) {
             throw new Error(
               data.message ||
-                "Unable to load categories."
+                "Unable to load categories.",
             );
           }
 
           setCategories(
-            data.categories ||
-              []
+            Array.isArray(
+              data.categories,
+            )
+              ? data.categories
+              : [],
           );
         } catch (error) {
           setError(
             error instanceof Error
               ? error.message
-              : "Unable to load categories."
+              : "Unable to load categories.",
           );
         } finally {
           setCategoriesLoading(
-            false
+            false,
           );
         }
       };
@@ -294,31 +416,263 @@ export default function ProductForm() {
   }, []);
 
   /* =========================================================
-     CATEGORY SELECT
+     LOAD PRODUCT FOR EDIT
+  ========================================================= */
+
+  useEffect(() => {
+    if (!isEdit) {
+      setProductLoading(
+        false,
+      );
+
+      return;
+    }
+
+    if (!productId) {
+      setError(
+        "Product ID is missing.",
+      );
+
+      setProductLoading(
+        false,
+      );
+
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadProduct =
+      async () => {
+        try {
+          setProductLoading(
+            true,
+          );
+
+          setError("");
+
+          const response =
+            await fetch(
+              `${API_URL}/api/products/${productId}`,
+              {
+                method:
+                  "GET",
+
+                credentials:
+                  "include",
+
+                cache:
+                  "no-store",
+
+                headers: {
+                  Accept:
+                    "application/json",
+                },
+              },
+            );
+
+          const data =
+            await response.json();
+
+          if (!response.ok) {
+            throw new Error(
+              data.message ||
+                "Unable to load product.",
+            );
+          }
+
+          if (cancelled) {
+            return;
+          }
+
+          const product: ProductApiData =
+            data.product ||
+            data.data ||
+            data;
+
+          /* BASIC */
+
+          setName(
+            product.name || "",
+          );
+
+          setShortDescription(
+            product.shortDescription ||
+              "",
+          );
+
+          setDescription(
+            product.description ||
+              "",
+          );
+
+          /* PRICE */
+
+          setPrice(
+            product.price !==
+              undefined &&
+              product.price !==
+                null
+              ? String(
+                  product.price,
+                )
+              : "",
+          );
+
+          setCompareAtPrice(
+            product.compareAtPrice
+              ? String(
+                  product.compareAtPrice,
+                )
+              : "",
+          );
+
+          setCostPrice(
+            product.costPrice
+              ? String(
+                  product.costPrice,
+                )
+              : "",
+          );
+
+          /* CATEGORIES */
+
+          const categoryIds =
+            (
+              product.categories ||
+              []
+            )
+              .map(
+                (category) => {
+                  if (
+                    typeof category ===
+                    "string"
+                  ) {
+                    return category;
+                  }
+
+                  return (
+                    category.id ||
+                    category._id ||
+                    ""
+                  );
+                },
+              )
+              .filter(Boolean);
+
+          setSelectedCategories(
+            categoryIds,
+          );
+
+          /* IMAGES */
+
+          setMainImages(
+            normalizeMainImages(
+              product.mainImages ||
+                [],
+            ),
+          );
+
+          /* COLORS */
+
+          setColors(
+            normalizeColors(
+              product.colors ||
+                [],
+            ),
+          );
+
+          /* PUBLISH */
+
+          setStatus(
+            product.status ||
+              "draft",
+          );
+
+          setIsFeatured(
+            Boolean(
+              product.isFeatured,
+            ),
+          );
+
+          setIsNewLaunch(
+            Boolean(
+              product.isNewLaunch,
+            ),
+          );
+
+          /* EXTRA */
+
+          setTags(
+            Array.isArray(
+              product.tags,
+            )
+              ? product.tags.join(
+                  ", ",
+                )
+              : "",
+          );
+
+          setSeoTitle(
+            product.seoTitle ||
+              "",
+          );
+
+          setSeoDescription(
+            product.seoDescription ||
+              "",
+          );
+        } catch (error) {
+          if (cancelled) {
+            return;
+          }
+
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load product.",
+          );
+        } finally {
+          if (!cancelled) {
+            setProductLoading(
+              false,
+            );
+          }
+        }
+      };
+
+    void loadProduct();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isEdit,
+    productId,
+  ]);
+
+  /* =========================================================
+     CATEGORY
   ========================================================= */
 
   const toggleCategory = (
-    categoryId: string
+    categoryId: string,
   ) => {
     setSelectedCategories(
-      (current) => {
-        if (
-          current.includes(
-            categoryId
-          )
-        ) {
-          return current.filter(
-            (id) =>
-              id !==
-              categoryId
-          );
-        }
-
-        return [
-          ...current,
+      (current) =>
+        current.includes(
           categoryId,
-        ];
-      }
+        )
+          ? current.filter(
+              (id) =>
+                id !==
+                categoryId,
+            )
+          : [
+              ...current,
+
+              categoryId,
+            ],
     );
   };
 
@@ -328,95 +682,106 @@ export default function ProductForm() {
 
   const setMainImage = (
     index: number,
-    image: ImageInput
+
+    image: ImageInput,
   ) => {
     setMainImages(
       (current) =>
         current.map(
           (
             currentImage,
-            currentIndex
+
+            currentIndex,
           ) =>
             currentIndex ===
             index
               ? image
-              : currentImage
-        )
+              : currentImage,
+        ),
     );
   };
 
   /* =========================================================
-     COLOR
+     COLORS
   ========================================================= */
 
   const addColor = () => {
     setColors(
       (current) => [
         ...current,
+
         emptyColor(),
-      ]
+      ],
     );
   };
 
   const removeColor = (
-    colorIndex: number
+    colorIndex: number,
   ) => {
     setColors(
       (current) =>
         current.filter(
           (
             _,
-            currentIndex
+
+            currentIndex,
           ) =>
             currentIndex !==
-            colorIndex
-        )
+            colorIndex,
+        ),
     );
   };
 
   const updateColor = (
     colorIndex: number,
+
     field:
       | "name"
       | "hex"
       | "isActive",
+
     value:
       | string
-      | boolean
+      | boolean,
   ) => {
     setColors(
       (current) =>
         current.map(
           (
             color,
-            currentIndex
+
+            currentIndex,
           ) =>
             currentIndex ===
             colorIndex
               ? {
                   ...color,
+
                   [field]:
                     value,
                 }
-              : color
-        )
+              : color,
+        ),
     );
   };
 
   const setColorImage = (
     colorIndex: number,
+
     imageIndex: number,
-    image: ImageInput
+
+    image: ImageInput,
   ) => {
     setColors(
       (current) =>
         current.map(
           (
             color,
-            currentColorIndex
+
+            currentIndex,
           ) => {
             if (
-              currentColorIndex !==
+              currentIndex !==
               colorIndex
             ) {
               return color;
@@ -436,27 +801,29 @@ export default function ProductForm() {
 
             return {
               ...color,
+
               images:
                 nextImages,
             };
-          }
-        )
+          },
+        ),
     );
   };
 
   /* =========================================================
-     SIZE
+     SIZES
   ========================================================= */
 
   const addSize = (
-    colorIndex: number
+    colorIndex: number,
   ) => {
     setColors(
       (current) =>
         current.map(
           (
             color,
-            currentIndex
+
+            currentIndex,
           ) =>
             currentIndex ===
             colorIndex
@@ -465,24 +832,27 @@ export default function ProductForm() {
 
                   sizes: [
                     ...color.sizes,
+
                     emptySize(),
                   ],
                 }
-              : color
-        )
+              : color,
+        ),
     );
   };
 
   const removeSize = (
     colorIndex: number,
-    sizeIndex: number
+
+    sizeIndex: number,
   ) => {
     setColors(
       (current) =>
         current.map(
           (
             color,
-            currentIndex
+
+            currentIndex,
           ) => {
             if (
               currentIndex !==
@@ -498,35 +868,40 @@ export default function ProductForm() {
                 color.sizes.filter(
                   (
                     _,
-                    currentSizeIndex
+
+                    currentSizeIndex,
                   ) =>
                     currentSizeIndex !==
-                    sizeIndex
+                    sizeIndex,
                 ),
             };
-          }
-        )
+          },
+        ),
     );
   };
 
   const updateSize = (
     colorIndex: number,
+
     sizeIndex: number,
+
     field:
       | "size"
       | "sku"
       | "stock"
       | "isActive",
+
     value:
       | string
-      | boolean
+      | boolean,
   ) => {
     setColors(
       (current) =>
         current.map(
           (
             color,
-            currentColorIndex
+
+            currentColorIndex,
           ) => {
             if (
               currentColorIndex !==
@@ -542,60 +917,23 @@ export default function ProductForm() {
                 color.sizes.map(
                   (
                     size,
-                    currentSizeIndex
+
+                    currentSizeIndex,
                   ) =>
                     currentSizeIndex ===
                     sizeIndex
                       ? {
                           ...size,
+
                           [field]:
                             value,
                         }
-                      : size
+                      : size,
                 ),
             };
-          }
-        )
+          },
+        ),
     );
-  };
-
-  /* =========================================================
-     RESET FORM
-  ========================================================= */
-
-  const resetForm = () => {
-    setName("");
-    setShortDescription("");
-    setDescription("");
-
-    setPrice("");
-    setCompareAtPrice("");
-    setCostPrice("");
-
-    setSelectedCategories(
-      []
-    );
-
-    setMainImages([
-      emptyImage(),
-      emptyImage(),
-      emptyImage(),
-      emptyImage(),
-    ]);
-
-    setColors([
-      emptyColor(),
-    ]);
-
-    setStatus("draft");
-
-    setIsFeatured(false);
-    setIsNewLaunch(false);
-
-    setTags("");
-
-    setSeoTitle("");
-    setSeoDescription("");
   };
 
   /* =========================================================
@@ -605,7 +943,7 @@ export default function ProductForm() {
   const handleSubmit =
     async (
       event:
-        FormEvent<HTMLFormElement>
+        FormEvent<HTMLFormElement>,
     ) => {
       event.preventDefault();
 
@@ -614,62 +952,40 @@ export default function ProductForm() {
       }
 
       setError("");
+
       setSuccess("");
 
-      /* NAME */
+      /* VALIDATION */
 
       if (!name.trim()) {
-        setError(
-          "Product name is required."
+        showFormError(
+          "Product name is required.",
         );
-
-        window.scrollTo({
-          top: 0,
-          behavior:
-            "smooth",
-        });
 
         return;
       }
-
-      /* CATEGORY */
 
       if (
         selectedCategories.length ===
         0
       ) {
-        setError(
-          "Please select at least one category."
+        showFormError(
+          "Please select at least one category.",
         );
-
-        window.scrollTo({
-          top: 0,
-          behavior:
-            "smooth",
-        });
 
         return;
       }
 
-      /* PRICE */
-
       if (
-        price.trim() ===
-          "" ||
-        Number(price) < 0 ||
+        price.trim() === "" ||
         !Number.isFinite(
-          Number(price)
-        )
+          Number(price),
+        ) ||
+        Number(price) < 0
       ) {
-        setError(
-          "Please enter a valid selling price."
+        showFormError(
+          "Please enter a valid selling price.",
         );
-
-        window.scrollTo({
-          top: 0,
-          behavior:
-            "smooth",
-        });
 
         return;
       }
@@ -677,27 +993,24 @@ export default function ProductForm() {
       try {
         setSaving(true);
 
-        /* MAIN IMAGES */
-
         const cleanedMainImages =
           mainImages.filter(
             (image) =>
               image.url &&
-              image.publicId
+              image.publicId,
           );
-
-        /* COLORS */
 
         const cleanedColors =
           colors
             .filter(
               (color) =>
-                color.name.trim()
+                color.name.trim(),
             )
             .map(
               (
                 color,
-                colorIndex
+
+                colorIndex,
               ) => ({
                 name:
                   color.name.trim(),
@@ -715,7 +1028,7 @@ export default function ProductForm() {
                   color.images.filter(
                     (image) =>
                       image.url &&
-                      image.publicId
+                      image.publicId,
                   ),
 
                 sizes:
@@ -723,7 +1036,7 @@ export default function ProductForm() {
                     .filter(
                       (size) =>
                         size.size.trim() &&
-                        size.sku.trim()
+                        size.sku.trim(),
                     )
                     .map(
                       (size) => ({
@@ -740,101 +1053,102 @@ export default function ProductForm() {
                         stock:
                           Math.max(
                             0,
+
                             Number(
-                              size.stock
-                            ) || 0
+                              size.stock,
+                            ) || 0,
                           ),
 
                         isActive:
                           size.isActive,
-                      })
+                      }),
                     ),
-              })
+              }),
             );
 
-        /* REQUEST */
+        const payload = {
+          name:
+            name.trim(),
+
+          shortDescription:
+            shortDescription.trim(),
+
+          description:
+            description.trim(),
+
+          categories:
+            selectedCategories,
+
+          price:
+            Number(price),
+
+          compareAtPrice:
+            compareAtPrice
+              ? Number(
+                  compareAtPrice,
+                )
+              : 0,
+
+          costPrice:
+            costPrice
+              ? Number(
+                  costPrice,
+                )
+              : 0,
+
+          mainImages:
+            cleanedMainImages,
+
+          colors:
+            cleanedColors,
+
+          status,
+
+          isFeatured,
+
+          isNewLaunch,
+
+          tags: tags
+            .split(",")
+            .map((tag) =>
+              tag
+                .trim()
+                .toLowerCase(),
+            )
+            .filter(Boolean),
+
+          seoTitle:
+            seoTitle.trim(),
+
+          seoDescription:
+            seoDescription.trim(),
+        };
+
+        /* CREATE / EDIT URL */
+
+        const url = isEdit
+          ? `${API_URL}/api/products/${productId}`
+          : `${API_URL}/api/products`;
 
         const response =
-          await fetch(
-            `${API_URL}/api/products`,
-            {
-              method:
-                "POST",
+          await fetch(url, {
+            method: isEdit
+              ? "PUT"
+              : "POST",
 
-              credentials:
-                "include",
+            credentials:
+              "include",
 
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-              body:
-                JSON.stringify({
-                  name:
-                    name.trim(),
-
-                  shortDescription:
-                    shortDescription.trim(),
-
-                  description:
-                    description.trim(),
-
-                  categories:
-                    selectedCategories,
-
-                  price:
-                    Number(
-                      price
-                    ),
-
-                  compareAtPrice:
-                    compareAtPrice
-                      ? Number(
-                          compareAtPrice
-                        )
-                      : 0,
-
-                  costPrice:
-                    costPrice
-                      ? Number(
-                          costPrice
-                        )
-                      : 0,
-
-                  mainImages:
-                    cleanedMainImages,
-
-                  colors:
-                    cleanedColors,
-
-                  status,
-
-                  isFeatured,
-
-                  isNewLaunch,
-
-                  tags:
-                    tags
-                      .split(",")
-                      .map(
-                        (tag) =>
-                          tag
-                            .trim()
-                            .toLowerCase()
-                      )
-                      .filter(
-                        Boolean
-                      ),
-
-                  seoTitle:
-                    seoTitle.trim(),
-
-                  seoDescription:
-                    seoDescription.trim(),
-                }),
-            }
-          );
+            body:
+              JSON.stringify(
+                payload,
+              ),
+          });
 
         const data =
           await response.json();
@@ -842,30 +1156,47 @@ export default function ProductForm() {
         if (!response.ok) {
           throw new Error(
             data.message ||
-              "Unable to create product."
+              (isEdit
+                ? "Unable to update product."
+                : "Unable to create product."),
           );
         }
 
         setSuccess(
-          "Product created successfully."
+          isEdit
+            ? "Product updated successfully."
+            : "Product created successfully.",
         );
-
-        resetForm();
 
         window.scrollTo({
           top: 0,
+
           behavior:
             "smooth",
         });
+
+        window.setTimeout(
+          () => {
+            router.push(
+              "/admin/products",
+            );
+
+            router.refresh();
+          },
+          700,
+        );
       } catch (error) {
         setError(
           error instanceof Error
             ? error.message
-            : "Unable to create product."
+            : isEdit
+              ? "Unable to update product."
+              : "Unable to create product.",
         );
 
         window.scrollTo({
           top: 0,
+
           behavior:
             "smooth",
         });
@@ -874,27 +1205,89 @@ export default function ProductForm() {
       }
     };
 
+  const showFormError = (
+    message: string,
+  ) => {
+    setError(message);
+
+    window.scrollTo({
+      top: 0,
+
+      behavior:
+        "smooth",
+    });
+  };
+
+  /* =========================================================
+     PRODUCT LOADING
+  ========================================================= */
+
+  if (productLoading) {
+    return (
+      <div
+        className="
+          mx-auto
+          max-w-[1500px]
+        "
+      >
+        <div
+          className="
+            flex
+            min-h-[450px]
+            items-center
+            justify-center
+            rounded-[22px]
+            border
+            border-[#211A18]/10
+            bg-white
+          "
+        >
+          <div
+            className="
+              text-center
+            "
+          >
+            <LoadingSpinner />
+
+            <p
+              className="
+                mt-4
+                text-[10px]
+                uppercase
+                tracking-[0.1em]
+                text-[#211A18]/45
+              "
+            >
+              Loading product...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /* =========================================================
      UI
   ========================================================= */
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={
+        handleSubmit
+      }
       className="
         mx-auto
         max-w-[1500px]
       "
     >
-      {/* =====================================================
-          PAGE HEADER
-      ===================================================== */}
+      {/* HEADER */}
 
       <div
         className="
           flex
           flex-col
           gap-4
+
           lg:flex-row
           lg:items-center
           lg:justify-between
@@ -921,7 +1314,9 @@ export default function ProductForm() {
               text-[#211A18]
             "
           >
-            Add Product
+            {isEdit
+              ? "Edit Product"
+              : "Add Product"}
           </h2>
 
           <p
@@ -932,46 +1327,75 @@ export default function ProductForm() {
               text-[#211A18]/45
             "
           >
-            Create product
-            information, images,
-            colors, sizes and
-            inventory.
+            {isEdit
+              ? "Update product information, images, colors, sizes and inventory."
+              : "Create product information, images, colors, sizes and inventory."}
           </p>
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
+        <div
           className="
             flex
-            h-[46px]
-            items-center
-            justify-center
-            rounded-[12px]
-            bg-[#8C1839]
-            px-6
-            text-[10px]
-            font-semibold
-            uppercase
-            tracking-[0.14em]
-            text-white
-            transition
-
-            hover:bg-[#211A18]
-
-            disabled:cursor-not-allowed
-            disabled:opacity-50
+            gap-3
           "
         >
-          {saving
-            ? "Saving Product..."
-            : "Save Product"}
-        </button>
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                "/admin/products",
+              )
+            }
+            className="
+              h-[46px]
+              rounded-[12px]
+              border
+              border-[#211A18]/10
+              bg-white
+              px-5
+              text-[9px]
+              font-semibold
+              uppercase
+              tracking-[0.1em]
+              text-[#211A18]
+            "
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="
+              h-[46px]
+              rounded-[12px]
+              bg-[#8C1839]
+              px-6
+              text-[10px]
+              font-semibold
+              uppercase
+              tracking-[0.14em]
+              text-white
+              transition
+
+              hover:bg-[#211A18]
+
+              disabled:cursor-not-allowed
+              disabled:opacity-50
+            "
+          >
+            {saving
+              ? isEdit
+                ? "Updating..."
+                : "Saving..."
+              : isEdit
+                ? "Update Product"
+                : "Save Product"}
+          </button>
+        </div>
       </div>
 
-      {/* =====================================================
-          MESSAGES
-      ===================================================== */}
+      {/* MESSAGES */}
 
       {error && (
         <div
@@ -1009,9 +1433,7 @@ export default function ProductForm() {
         </div>
       )}
 
-      {/* =====================================================
-          GRID
-      ===================================================== */}
+      {/* GRID */}
 
       <div
         className="
@@ -1019,18 +1441,26 @@ export default function ProductForm() {
           grid
           grid-cols-1
           gap-6
+
           xl:grid-cols-[minmax(0,1fr)_360px]
         "
       >
-        {/* ===================================================
-            LEFT
-        =================================================== */}
+        {/* LEFT */}
 
-        <div className="min-w-0 space-y-6">
+        <div
+          className="
+            min-w-0
+            space-y-6
+          "
+        >
           {/* PRODUCT DETAILS */}
 
           <Card title="Product Details">
-            <div className="space-y-5">
+            <div
+              className="
+                space-y-5
+              "
+            >
               <Field
                 label="Product Name"
                 required
@@ -1038,11 +1468,11 @@ export default function ProductForm() {
                 <input
                   value={name}
                   onChange={(
-                    event
+                    event,
                   ) =>
                     setName(
                       event.target
-                        .value
+                        .value,
                     )
                   }
                   placeholder="e.g. Everyday Sports Bra"
@@ -1058,11 +1488,11 @@ export default function ProductForm() {
                     shortDescription
                   }
                   onChange={(
-                    event
+                    event,
                   ) =>
                     setShortDescription(
                       event.target
-                        .value
+                        .value,
                     )
                   }
                   placeholder="Short description for product listing"
@@ -1078,17 +1508,18 @@ export default function ProductForm() {
                     description
                   }
                   onChange={(
-                    event
+                    event,
                   ) =>
                     setDescription(
                       event.target
-                        .value
+                        .value,
                     )
                   }
                   rows={7}
                   placeholder="Enter complete product description..."
                   className={`
                     ${inputClass}
+
                     h-auto
                     resize-y
                     py-3
@@ -1098,9 +1529,7 @@ export default function ProductForm() {
             </div>
           </Card>
 
-          {/* =================================================
-              PRICING
-          ================================================= */}
+          {/* PRICING */}
 
           <Card title="Pricing">
             <div
@@ -1108,6 +1537,7 @@ export default function ProductForm() {
                 grid
                 grid-cols-1
                 gap-4
+
                 md:grid-cols-3
               "
             >
@@ -1150,9 +1580,7 @@ export default function ProductForm() {
             </div>
           </Card>
 
-          {/* =================================================
-              MAIN PRODUCT IMAGES
-          ================================================= */}
+          {/* MAIN IMAGES */}
 
           <Card title="Main Product Images">
             <p
@@ -1164,11 +1592,9 @@ export default function ProductForm() {
               "
             >
               Upload maximum 4
-              product images. Image 1
-              will be used as the main
-              product card image and
-              Image 2 can be shown on
-              hover.
+              product images. First
+              image will be used as the
+              main image.
             </p>
 
             <div
@@ -1176,43 +1602,41 @@ export default function ProductForm() {
                 grid
                 grid-cols-1
                 gap-4
+
                 sm:grid-cols-2
+
                 2xl:grid-cols-4
               "
             >
               {mainImages.map(
                 (
                   image,
-                  index
+
+                  index,
                 ) => (
                   <ImageUploader
-                    key={
-                      index
-                    }
+                    key={index}
                     label={`Image ${
                       index + 1
                     }`}
-                    value={
-                      image
-                    }
+                    value={image}
                     folder="products/main"
                     onChange={(
-                      uploadedImage
+                      uploadedImage,
                     ) =>
                       setMainImage(
                         index,
-                        uploadedImage
+
+                        uploadedImage,
                       )
                     }
                   />
-                )
+                ),
               )}
             </div>
           </Card>
 
-          {/* =================================================
-              COLOR VARIANTS
-          ================================================= */}
+          {/* COLORS */}
 
           <Card
             title="Color Variants"
@@ -1233,6 +1657,7 @@ export default function ProductForm() {
                   tracking-[0.1em]
                   text-white
                   transition
+
                   hover:bg-[#8C1839]
                 "
               >
@@ -1240,11 +1665,16 @@ export default function ProductForm() {
               </button>
             }
           >
-            <div className="space-y-5">
+            <div
+              className="
+                space-y-5
+              "
+            >
               {colors.map(
                 (
                   color,
-                  colorIndex
+
+                  colorIndex,
                 ) => (
                   <div
                     key={
@@ -1258,7 +1688,7 @@ export default function ProductForm() {
                       p-5
                     "
                   >
-                    {/* COLOR HEADER */}
+                    {/* HEADER */}
 
                     <div
                       className="
@@ -1301,7 +1731,7 @@ export default function ProductForm() {
                           type="button"
                           onClick={() =>
                             removeColor(
-                              colorIndex
+                              colorIndex,
                             )
                           }
                           className="
@@ -1313,19 +1743,18 @@ export default function ProductForm() {
                             text-[8px]
                             font-semibold
                             uppercase
-                            tracking-[0.08em]
                             text-red-500
-                            transition
+
                             hover:bg-red-500
                             hover:text-white
                           "
                         >
-                          Remove Color
+                          Remove
                         </button>
                       )}
                     </div>
 
-                    {/* COLOR INFO */}
+                    {/* INFO */}
 
                     <div
                       className="
@@ -1333,6 +1762,7 @@ export default function ProductForm() {
                         grid
                         grid-cols-1
                         gap-4
+
                         md:grid-cols-[1fr_140px]
                       "
                     >
@@ -1345,17 +1775,19 @@ export default function ProductForm() {
                             color.name
                           }
                           onChange={(
-                            event
+                            event,
                           ) =>
                             updateColor(
                               colorIndex,
+
                               "name",
+
                               event
                                 .target
-                                .value
+                                .value,
                             )
                           }
-                          placeholder="e.g. Black"
+                          placeholder="Black"
                           className={
                             inputClass
                           }
@@ -1382,23 +1814,22 @@ export default function ProductForm() {
                               color.hex
                             }
                             onChange={(
-                              event
+                              event,
                             ) =>
                               updateColor(
                                 colorIndex,
+
                                 "hex",
+
                                 event
                                   .target
-                                  .value
+                                  .value,
                               )
                             }
                             className="
                               h-8
                               w-10
                               cursor-pointer
-                              border-0
-                              bg-transparent
-                              p-0
                             "
                           />
 
@@ -1417,32 +1848,22 @@ export default function ProductForm() {
 
                     {/* COLOR IMAGES */}
 
-                    <div className="mt-6">
-                      <div>
-                        <p
-                          className="
-                            text-[9px]
-                            font-semibold
-                            uppercase
-                            tracking-[0.14em]
-                            text-[#211A18]/55
-                          "
-                        >
-                          Color Images
-                        </p>
-
-                        <p
-                          className="
-                            mt-1
-                            text-[9px]
-                            text-[#211A18]/35
-                          "
-                        >
-                          Maximum 2
-                          images for each
-                          color.
-                        </p>
-                      </div>
+                    <div
+                      className="
+                        mt-6
+                      "
+                    >
+                      <p
+                        className="
+                          text-[9px]
+                          font-semibold
+                          uppercase
+                          tracking-[0.14em]
+                          text-[#211A18]/55
+                        "
+                      >
+                        Color Images
+                      </p>
 
                       <div
                         className="
@@ -1450,14 +1871,17 @@ export default function ProductForm() {
                           grid
                           grid-cols-1
                           gap-4
+
                           sm:grid-cols-2
+
                           xl:max-w-[650px]
                         "
                       >
                         {color.images.map(
                           (
                             image,
-                            imageIndex
+
+                            imageIndex,
                           ) => (
                             <ImageUploader
                               key={
@@ -1472,7 +1896,7 @@ export default function ProductForm() {
                               }
                               folder={`products/colors/${
                                 slugifyFolder(
-                                  color.name
+                                  color.name,
                                 ) ||
                                 `color-${
                                   colorIndex +
@@ -1480,25 +1904,29 @@ export default function ProductForm() {
                                 }`
                               }`}
                               onChange={(
-                                uploadedImage
+                                uploaded,
                               ) =>
                                 setColorImage(
                                   colorIndex,
+
                                   imageIndex,
-                                  uploadedImage
+
+                                  uploaded,
                                 )
                               }
                             />
-                          )
+                          ),
                         )}
                       </div>
                     </div>
 
-                    {/* =========================================
-                        SIZE INVENTORY
-                    ========================================= */}
+                    {/* SIZES */}
 
-                    <div className="mt-7">
+                    <div
+                      className="
+                        mt-7
+                      "
+                    >
                       <div
                         className="
                           flex
@@ -1538,7 +1966,7 @@ export default function ProductForm() {
                           type="button"
                           onClick={() =>
                             addSize(
-                              colorIndex
+                              colorIndex,
                             )
                           }
                           className="
@@ -1550,9 +1978,8 @@ export default function ProductForm() {
                             text-[8px]
                             font-semibold
                             uppercase
-                            tracking-[0.08em]
                             text-[#8C1839]
-                            transition
+
                             hover:bg-[#8C1839]
                             hover:text-white
                           "
@@ -1561,26 +1988,190 @@ export default function ProductForm() {
                         </button>
                       </div>
 
-                      <div className="mt-4 space-y-3">
+                      <div
+                        className="
+                          mt-4
+                          space-y-3
+                        "
+                      >
+                        {color.sizes.map(
+                          (
+                            size,
+
+                            sizeIndex,
+                          ) => (
+                            <div
+                              key={
+                                sizeIndex
+                              }
+                              className="
+                                grid
+                                grid-cols-1
+                                gap-3
+                                rounded-[14px]
+                                border
+                                border-[#211A18]/10
+                                bg-white
+                                p-3
+
+                                md:grid-cols-[110px_minmax(150px,1fr)_120px_90px_auto]
+                                md:items-center
+                              "
+                            >
+                              <input
+                                value={
+                                  size.size
+                                }
+                                onChange={(
+                                  event,
+                                ) =>
+                                  updateSize(
+                                    colorIndex,
+
+                                    sizeIndex,
+
+                                    "size",
+
+                                    event
+                                      .target
+                                      .value,
+                                  )
+                                }
+                                placeholder="Size"
+                                className={
+                                  smallInputClass
+                                }
+                              />
+
+                              <input
+                                value={
+                                  size.sku
+                                }
+                                onChange={(
+                                  event,
+                                ) =>
+                                  updateSize(
+                                    colorIndex,
+
+                                    sizeIndex,
+
+                                    "sku",
+
+                                    event
+                                      .target
+                                      .value,
+                                  )
+                                }
+                                placeholder="SKU"
+                                className={
+                                  smallInputClass
+                                }
+                              />
+
+                              <input
+                                type="number"
+                                min="0"
+                                value={
+                                  size.stock
+                                }
+                                onChange={(
+                                  event,
+                                ) =>
+                                  updateSize(
+                                    colorIndex,
+
+                                    sizeIndex,
+
+                                    "stock",
+
+                                    event
+                                      .target
+                                      .value,
+                                  )
+                                }
+                                placeholder="Stock"
+                                className={
+                                  smallInputClass
+                                }
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateSize(
+                                    colorIndex,
+
+                                    sizeIndex,
+
+                                    "isActive",
+
+                                    !size.isActive,
+                                  )
+                                }
+                                className={`
+                                  h-[42px]
+                                  rounded-[10px]
+                                  text-[8px]
+                                  font-semibold
+                                  uppercase
+
+                                  ${
+                                    size.isActive
+                                      ? "bg-green-50 text-green-700"
+                                      : "bg-[#211A18]/5 text-[#211A18]/40"
+                                  }
+                                `}
+                              >
+                                {size.isActive
+                                  ? "Active"
+                                  : "Off"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeSize(
+                                    colorIndex,
+
+                                    sizeIndex,
+                                  )
+                                }
+                                className="
+                                  h-[42px]
+                                  rounded-[10px]
+                                  px-3
+                                  text-[8px]
+                                  font-semibold
+                                  uppercase
+                                  text-red-500
+
+                                  hover:bg-red-50
+                                "
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ),
+                        )}
+
                         {color.sizes
                           .length ===
-                        0 ? (
+                          0 && (
                           <button
                             type="button"
                             onClick={() =>
                               addSize(
-                                colorIndex
+                                colorIndex,
                               )
                             }
                             className="
                               w-full
-                              rounded-[13px]
+                              rounded-[12px]
                               border
                               border-dashed
                               border-[#211A18]/15
                               bg-white
-                              px-4
-                              py-5
+                              py-4
                               text-[9px]
                               text-[#211A18]/45
                             "
@@ -1588,170 +2179,11 @@ export default function ProductForm() {
                             + Add first
                             size
                           </button>
-                        ) : (
-                          color.sizes.map(
-                            (
-                              size,
-                              sizeIndex
-                            ) => (
-                              <div
-                                key={
-                                  sizeIndex
-                                }
-                                className="
-                                  grid
-                                  grid-cols-1
-                                  gap-3
-                                  rounded-[14px]
-                                  border
-                                  border-[#211A18]/10
-                                  bg-white
-                                  p-3
-
-                                  md:grid-cols-[110px_minmax(150px,1fr)_120px_90px_auto]
-                                  md:items-center
-                                "
-                              >
-                                {/* SIZE */}
-
-                                <input
-                                  value={
-                                    size.size
-                                  }
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateSize(
-                                      colorIndex,
-                                      sizeIndex,
-                                      "size",
-                                      event
-                                        .target
-                                        .value
-                                    )
-                                  }
-                                  placeholder="Size"
-                                  className={
-                                    smallInputClass
-                                  }
-                                />
-
-                                {/* SKU */}
-
-                                <input
-                                  value={
-                                    size.sku
-                                  }
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateSize(
-                                      colorIndex,
-                                      sizeIndex,
-                                      "sku",
-                                      event
-                                        .target
-                                        .value
-                                    )
-                                  }
-                                  placeholder="SKU e.g. BRA-BLK-M"
-                                  className={
-                                    smallInputClass
-                                  }
-                                />
-
-                                {/* STOCK */}
-
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  value={
-                                    size.stock
-                                  }
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateSize(
-                                      colorIndex,
-                                      sizeIndex,
-                                      "stock",
-                                      event
-                                        .target
-                                        .value
-                                    )
-                                  }
-                                  placeholder="Stock"
-                                  className={
-                                    smallInputClass
-                                  }
-                                />
-
-                                {/* ACTIVE */}
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateSize(
-                                      colorIndex,
-                                      sizeIndex,
-                                      "isActive",
-                                      !size.isActive
-                                    )
-                                  }
-                                  className={`
-                                    h-[42px]
-                                    rounded-[10px]
-                                    px-3
-                                    text-[8px]
-                                    font-semibold
-                                    uppercase
-                                    transition
-
-                                    ${
-                                      size.isActive
-                                        ? "bg-green-50 text-green-700"
-                                        : "bg-[#211A18]/5 text-[#211A18]/40"
-                                    }
-                                  `}
-                                >
-                                  {size.isActive
-                                    ? "Active"
-                                    : "Off"}
-                                </button>
-
-                                {/* REMOVE */}
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    removeSize(
-                                      colorIndex,
-                                      sizeIndex
-                                    )
-                                  }
-                                  className="
-                                    h-[42px]
-                                    rounded-[10px]
-                                    px-3
-                                    text-[8px]
-                                    font-semibold
-                                    uppercase
-                                    text-red-500
-                                    transition
-                                    hover:bg-red-50
-                                  "
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            )
-                          )
                         )}
                       </div>
                     </div>
 
-                    {/* COLOR ACTIVE */}
+                    {/* ACTIVE COLOR */}
 
                     <div
                       className="
@@ -1772,7 +2204,6 @@ export default function ProductForm() {
                           className="
                             text-[10px]
                             font-semibold
-                            text-[#211A18]
                           "
                         >
                           Active Color
@@ -1795,67 +2226,71 @@ export default function ProductForm() {
                           color.isActive
                         }
                         onChange={(
-                          value
+                          value,
                         ) =>
                           updateColor(
                             colorIndex,
+
                             "isActive",
-                            value
+
+                            value,
                           )
                         }
                       />
                     </div>
                   </div>
-                )
+                ),
               )}
             </div>
           </Card>
 
-          {/* =================================================
-              SEO
-          ================================================= */}
+          {/* SEO */}
 
           <Card title="SEO">
-            <div className="space-y-4">
+            <div
+              className="
+                space-y-4
+              "
+            >
               <Field label="SEO Title">
                 <input
                   value={
                     seoTitle
                   }
                   onChange={(
-                    event
+                    event,
                   ) =>
                     setSeoTitle(
                       event.target
-                        .value
+                        .value,
                     )
                   }
-                  placeholder="SEO title"
                   className={
                     inputClass
                   }
+                  placeholder="SEO title"
                 />
               </Field>
 
               <Field label="SEO Description">
                 <textarea
-                  rows={4}
                   value={
                     seoDescription
                   }
                   onChange={(
-                    event
+                    event,
                   ) =>
                     setSeoDescription(
                       event.target
-                        .value
+                        .value,
                     )
                   }
+                  rows={4}
                   placeholder="SEO description"
                   className={`
                     ${inputClass}
+
                     h-auto
-                    resize-none
                     py-3
                   `}
                 />
@@ -1864,14 +2299,13 @@ export default function ProductForm() {
           </Card>
         </div>
 
-        {/* ===================================================
-            RIGHT SIDEBAR
-        =================================================== */}
+        {/* RIGHT */}
 
         <div
           className="
             min-w-0
             space-y-6
+
             xl:sticky
             xl:top-[100px]
             xl:h-fit
@@ -1884,11 +2318,11 @@ export default function ProductForm() {
               <select
                 value={status}
                 onChange={(
-                  event
+                  event,
                 ) =>
                   setStatus(
                     event.target
-                      .value as ProductStatus
+                      .value as ProductStatus,
                   )
                 }
                 className={
@@ -1900,7 +2334,7 @@ export default function ProductForm() {
                 </option>
 
                 <option value="active">
-                  Active
+                  Published
                 </option>
 
                 <option value="inactive">
@@ -1909,7 +2343,12 @@ export default function ProductForm() {
               </select>
             </Field>
 
-            <div className="mt-4 space-y-3">
+            <div
+              className="
+                mt-4
+                space-y-3
+              "
+            >
               <ToggleRow
                 label="Featured Product"
                 description="Feature this product on selected storefront sections."
@@ -1934,9 +2373,7 @@ export default function ProductForm() {
             </div>
           </Card>
 
-          {/* =================================================
-              CATEGORIES
-          ================================================= */}
+          {/* CATEGORIES */}
 
           <Card title="Categories">
             {categoriesLoading ? (
@@ -1944,7 +2381,7 @@ export default function ProductForm() {
                 className="
                   flex
                   items-center
-                  gap-2
+                  gap-3
                   py-5
                   text-[10px]
                   text-[#211A18]/45
@@ -1956,66 +2393,43 @@ export default function ProductForm() {
               </div>
             ) : categories.length ===
               0 ? (
-              <div
+              <p
                 className="
-                  rounded-[12px]
-                  bg-[#FAF8F6]
-                  px-4
-                  py-5
                   text-[10px]
-                  leading-5
                   text-[#211A18]/45
                 "
               >
                 No categories found.
-                Create categories from
-                the Categories page
-                first.
-              </div>
+              </p>
             ) : (
-              <>
-                <p
-                  className="
-                    mb-3
-                    text-[9px]
-                    leading-4
-                    text-[#211A18]/40
-                  "
-                >
-                  Product can belong to
-                  multiple categories and
-                  subcategories.
-                </p>
-
-                <div
-                  className="
-                    max-h-[430px]
-                    overflow-y-auto
-                    pr-1
-                  "
-                >
-                  {categories.map(
-                    (
-                      category
-                    ) => (
-                      <CategoryOption
-                        key={
-                          category.id
-                        }
-                        category={
-                          category
-                        }
-                        selected={
-                          selectedCategories
-                        }
-                        toggle={
-                          toggleCategory
-                        }
-                      />
-                    )
-                  )}
-                </div>
-              </>
+              <div
+                className="
+                  max-h-[430px]
+                  overflow-y-auto
+                "
+              >
+                {categories.map(
+                  (
+                    category,
+                  ) => (
+                    <CategoryOption
+                      key={
+                        category.id ||
+                        category._id
+                      }
+                      category={
+                        category
+                      }
+                      selected={
+                        selectedCategories
+                      }
+                      toggle={
+                        toggleCategory
+                      }
+                    />
+                  ),
+                )}
+              </div>
             )}
           </Card>
 
@@ -2025,19 +2439,19 @@ export default function ProductForm() {
             <textarea
               value={tags}
               onChange={(
-                event
+                event,
               ) =>
                 setTags(
                   event.target
-                    .value
+                    .value,
                 )
               }
               rows={4}
               placeholder="sports bra, padded, seamless"
               className={`
                 ${inputClass}
+
                 h-auto
-                resize-none
                 py-3
               `}
             />
@@ -2046,7 +2460,6 @@ export default function ProductForm() {
               className="
                 mt-2
                 text-[9px]
-                leading-4
                 text-[#211A18]/40
               "
             >
@@ -2055,16 +2468,22 @@ export default function ProductForm() {
             </p>
           </Card>
 
-          {/* PRODUCT SUMMARY */}
+          {/* SUMMARY */}
 
           <Card title="Product Summary">
-            <div className="space-y-3">
+            <div
+              className="
+                space-y-3
+              "
+            >
               <SummaryRow
                 label="Main Images"
-                value={`${mainImages.filter(
-                  (image) =>
-                    image.url
-                ).length}/4`}
+                value={`${
+                  mainImages.filter(
+                    (image) =>
+                      image.url,
+                  ).length
+                }/4`}
               />
 
               <SummaryRow
@@ -2072,22 +2491,24 @@ export default function ProductForm() {
                 value={String(
                   colors.filter(
                     (color) =>
-                      color.name.trim()
-                  ).length
+                      color.name.trim(),
+                  ).length,
                 )}
               />
 
               <SummaryRow
                 label="Categories"
                 value={String(
-                  selectedCategories.length
+                  selectedCategories.length,
                 )}
               />
 
               <SummaryRow
                 label="Status"
                 value={
-                  status
+                  status === "active"
+                    ? "Published"
+                    : status
                 }
               />
             </div>
@@ -2095,33 +2516,24 @@ export default function ProductForm() {
         </div>
       </div>
 
-      {/* =====================================================
-          BOTTOM SAVE
-      ===================================================== */}
+      {/* BOTTOM BUTTON */}
 
       <div
         className="
           mt-7
           flex
-          flex-col
-          gap-3
+          justify-end
           border-t
           border-[#211A18]/10
           pt-6
-          sm:flex-row
-          sm:items-center
-          sm:justify-end
         "
       >
         <button
           type="submit"
           disabled={saving}
           className="
-            flex
             h-[48px]
-            min-w-[200px]
-            items-center
-            justify-center
+            min-w-[210px]
             rounded-[12px]
             bg-[#8C1839]
             px-6
@@ -2130,17 +2542,19 @@ export default function ProductForm() {
             uppercase
             tracking-[0.14em]
             text-white
-            transition
 
             hover:bg-[#211A18]
 
-            disabled:cursor-not-allowed
             disabled:opacity-50
           "
         >
           {saving
-            ? "Creating Product..."
-            : "Create Product"}
+            ? isEdit
+              ? "Updating..."
+              : "Creating..."
+            : isEdit
+              ? "Update Product"
+              : "Create Product"}
         </button>
       </div>
     </form>
@@ -2153,8 +2567,11 @@ export default function ProductForm() {
 
 function ImageUploader({
   label,
+
   value,
+
   folder,
+
   onChange,
 }: {
   label: string;
@@ -2164,12 +2581,12 @@ function ImageUploader({
   folder: string;
 
   onChange: (
-    image: ImageInput
+    image: ImageInput,
   ) => void;
 }) {
   const inputRef =
     useRef<HTMLInputElement | null>(
-      null
+      null,
     );
 
   const [
@@ -2182,14 +2599,10 @@ function ImageUploader({
     setUploadError,
   ] = useState("");
 
-  /* =======================================================
-     FILE CHANGE
-  ======================================================= */
-
   const handleFileChange =
     async (
       event:
-        ChangeEvent<HTMLInputElement>
+        ChangeEvent<HTMLInputElement>,
     ) => {
       const file =
         event.target.files?.[0];
@@ -2198,42 +2611,24 @@ function ImageUploader({
         return;
       }
 
-      setUploadError("");
-
       const allowedTypes = [
         "image/jpeg",
+
         "image/png",
+
         "image/webp",
+
         "image/avif",
       ];
 
       if (
         !allowedTypes.includes(
-          file.type
+          file.type,
         )
       ) {
         setUploadError(
-          "Only JPG, PNG, WEBP or AVIF images are allowed."
+          "Only JPG, PNG, WEBP or AVIF allowed.",
         );
-
-        event.target.value =
-          "";
-
-        return;
-      }
-
-      if (
-        file.size >
-        10 *
-          1024 *
-          1024
-      ) {
-        setUploadError(
-          "Image must be smaller than 10MB."
-        );
-
-        event.target.value =
-          "";
 
         return;
       }
@@ -2241,17 +2636,21 @@ function ImageUploader({
       try {
         setUploading(true);
 
+        setUploadError("");
+
         const formData =
           new FormData();
 
         formData.append(
           "image",
-          file
+
+          file,
         );
 
         formData.append(
           "folder",
-          folder
+
+          folder,
         );
 
         const response =
@@ -2266,7 +2665,7 @@ function ImageUploader({
 
               body:
                 formData,
-            }
+            },
           );
 
         const data =
@@ -2275,7 +2674,7 @@ function ImageUploader({
         if (!response.ok) {
           throw new Error(
             data.message ||
-              "Image upload failed."
+              "Image upload failed.",
           );
         }
 
@@ -2285,7 +2684,7 @@ function ImageUploader({
             ?.publicId
         ) {
           throw new Error(
-            "Invalid image upload response."
+            "Invalid image response.",
           );
         }
 
@@ -2301,7 +2700,7 @@ function ImageUploader({
         setUploadError(
           error instanceof Error
             ? error.message
-            : "Image upload failed."
+            : "Upload failed.",
         );
       } finally {
         setUploading(false);
@@ -2315,23 +2714,9 @@ function ImageUploader({
       }
     };
 
-  /* =======================================================
-     REMOVE
-  ======================================================= */
-
-  const removeImage = () => {
-    onChange({
-      url: "",
-      publicId: "",
-    });
-
-    setUploadError("");
-  };
-
   return (
     <div
       className="
-        min-w-0
         rounded-[16px]
         border
         border-[#211A18]/10
@@ -2345,14 +2730,12 @@ function ImageUploader({
           flex
           items-center
           justify-between
-          gap-2
         "
       >
         <p
           className="
             text-[10px]
             font-semibold
-            text-[#211A18]
           "
         >
           {label}
@@ -2361,14 +2744,15 @@ function ImageUploader({
         {value.url && (
           <button
             type="button"
-            onClick={
-              removeImage
+            onClick={() =>
+              onChange(
+                emptyImage(),
+              )
             }
             className="
               text-[8px]
               font-semibold
               uppercase
-              tracking-[0.08em]
               text-red-500
             "
           >
@@ -2377,92 +2761,60 @@ function ImageUploader({
         )}
       </div>
 
-      {/* PREVIEW */}
-
       {value.url ? (
         <div
           className="
             group
             relative
+            aspect-[4/5]
             overflow-hidden
-            rounded-[13px]
-            border
-            border-[#211A18]/10
-            bg-white
+            rounded-[12px]
+            bg-[#EFE9E4]
           "
         >
-          <div
+          <img
+            src={value.url}
+            alt={label}
             className="
-              relative
-              aspect-[4/5]
-              overflow-hidden
-              bg-[#EFE9E4]
+              h-full
+              w-full
+              object-cover
+            "
+          />
+
+          <button
+            type="button"
+            onClick={() =>
+              inputRef.current?.click()
+            }
+            className="
+              absolute
+              inset-0
+              flex
+              items-center
+              justify-center
+              bg-black/40
+              text-[9px]
+              font-semibold
+              uppercase
+              text-white
+              opacity-0
+              transition
+
+              group-hover:opacity-100
             "
           >
-            <img
-              src={
-                value.url
-              }
-              alt={label}
-              className="
-                h-full
-                w-full
-                object-cover
-                object-center
-              "
-            />
-
-            <div
-              className="
-                absolute
-                inset-0
-                flex
-                items-center
-                justify-center
-                bg-black/0
-                opacity-0
-                transition-all
-                duration-200
-
-                group-hover:bg-black/35
-                group-hover:opacity-100
-              "
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  inputRef.current?.click()
-                }
-                disabled={
-                  uploading
-                }
-                className="
-                  rounded-[10px]
-                  bg-white
-                  px-4
-                  py-3
-                  text-[8px]
-                  font-semibold
-                  uppercase
-                  tracking-[0.08em]
-                  text-[#211A18]
-                "
-              >
-                {uploading
-                  ? "Uploading..."
-                  : "Replace"}
-              </button>
-            </div>
-          </div>
+            Replace
+          </button>
         </div>
       ) : (
         <button
           type="button"
-          onClick={() =>
-            inputRef.current?.click()
-          }
           disabled={
             uploading
+          }
+          onClick={() =>
+            inputRef.current?.click()
           }
           className="
             flex
@@ -2471,64 +2823,36 @@ function ImageUploader({
             flex-col
             items-center
             justify-center
-            rounded-[13px]
+            rounded-[12px]
             border
             border-dashed
             border-[#211A18]/20
             bg-white
-            px-4
-            text-center
-            transition
+            text-[10px]
+            font-semibold
 
             hover:border-[#8C1839]
-            hover:bg-[#FFF9FA]
-
-            disabled:cursor-not-allowed
-            disabled:opacity-60
           "
         >
           {uploading ? (
-            <>
-              <LoadingSpinner />
-
-              <span
-                className="
-                  mt-3
-                  text-[9px]
-                  font-semibold
-                  uppercase
-                  tracking-[0.1em]
-                  text-[#211A18]/50
-                "
-              >
-                Uploading...
-              </span>
-            </>
+            <LoadingSpinner />
           ) : (
             <>
-              <UploadIcon />
+              <span
+                className="
+                  text-[25px]
+                  text-[#8C1839]
+                "
+              >
+                +
+              </span>
 
               <span
                 className="
-                  mt-3
-                  text-[10px]
-                  font-semibold
-                  text-[#211A18]
+                  mt-2
                 "
               >
                 Choose Image
-              </span>
-
-              <span
-                className="
-                  mt-1
-                  text-[8px]
-                  leading-4
-                  text-[#211A18]/40
-                "
-              >
-                JPG, PNG, WEBP,
-                AVIF
               </span>
             </>
           )}
@@ -2548,9 +2872,8 @@ function ImageUploader({
       {uploadError && (
         <p
           className="
-            mt-3
+            mt-2
             text-[8px]
-            leading-4
             text-red-500
           "
         >
@@ -2562,12 +2885,14 @@ function ImageUploader({
 }
 
 /* =========================================================
-   CATEGORY OPTION
+   CATEGORY
 ========================================================= */
 
 function CategoryOption({
   category,
+
   selected,
+
   toggle,
 }: {
   category: CategoryNode;
@@ -2575,53 +2900,58 @@ function CategoryOption({
   selected: string[];
 
   toggle: (
-    id: string
+    id: string,
   ) => void;
 }) {
+  const id =
+    category.id ||
+    category._id ||
+    "";
+
   return (
     <>
       <label
+        style={{
+          paddingLeft:
+            8 +
+            Number(
+              category.level ||
+                0,
+            ) *
+              14,
+        }}
         className="
           mb-1
           flex
           cursor-pointer
           items-center
-          gap-2.5
+          gap-2
           rounded-[9px]
           py-2
           pr-2
           text-[10px]
-          text-[#211A18]
-          transition
 
           hover:bg-[#FAF8F6]
         "
-        style={{
-          paddingLeft:
-            8 +
-            category.level *
-              14,
-        }}
       >
         <input
           type="checkbox"
-          checked={selected.includes(
-            category.id
-          )}
-          onChange={() =>
-            toggle(
-              category.id
+          checked={
+            selected.includes(
+              id,
             )
+          }
+          onChange={() =>
+            toggle(id)
           }
           className="
             h-4
             w-4
-            shrink-0
             accent-[#8C1839]
           "
         />
 
-        <span className="min-w-0 truncate">
+        <span>
           {category.name}
         </span>
       </label>
@@ -2629,28 +2959,31 @@ function CategoryOption({
       {category.children?.map(
         (child) => (
           <CategoryOption
-            key={child.id}
+            key={
+              child.id ||
+              child._id
+            }
             category={child}
             selected={
               selected
             }
-            toggle={
-              toggle
-            }
+            toggle={toggle}
           />
-        )
+        ),
       )}
     </>
   );
 }
 
 /* =========================================================
-   CARD
+   UI COMPONENTS
 ========================================================= */
 
 function Card({
   title,
+
   children,
+
   action,
 }: {
   title: string;
@@ -2662,7 +2995,6 @@ function Card({
   return (
     <section
       className="
-        min-w-0
         overflow-hidden
         rounded-[22px]
         border
@@ -2686,7 +3018,6 @@ function Card({
           className="
             text-[14px]
             font-semibold
-            text-[#211A18]
           "
         >
           {title}
@@ -2695,20 +3026,22 @@ function Card({
         {action}
       </div>
 
-      <div className="p-5">
+      <div
+        className="
+          p-5
+        "
+      >
         {children}
       </div>
     </section>
   );
 }
 
-/* =========================================================
-   FIELD
-========================================================= */
-
 function Field({
   label,
-  required = false,
+
+  required,
+
   children,
 }: {
   label: string;
@@ -2749,19 +3082,17 @@ function Field({
   );
 }
 
-/* =========================================================
-   CURRENCY INPUT
-========================================================= */
-
 function CurrencyInput({
   value,
+
   onChange,
+
   placeholder,
 }: {
   value: string;
 
   onChange: (
-    value: string
+    value: string,
   ) => void;
 
   placeholder: string;
@@ -2776,24 +3107,19 @@ function CurrencyInput({
         border
         border-[#211A18]/12
         bg-[#FAF8F6]
-        transition
 
         focus-within:border-[#8C1839]
-        focus-within:ring-4
-        focus-within:ring-[#8C1839]/5
       "
     >
       <span
         className="
           flex
-          h-full
           items-center
           border-r
           border-[#211A18]/10
           px-3
           text-[13px]
           font-semibold
-          text-[#211A18]/55
         "
       >
         ₹
@@ -2805,10 +3131,10 @@ function CurrencyInput({
         step="0.01"
         value={value}
         onChange={(
-          event
+          event,
         ) =>
           onChange(
-            event.target.value
+            event.target.value,
           )
         }
         placeholder={
@@ -2820,23 +3146,20 @@ function CurrencyInput({
           bg-transparent
           px-3
           text-[12px]
-          text-[#211A18]
           outline-none
-          placeholder:text-[#211A18]/25
         "
       />
     </div>
   );
 }
 
-/* =========================================================
-   TOGGLE ROW
-========================================================= */
-
 function ToggleRow({
   label,
+
   description,
+
   checked,
+
   onChange,
 }: {
   label: string;
@@ -2846,7 +3169,7 @@ function ToggleRow({
   checked: boolean;
 
   onChange: (
-    value: boolean
+    value: boolean,
   ) => void;
 }) {
   return (
@@ -2867,7 +3190,6 @@ function ToggleRow({
           className="
             text-[10px]
             font-semibold
-            text-[#211A18]
           "
         >
           {label}
@@ -2886,9 +3208,7 @@ function ToggleRow({
       </div>
 
       <Toggle
-        checked={
-          checked
-        }
+        checked={checked}
         onChange={
           onChange
         }
@@ -2897,18 +3217,15 @@ function ToggleRow({
   );
 }
 
-/* =========================================================
-   TOGGLE
-========================================================= */
-
 function Toggle({
   checked,
+
   onChange,
 }: {
   checked: boolean;
 
   onChange: (
-    value: boolean
+    value: boolean,
   ) => void;
 }) {
   return (
@@ -2916,7 +3233,7 @@ function Toggle({
       type="button"
       onClick={() =>
         onChange(
-          !checked
+          !checked,
         )
       }
       className={`
@@ -2956,12 +3273,9 @@ function Toggle({
   );
 }
 
-/* =========================================================
-   SUMMARY
-========================================================= */
-
 function SummaryRow({
   label,
+
   value,
 }: {
   label: string;
@@ -2994,7 +3308,6 @@ function SummaryRow({
           text-[9px]
           font-semibold
           capitalize
-          text-[#211A18]
         "
       >
         {value}
@@ -3004,59 +3317,156 @@ function SummaryRow({
 }
 
 /* =========================================================
+   NORMALIZE API DATA
+========================================================= */
+
+function normalizeMainImages(
+  images: ImageInput[],
+): ImageInput[] {
+  return Array.from(
+    {
+      length: 4,
+    },
+
+    (_, index) => ({
+      url:
+        images[index]
+          ?.url || "",
+
+      publicId:
+        images[index]
+          ?.publicId ||
+        "",
+    }),
+  );
+}
+
+function normalizeColors(
+  apiColors:
+    ProductApiData["colors"],
+): ColorInput[] {
+  if (
+    !apiColors ||
+    apiColors.length === 0
+  ) {
+    return [
+      emptyColor(),
+    ];
+  }
+
+  return apiColors.map(
+    (color) => {
+      const images =
+        color.images || [];
+
+      const normalizedImages: [
+        ImageInput,
+        ImageInput,
+      ] = [
+        {
+          url:
+            images[0]?.url ||
+            "",
+
+          publicId:
+            images[0]
+              ?.publicId ||
+            "",
+        },
+
+        {
+          url:
+            images[1]?.url ||
+            "",
+
+          publicId:
+            images[1]
+              ?.publicId ||
+            "",
+        },
+      ];
+
+      const sizes: SizeInput[] =
+        color.sizes &&
+        color.sizes.length >
+          0
+          ? color.sizes.map(
+              (size) => ({
+                size:
+                  size.size ||
+                  "",
+
+                sku:
+                  size.sku ||
+                  "",
+
+                stock:
+                  String(
+                    size.stock ??
+                      0,
+                  ),
+
+                isActive:
+                  size.isActive !==
+                  false,
+              }),
+            )
+          : [
+              emptySize(),
+            ];
+
+      return {
+        name:
+          color.name ||
+          "",
+
+        hex:
+          color.hex ||
+          "#000000",
+
+        images:
+          normalizedImages,
+
+        sizes,
+
+        isActive:
+          color.isActive !==
+          false,
+      };
+    },
+  );
+}
+
+/* =========================================================
    HELPERS
 ========================================================= */
 
-const slugifyFolder = (
-  value: string
-): string => {
+function slugifyFolder(
+  value: string,
+) {
   return value
     .trim()
     .toLowerCase()
     .replace(
       /[^a-z0-9]+/g,
-      "-"
+
+      "-",
     )
     .replace(
       /^-+|-+$/g,
-      ""
+
+      "",
     );
-};
-
-/* =========================================================
-   ICONS
-========================================================= */
-
-function UploadIcon() {
-  return (
-    <svg
-      width="27"
-      height="27"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="
-        text-[#8C1839]
-      "
-      aria-hidden="true"
-    >
-      <path d="M12 16V4" />
-      <path d="m7 9 5-5 5 5" />
-      <path d="M5 20h14" />
-    </svg>
-  );
 }
 
 function LoadingSpinner() {
   return (
     <span
       className="
+        mx-auto
         block
-        h-5
-        w-5
+        h-6
+        w-6
         animate-spin
         rounded-full
         border-2
@@ -3068,7 +3478,7 @@ function LoadingSpinner() {
 }
 
 /* =========================================================
-   STYLES
+   INPUT CSS
 ========================================================= */
 
 const inputClass = `
@@ -3103,11 +3513,6 @@ const smallInputClass = `
   text-[10px]
   text-[#211A18]
   outline-none
-  transition
-
-  placeholder:text-[#211A18]/25
 
   focus:border-[#8C1839]
-  focus:ring-2
-  focus:ring-[#8C1839]/5
 `;

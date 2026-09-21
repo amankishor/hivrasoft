@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  zoom: 1 !important;
+  transform: none !important;
+}

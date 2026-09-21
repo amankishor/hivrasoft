@@ -1,6 +1,4 @@
-import type {
-  ReactNode,
-} from "react";
+import type { ReactNode } from "react";
 
 import AdminShell from "@/components/Admin/AdminShell";
 

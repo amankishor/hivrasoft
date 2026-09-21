@@ -360,15 +360,10 @@ export default function AccountPage() {
           nahi mila to first address.
         */
 
-      const selectedAddress =
-  addresses.find(
-    (address) =>
-      address.isDefault === true
-  ) || null;
+        const selectedAddress =
+          addresses.find((address) => address.isDefault === true) || null;
 
-setDefaultAddress(
-  selectedAddress
-);
+        setDefaultAddress(selectedAddress);
 
         setDefaultAddress(selectedAddress);
       } catch (error) {
@@ -645,7 +640,8 @@ setDefaultAddress(
                     xl:text-[64px]
                   "
                   >
-                    Welcome back, {accountLoading ? "..." : accountName || "there"}{" "}
+                    Welcome back,{" "}
+                    {accountLoading ? "..." : accountName || "there"}{" "}
                     <span
                       className="
                       font-normal
@@ -680,7 +676,7 @@ setDefaultAddress(
               mt-5
               grid
               gap-4
-              xl:grid-cols-4
+              xl:grid-cols-3
             "
             >
               <AccountProfileCard
@@ -688,357 +684,6 @@ setDefaultAddress(
                 loading={accountLoading}
                 error={accountError}
               />
-
-              {/* ===============================================
-    ADDRESS
-    DEFAULT ADDRESS API SE
-=============================================== */}
-
-              <DashboardCard>
-                <CardHeader
-                  icon="⌖"
-                  title="Addresses"
-                  subtitle="Manage your delivery addresses"
-                  action="Add"
-                  href="/account/addresses"
-                />
-
-                {/* LOADING */}
-
-                {addressLoading ? (
-                  <div
-                    className="
-        mt-5
-        rounded-[14px]
-        bg-[#F8F5F2]
-        p-5
-      "
-                  >
-                    <div
-                      className="
-          flex
-          animate-pulse
-          items-start
-          gap-4
-        "
-                    >
-                      <div
-                        className="
-            h-9
-            w-9
-            shrink-0
-            rounded-full
-            bg-[#E9DFD8]
-          "
-                      />
-
-                      <div
-                        className="
-            flex-1
-            space-y-3
-          "
-                      >
-                        <div
-                          className="
-              h-5
-              w-[70px]
-              rounded-full
-              bg-[#E9DFD8]
-            "
-                        />
-
-                        <div
-                          className="
-              h-4
-              w-[120px]
-              rounded
-              bg-[#E9DFD8]
-            "
-                        />
-
-                        <div
-                          className="
-              h-3
-              w-full
-              rounded
-              bg-[#E9DFD8]
-            "
-                        />
-
-                        <div
-                          className="
-              h-3
-              w-[70%]
-              rounded
-              bg-[#E9DFD8]
-            "
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : addressError ? (
-                  /* ERROR */
-
-                  <div
-                    className="
-        mt-5
-        rounded-[14px]
-        border
-        border-red-100
-        bg-red-50
-        p-5
-      "
-                  >
-                    <p
-                      className="
-          text-[11px]
-          text-red-700
-        "
-                    >
-                      {addressError}
-                    </p>
-
-                    <Link
-                      href="/account/addresses"
-                      className="
-          mt-3
-          inline-flex
-          text-[11px]
-          font-medium
-          text-[#B04B5C]
-          hover:underline
-        "
-                    >
-                      Manage Addresses →
-                    </Link>
-                  </div>
-                ) : defaultAddress ? (
-                  /* DEFAULT ADDRESS FOUND */
-
-                  <div
-                    className="
-        mt-5
-        rounded-[14px]
-        bg-[#F8F5F2]
-        p-5
-      "
-                  >
-                    <div
-                      className="
-          flex
-          items-start
-          gap-4
-        "
-                    >
-                      {/* ICON */}
-
-                      <span
-                        className="
-            mt-1
-            text-[22px]
-          "
-                      >
-                        {defaultAddress.addressType === "home"
-                          ? "⌂"
-                          : defaultAddress.addressType === "work"
-                            ? "▣"
-                            : "⌖"}
-                      </span>
-
-                      <div
-                        className="
-            min-w-0
-            flex-1
-          "
-                      >
-                        {/* BADGES */}
-
-                        <div
-                          className="
-              flex
-              flex-wrap
-              items-center
-              gap-2
-            "
-                        >
-                          {defaultAddress.isDefault && (
-                            <span
-                              className="
-                  inline-flex
-                  rounded-full
-                  bg-[#F7DEE1]
-                  px-3
-                  py-1
-                  text-[10px]
-                  font-medium
-                  text-[#B04B5C]
-                "
-                            >
-                              Default
-                            </span>
-                          )}
-
-                          <span
-                            className="
-                inline-flex
-                rounded-full
-                bg-white
-                px-3
-                py-1
-                text-[10px]
-                font-medium
-                text-[#211A18]/60
-              "
-                          >
-                            {defaultAddressType}
-                          </span>
-                        </div>
-
-                        <div
-                          className="
-              mt-2
-              flex
-              justify-between
-              gap-3
-            "
-                        >
-                          <div
-                            className="
-                min-w-0
-              "
-                          >
-                            {/* NAME */}
-
-                            <p
-                              className="
-                  text-[12px]
-                  font-semibold
-                "
-                            >
-                              {defaultAddress.fullName}
-                            </p>
-
-                            {/* ADDRESS */}
-
-                            <p
-                              className="
-                  mt-1
-                  text-[11px]
-                  leading-5
-                  text-[#211A18]/60
-                "
-                            >
-                              {defaultAddressLine1}
-
-                              {defaultAddressLine1 && <br />}
-
-                              {defaultAddressLine2}
-
-                              {defaultAddressLine2 && <br />}
-
-                              {defaultAddressPhone}
-                            </p>
-                          </div>
-
-                          {/* EDIT */}
-
-                          <Link
-                            href="/account/addresses"
-                            className="
-                shrink-0
-                text-[11px]
-                font-medium
-                text-[#B04B5C]
-                hover:underline
-              "
-                          >
-                            Edit
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* NO ADDRESS */
-
-                  <div
-                    className="
-        mt-5
-        rounded-[14px]
-        border
-        border-dashed
-        border-[#211A18]/15
-        bg-[#F8F5F2]
-        p-5
-      "
-                  >
-                    <div
-                      className="
-          flex
-          items-center
-          gap-4
-        "
-                    >
-                      <span
-                        className="
-            text-[25px]
-            text-[#8C1839]
-          "
-                      >
-                        ⌖
-                      </span>
-
-                      <div>
-                        <p
-                          className="
-              text-[12px]
-              font-semibold
-            "
-                        >
-                          No saved address
-                        </p>
-
-                        <p
-                          className="
-              mt-1
-              text-[10px]
-              text-[#211A18]/50
-            "
-                        >
-                          Add an address for faster checkout.
-                        </p>
-                      </div>
-                    </div>
-
-                    <Link
-                      href="/account/addresses"
-                      className="
-          mt-4
-          flex
-          h-10
-          items-center
-          justify-center
-          rounded-[9px]
-          bg-[#D97887]
-          text-[11px]
-          font-medium
-          text-white
-          transition
-          duration-300
-          hover:bg-[#8C1839]
-        "
-                    >
-                      Add Address
-                    </Link>
-                  </div>
-                )}
-              </DashboardCard>
-
-              {/* ===============================================
-                ORDERS
-
-                STATIC DATA
-            =============================================== */}
 
               <DashboardCard>
                 <CardHeader
@@ -1392,6 +1037,10 @@ setDefaultAddress(
                 STATIC DATA
             =============================================== */}
 
+              {/* ===============================================
+  DEFAULT ADDRESS
+=============================================== */}
+
               <DashboardCard>
                 <CardHeader
                   icon="⌖"
@@ -1401,106 +1050,148 @@ setDefaultAddress(
                   href="/account/addresses"
                 />
 
-                <div
-                  className="
-                  mt-5
-                  rounded-[14px]
-                  bg-[#F8F5F2]
-                  p-5
-                "
-                >
-                  <div
-                    className="
-                    flex
-                    items-start
-                    gap-4
-                  "
-                  >
-                    <span
-                      className="
-                      mt-1
-                      text-[22px]
-                    "
-                    >
-                      ⌂
-                    </span>
-
-                    <div
-                      className="
-                      min-w-0
-                      flex-1
-                    "
-                    >
-                      <span
-                        className="
-                        inline-flex
-                        rounded-full
-                        bg-[#F7DEE1]
-                        px-3
-                        py-1
-                        text-[10px]
-                        font-medium
-                        text-[#B04B5C]
-                      "
-                      >
-                        {defaultAddressType || "Default"}
+                {addressLoading ? (
+                  <div className="mt-5 rounded-[14px] bg-[#F8F5F2] p-5">
+                    <div className="animate-pulse space-y-3">
+                      <div className="h-5 w-[80px] rounded-full bg-[#E9DFD8]" />
+                      <div className="h-4 w-[140px] rounded bg-[#E9DFD8]" />
+                      <div className="h-3 w-full rounded bg-[#E9DFD8]" />
+                      <div className="h-3 w-[70%] rounded bg-[#E9DFD8]" />
+                    </div>
+                  </div>
+                ) : addressError ? (
+                  <div className="mt-5 rounded-[14px] border border-red-100 bg-red-50 p-5">
+                    <p className="text-[11px] text-red-700">{addressError}</p>
+                  </div>
+                ) : defaultAddress ? (
+                  <div className="mt-5 rounded-[14px] bg-[#F8F5F2] p-5">
+                    <div className="flex items-start gap-4">
+                      {/* ICON */}
+                      <span className="mt-1 text-[22px]">
+                        {defaultAddress.addressType === "home"
+                          ? "⌂"
+                          : defaultAddress.addressType === "work"
+                            ? "▣"
+                            : "⌖"}
                       </span>
 
-                      <div
-                        className="
-                        mt-2
-                        flex
-                        justify-between
-                        gap-3
-                      "
-                      >
-                        <div>
-                          <p
+                      <div className="min-w-0 flex-1">
+                        {/* BADGES */}
+                        <div className="flex items-center gap-2">
+                          <span
                             className="
-                            text-[12px]
-                            font-semibold
-                          "
+                inline-flex
+                rounded-full
+                bg-[#F7DEE1]
+                px-3
+                py-1
+                text-[10px]
+                font-medium
+                text-[#B04B5C]
+              "
                           >
-                            {defaultAddress?.fullName || "No saved address"}
-                          </p>
+                            Default
+                          </span>
 
-                          <p
+                          <span
                             className="
-                            mt-1
-                            text-[11px]
-                            leading-5
-                            text-[#211A18]/60
-                          "
+                inline-flex
+                rounded-full
+                bg-white
+                px-3
+                py-1
+                text-[10px]
+                font-medium
+                text-[#211A18]/60
+              "
                           >
-                            {defaultAddressLine1 || "Add an address to continue."}
-
-                            <br />
-
-                            {defaultAddressLine2}
-
-                            <br />
-
-                            {defaultAddressPhone}
-                          </p>
+                            {defaultAddressType}
+                          </span>
                         </div>
 
-                        <Link
-                          href="/account/addresses"
-                          className="
-                          text-[11px]
-                          font-medium
-                          text-[#B04B5C]
-                          hover:underline
-                        "
-                        >
-                          Edit
-                        </Link>
+                        <div className="mt-2 flex justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-semibold">
+                              {defaultAddress.fullName}
+                            </p>
+
+                            <p
+                              className="
+                  mt-1
+                  text-[11px]
+                  leading-5
+                  text-[#211A18]/60
+                "
+                            >
+                              {defaultAddressLine1}
+
+                              {defaultAddressLine1 && <br />}
+
+                              {defaultAddressLine2}
+
+                              {defaultAddressLine2 && <br />}
+
+                              {defaultAddressPhone}
+                            </p>
+                          </div>
+
+                          <Link
+                            href="/account/addresses"
+                            className="
+                shrink-0
+                text-[11px]
+                font-medium
+                text-[#B04B5C]
+                hover:underline
+              "
+                          >
+                            Edit
+                          </Link>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </DashboardCard>
+                ) : (
+                  <div
+                    className="
+        mt-5
+        rounded-[14px]
+        border
+        border-dashed
+        border-[#211A18]/15
+        bg-[#F8F5F2]
+        p-5
+      "
+                  >
+                    <p className="text-[12px] font-semibold">
+                      No saved address
+                    </p>
 
+                    <p className="mt-1 text-[10px] text-[#211A18]/50">
+                      Add an address for faster checkout.
+                    </p>
+
+                    <Link
+                      href="/account/addresses"
+                      className="
+          mt-4
+          flex
+          h-10
+          items-center
+          justify-center
+          rounded-[9px]
+          bg-[#D97887]
+          text-[11px]
+          font-medium
+          text-white
+          hover:bg-[#8C1839]
+        "
+                    >
+                      Add Address
+                    </Link>
+                  </div>
+                )}
+              </DashboardCard>
               {/* ===============================================
                 QUOTE
             =============================================== */}
