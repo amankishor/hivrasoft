@@ -1,12 +1,19 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 
+import Link from "next/link";
+
 import LoginModal from "./LoginModal";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type AuthUser = {
   id: string;
@@ -21,94 +28,238 @@ type AccountProps = {
   onBeforeOpen?: () => void;
 };
 
+type MeApiResponse = {
+  success?: boolean;
+
+  user?: AuthUser;
+
+  account?: AuthUser;
+
+  data?: {
+    user?: AuthUser;
+  };
+};
+
+/* =========================================================
+   API
+========================================================= */
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+/**
+ * Example:
+ *
+ * prahlad -> Prahlad
+ * PRAHLAD -> Prahlad
+ * prahlad kumar -> Prahlad Kumar
+ */
+function formatUserName(
+  name?: string
+) {
+  if (!name) {
+    return "User";
+  }
+
+  const cleanName =
+    name.trim();
+
+  if (!cleanName) {
+    return "User";
+  }
+
+  return cleanName
+    .split(/\s+/)
+    .map((word) => {
+      if (!word) {
+        return "";
+      }
+
+      return (
+        word
+          .charAt(0)
+          .toUpperCase() +
+        word
+          .slice(1)
+          .toLowerCase()
+      );
+    })
+    .join(" ");
+}
+
+/* =========================================================
+   ACCOUNT
+========================================================= */
 
 export default function Account({
   mobile = false,
   onBeforeOpen,
 }: AccountProps) {
-  const [user, setUser] =
-    useState<AuthUser | null>(null);
+  /* =======================================================
+     STATE
+  ======================================================= */
 
-  const [loginOpen, setLoginOpen] =
-    useState(false);
+  const [
+    user,
+    setUser,
+  ] =
+    useState<AuthUser | null>(
+      null
+    );
 
-  const [dropdownOpen, setDropdownOpen] =
-    useState(false);
+  const [
+    loginOpen,
+    setLoginOpen,
+  ] = useState(false);
 
-  const [authLoading, setAuthLoading] =
-    useState(true);
+  const [
+    dropdownOpen,
+    setDropdownOpen,
+  ] = useState(false);
 
-  const [isLoggingOut, setIsLoggingOut] =
-    useState(false);
+  const [
+    authLoading,
+    setAuthLoading,
+  ] = useState(true);
+
+  const [
+    isLoggingOut,
+    setIsLoggingOut,
+  ] = useState(false);
 
   const wrapperRef =
-    useRef<HTMLDivElement | null>(null);
+    useRef<HTMLDivElement | null>(
+      null
+    );
 
-  /* =========================================================
-     LOAD CURRENT USER
-  ========================================================= */
+  /* =======================================================
+     LOAD CURRENT LOGGED-IN USER
+  ======================================================= */
 
-  const loadCurrentUser = async () => {
-    try {
-      const response = await fetch(
-        `${API_URL}/api/auth/me`,
-        {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
+  const loadCurrentUser =
+    useCallback(async () => {
+      try {
+        setAuthLoading(true);
+
+        const response =
+          await fetch(
+            `${API_URL}/api/auth/me`,
+            {
+              method: "GET",
+
+              credentials:
+                "include",
+
+              cache:
+                "no-store",
+
+              headers: {
+                Accept:
+                  "application/json",
+              },
+            }
+          );
+
+        if (!response.ok) {
+          setUser(null);
+
+          return;
         }
-      );
 
-      if (!response.ok) {
+        const data =
+          (await response.json()) as
+            MeApiResponse;
+
+        /*
+          Different API response shapes
+          ko support karega:
+
+          {
+            user: {...}
+          }
+
+          {
+            account: {...}
+          }
+
+          {
+            data: {
+              user: {...}
+            }
+          }
+        */
+
+        const currentUser =
+          data.user ||
+          data.account ||
+          data.data?.user ||
+          null;
+
+        if (!currentUser) {
+          setUser(null);
+
+          return;
+        }
+
+        setUser({
+          ...currentUser,
+
+          name:
+            formatUserName(
+              currentUser.name
+            ),
+        });
+      } catch (error) {
+        console.error(
+          "LOAD CURRENT USER ERROR:",
+          error
+        );
+
         setUser(null);
-        return;
+      } finally {
+        setAuthLoading(false);
       }
+    }, []);
 
-      const data = (await response.json()) as {
-        success?: boolean;
-        user?: AuthUser;
-      };
-
-      setUser(data.user ?? null);
-    } catch {
-      setUser(null);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
+  /* =======================================================
+     FIRST LOAD
+  ======================================================= */
 
   useEffect(() => {
     void loadCurrentUser();
-  }, []);
+  }, [loadCurrentUser]);
 
-  /* =========================================================
+  /* =======================================================
      LOGIN SUCCESS EVENT
-  ========================================================= */
+
+     IMPORTANT:
+     event.detail ko direct user nahi bana rahe.
+     Login ke baad API se fresh user load hoga.
+  ======================================================= */
 
   useEffect(() => {
-    const handleAuthChanged = (
-      event: Event
-    ) => {
-      const authEvent =
-        event as CustomEvent<AuthUser>;
+    const handleAuthChanged =
+      () => {
+        setDropdownOpen(false);
 
-      if (authEvent.detail) {
-        setUser(authEvent.detail);
-      } else {
         void loadCurrentUser();
-      }
+      };
 
-      setDropdownOpen(false);
-      setAuthLoading(false);
-    };
+    const handleAuthLogout =
+      () => {
+        setUser(null);
 
-    const handleAuthLogout = () => {
-      setUser(null);
-      setDropdownOpen(false);
-    };
+        setDropdownOpen(
+          false
+        );
+
+        setLoginOpen(false);
+      };
 
     window.addEventListener(
       "hivrasoft-auth-changed",
@@ -131,14 +282,16 @@ export default function Account({
         handleAuthLogout
       );
     };
-  }, []);
+  }, [loadCurrentUser]);
 
-  /* =========================================================
-     CLOSE DROPDOWN ON OUTSIDE CLICK
-  ========================================================= */
+  /* =======================================================
+     CLICK OUTSIDE
+  ======================================================= */
 
   useEffect(() => {
-    if (!dropdownOpen) return;
+    if (!dropdownOpen) {
+      return;
+    }
 
     const handleOutsideClick = (
       event: MouseEvent
@@ -149,7 +302,9 @@ export default function Account({
           event.target as Node
         )
       ) {
-        setDropdownOpen(false);
+        setDropdownOpen(
+          false
+        );
       }
     };
 
@@ -166,87 +321,125 @@ export default function Account({
     };
   }, [dropdownOpen]);
 
-  /* =========================================================
+  /* =======================================================
      ACCOUNT CLICK
-  ========================================================= */
+  ======================================================= */
 
-  const handleAccountClick = () => {
-    if (authLoading) {
-      return;
-    }
-
-    if (!user) {
-      onBeforeOpen?.();
-
-      setDropdownOpen(false);
-      setLoginOpen(true);
-
-      return;
-    }
-
-    setDropdownOpen(
-      (value) => !value
-    );
-  };
-
-  /* =========================================================
-     LOGOUT
-  ========================================================= */
-
-  const handleLogout = async () => {
-    if (isLoggingOut) {
-      return;
-    }
-
-    try {
-      setIsLoggingOut(true);
-
-      const response = await fetch(
-        `${API_URL}/api/auth/logout`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          "Unable to logout."
-        );
+  const handleAccountClick =
+    () => {
+      if (authLoading) {
+        return;
       }
 
-      setUser(null);
-      setDropdownOpen(false);
+      /*
+        User login nahi hai
+      */
 
-      window.dispatchEvent(
-        new Event(
-          "hivrasoft-auth-logout"
-        )
-      );
-    } catch (error) {
-      console.error(
-        "Logout failed:",
-        error
-      );
-    } finally {
-      setIsLoggingOut(false);
-    }
-  };
+      if (!user) {
+        onBeforeOpen?.();
 
-  /* =========================================================
-     FIRST LETTER
-  ========================================================= */
+        setDropdownOpen(
+          false
+        );
+
+        setLoginOpen(true);
+
+        return;
+      }
+
+      /*
+        Logged-in user
+      */
+
+      setDropdownOpen(
+        (current) =>
+          !current
+      );
+    };
+
+  /* =======================================================
+     LOGOUT
+  ======================================================= */
+
+  const handleLogout =
+    async () => {
+      if (isLoggingOut) {
+        return;
+      }
+
+      try {
+        setIsLoggingOut(true);
+
+        const response =
+          await fetch(
+            `${API_URL}/api/auth/logout`,
+            {
+              method: "POST",
+
+              credentials:
+                "include",
+            }
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            "Unable to logout."
+          );
+        }
+
+        setUser(null);
+
+        setDropdownOpen(false);
+
+        window.dispatchEvent(
+          new Event(
+            "hivrasoft-auth-logout"
+          )
+        );
+      } catch (error) {
+        console.error(
+          "LOGOUT ERROR:",
+          error
+        );
+      } finally {
+        setIsLoggingOut(
+          false
+        );
+      }
+    };
+
+  /* =======================================================
+     USER DISPLAY VALUES
+  ======================================================= */
+
+  const displayName =
+    formatUserName(
+      user?.name
+    );
+
+  /*
+    Prahlad -> P
+    Aman -> A
+  */
 
   const userInitial =
-    user?.name
-      ?.trim()
-      .charAt(0)
-      .toUpperCase() ||
-    user?.email
-      ?.trim()
-      .charAt(0)
-      .toUpperCase() ||
-    "U";
+    user
+      ? displayName
+          .charAt(0)
+          .toUpperCase()
+      : "U";
+
+  const displayEmail =
+    user?.email?.trim() ||
+    "";
+
+  const displayPhone =
+    user?.phone?.trim() ||
+    "";
+
+  /* =======================================================
+     UI
+  ======================================================= */
 
   return (
     <>
@@ -255,25 +448,34 @@ export default function Account({
         data-account-menu
         className={`
           relative
-          ${mobile ? "flex w-full justify-center" : ""}
+
+          ${
+            mobile
+              ? "flex w-full justify-center"
+              : ""
+          }
         `}
       >
-        {/* =====================================================
-            ACCOUNT BUTTON
-        ===================================================== */}
+        {/* =============================================
+            PROFILE BUTTON
+        ============================================== */}
 
         <button
           type="button"
-          onClick={handleAccountClick}
-          disabled={authLoading}
+          onClick={
+            handleAccountClick
+          }
+          disabled={
+            authLoading
+          }
           aria-label={
             user
-              ? "Profile"
+              ? `${displayName} Profile`
               : "Login / Account"
           }
           title={
             user
-              ? "Profile"
+              ? displayName
               : "Login / Account"
           }
           className={`
@@ -281,6 +483,8 @@ export default function Account({
             shrink-0
             items-center
             justify-center
+            rounded-full
+
             transition-all
             duration-300
 
@@ -291,23 +495,25 @@ export default function Account({
 
             ${
               mobile
-                ? "h-12 w-12 rounded-full"
-                : "h-11 w-11 rounded-full"
+                ? "h-12 w-12"
+                : "h-11 w-11"
             }
 
             ${
               user
                 ? `
-                  bg-[#8C1839]
-                  text-white
-                  shadow-sm
-                  hover:bg-[#211A18]
-                `
+                    bg-[#8C1839]
+                    text-white
+                    shadow-sm
+
+                    hover:bg-[#211A18]
+                  `
                 : `
-                  text-[#211A18]
-                  hover:bg-[#EFE6DC]
-                  hover:text-[#8C1839]
-                `
+                    text-[#211A18]
+
+                    hover:bg-[#EFE6DC]
+                    hover:text-[#8C1839]
+                  `
             }
 
             disabled:cursor-default
@@ -318,17 +524,20 @@ export default function Account({
               className="
                 h-4
                 w-4
+
                 animate-spin
+
                 rounded-full
+
                 border-2
-                border-[#211A18]/20
-                border-t-[#8C1839]
+                border-white/30
+                border-t-white
               "
             />
           ) : user ? (
             <span
               className="
-                text-[14px]
+                text-[15px]
                 font-semibold
                 uppercase
               "
@@ -340,24 +549,32 @@ export default function Account({
           )}
         </button>
 
-        {/* =====================================================
-            PROFILE DROPDOWN
-        ===================================================== */}
+        {/* =============================================
+            USER DROPDOWN
+        ============================================== */}
 
         {user &&
           dropdownOpen && (
             <div
               className={`
                 absolute
+
                 top-[calc(100%+12px)]
-                z-[999]
-                w-[270px]
+
+                z-[9999]
+
+                w-[290px]
+
                 overflow-hidden
+
                 rounded-[18px]
+
                 border
                 border-[#211A18]/10
-                bg-[#F7F3EF]
-                shadow-[0_24px_60px_rgba(33,26,24,0.18)]
+
+                bg-[#F9F6F2]
+
+                shadow-[0_24px_60px_rgba(33,26,24,0.20)]
 
                 ${
                   mobile
@@ -366,7 +583,9 @@ export default function Account({
                 }
               `}
             >
-              {/* USER INFO */}
+              {/* =========================================
+                  USER INFORMATION
+              ========================================== */}
 
               <div
                 className="
@@ -381,102 +600,284 @@ export default function Account({
                     gap-3
                   "
                 >
+                  {/* USER INITIAL */}
+
                   <div
                     className="
                       flex
-                      h-11
-                      w-11
+                      h-12
+                      w-12
+
                       shrink-0
+
                       items-center
                       justify-center
+
                       rounded-full
+
                       bg-[#8C1839]
-                      text-[14px]
+
+                      text-[16px]
                       font-semibold
                       uppercase
                       text-white
+
+                      shadow-sm
                     "
                   >
-                    {userInitial}
+                    {
+                      userInitial
+                    }
                   </div>
 
-                  <div className="min-w-0">
+                  {/* USER NAME / EMAIL */}
+
+                  <div
+                    className="
+                      min-w-0
+                      flex-1
+                    "
+                  >
                     <p
                       className="
                         truncate
-                        text-[14px]
+
+                        font-serif
+
+                        text-[17px]
                         font-semibold
+
+                        capitalize
+
                         text-[#211A18]
                       "
                     >
-                      {user.name}
+                      {
+                        displayName
+                      }
                     </p>
 
-                    <p
-                      className="
-                        mt-1
-                        truncate
-                        text-[11px]
-                        text-[#211A18]/55
-                      "
-                    >
-                      {user.email}
-                    </p>
+                    {displayEmail && (
+                      <p
+                        className="
+                          mt-1
+                          truncate
+
+                          text-[11px]
+
+                          text-[#211A18]/55
+                        "
+                      >
+                        {
+                          displayEmail
+                        }
+                      </p>
+                    )}
+
+                    {displayPhone && (
+                      <p
+                        className="
+                          mt-1
+                          truncate
+
+                          text-[10px]
+
+                          text-[#211A18]/45
+                        "
+                      >
+                        {
+                          displayPhone
+                        }
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* SIGN OUT */}
+              {/* =========================================
+                  MENU
+              ========================================== */}
 
               <div
                 className="
                   border-t
                   border-[#211A18]/10
-                  p-3
                 "
               >
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  disabled={isLoggingOut}
+                {/* ACCOUNT */}
+
+                <Link
+                  href="/account"
+                  onClick={() =>
+                    setDropdownOpen(
+                      false
+                    )
+                  }
                   className="
-                    flex
-                    h-11
-                    w-full
-                    items-center
-                    justify-center
-                    rounded-[11px]
+                    block
+
+                    border-b
+                    border-[#211A18]/10
+
+                    px-5
+                    py-4
+
                     text-[10px]
                     font-semibold
                     uppercase
+
                     tracking-[0.13em]
-                    text-[#8C1839]
+
+                    text-[#211A18]
+
                     transition
+                    duration-300
 
-                    hover:bg-[#8C1839]
-                    hover:text-white
-
-                    disabled:cursor-not-allowed
-                    disabled:opacity-50
+                    hover:bg-[#EFE6DC]
+                    hover:text-[#8C1839]
                   "
                 >
-                  {isLoggingOut
-                    ? "Signing out..."
-                    : "Sign out"}
-                </button>
+                  Account
+                </Link>
+
+                {/* ORDERS */}
+
+                <Link
+                  href="/account/orders"
+                  onClick={() =>
+                    setDropdownOpen(
+                      false
+                    )
+                  }
+                  className="
+                    block
+
+                    border-b
+                    border-[#211A18]/10
+
+                    px-5
+                    py-4
+
+                    text-[10px]
+                    font-semibold
+                    uppercase
+
+                    tracking-[0.13em]
+
+                    text-[#211A18]
+
+                    transition
+                    duration-300
+
+                    hover:bg-[#EFE6DC]
+                    hover:text-[#8C1839]
+                  "
+                >
+                  Orders
+                </Link>
+
+                {/* ADDRESSES */}
+
+                <Link
+                  href="/account/addresses"
+                  onClick={() =>
+                    setDropdownOpen(
+                      false
+                    )
+                  }
+                  className="
+                    block
+
+                    border-b
+                    border-[#211A18]/10
+
+                    px-5
+                    py-4
+
+                    text-[10px]
+                    font-semibold
+                    uppercase
+
+                    tracking-[0.13em]
+
+                    text-[#211A18]
+
+                    transition
+                    duration-300
+
+                    hover:bg-[#EFE6DC]
+                    hover:text-[#8C1839]
+                  "
+                >
+                  Addresses
+                </Link>
+
+                {/* =====================================
+                    SIGN OUT
+                ====================================== */}
+
+                <div
+                  className="
+                    p-3
+                  "
+                >
+                  <button
+                    type="button"
+                    onClick={
+                      handleLogout
+                    }
+                    disabled={
+                      isLoggingOut
+                    }
+                    className="
+                      flex
+
+                      h-11
+                      w-full
+
+                      items-center
+                      justify-center
+
+                      rounded-[11px]
+
+                      text-[10px]
+                      font-semibold
+                      uppercase
+
+                      tracking-[0.13em]
+
+                      text-[#8C1839]
+
+                      transition
+                      duration-300
+
+                      hover:bg-[#8C1839]
+                      hover:text-white
+
+                      disabled:cursor-not-allowed
+                      disabled:opacity-50
+                    "
+                  >
+                    {isLoggingOut
+                      ? "Signing out..."
+                      : "Sign out"}
+                  </button>
+                </div>
               </div>
             </div>
           )}
       </div>
 
-      {/* =====================================================
-          LOGIN / REGISTER MODAL
-      ===================================================== */}
+      {/* =============================================
+          LOGIN MODAL
+      ============================================== */}
 
       <LoginModal
         open={loginOpen}
         onClose={() => {
-          setLoginOpen(false);
+          setLoginOpen(
+            false
+          );
         }}
       />
     </>

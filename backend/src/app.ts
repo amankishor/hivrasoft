@@ -8,6 +8,7 @@ import categoryRoutes from "./routes/category.routes";
 
 import productRoutes from "./routes/product.routes";
 import uploadRoutes from "./routes/upload.routes";
+import  addressRoutes from "./routes/user/address.routes"
 
 const app =
   express();
@@ -109,6 +110,10 @@ app.use(
 app.use(
   "/api/uploads",
   uploadRoutes
+);
+app.use(
+  "/api/address",
+  addressRoutes
 );
 
 /* =========================================================

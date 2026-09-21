@@ -9,6 +9,8 @@ const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const category_routes_1 = __importDefault(require("./routes/category.routes"));
 const product_routes_1 = __importDefault(require("./routes/product.routes"));
+const upload_routes_1 = __importDefault(require("./routes/upload.routes"));
+const address_routes_1 = __importDefault(require("./routes/user/address.routes"));
 const app = (0, express_1.default)();
 /* =========================================================
    CORS
@@ -56,6 +58,8 @@ app.use("/api/categories", category_routes_1.default);
    PRODUCTS
 ========================================================= */
 app.use("/api/products", product_routes_1.default);
+app.use("/api/uploads", upload_routes_1.default);
+app.use("/api/address", address_routes_1.default);
 /* =========================================================
    404
 ========================================================= */

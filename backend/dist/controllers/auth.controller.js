@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logout = exports.getMe = exports.loginVerifyOtp = exports.loginSendOtp = exports.registerVerifyOtp = exports.registerSendOtp = void 0;
+exports.updateAccountInfo = exports.getAccountInfo = exports.logout = exports.getMe = exports.loginVerifyOtp = exports.loginSendOtp = exports.registerVerifyOtp = exports.registerSendOtp = void 0;
 const auth_service_1 = require("../services/auth.service");
+const User_model_1 = __importDefault(require("../models/User.model"));
 const ONE_YEAR_MS = 365 *
     24 *
     60 *
@@ -256,4 +260,175 @@ const logout = async (req, res) => {
     });
 };
 exports.logout = logout;
+const getAccountInfo = async (req, res) => {
+    try {
+        /* =====================================================
+           AUTH CHECK
+        ===================================================== */
+        if (!req.user?._id) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required.",
+            });
+        }
+        /* =====================================================
+           GET CURRENT USER
+        ===================================================== */
+        const user = await User_model_1.default.findById(req.user._id)
+            .select("name email phone avatar createdAt")
+            .lean();
+        /* =====================================================
+           USER NOT FOUND
+        ===================================================== */
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found.",
+            });
+        }
+        /* =====================================================
+           SUCCESS RESPONSE
+        ===================================================== */
+        return res.status(200).json({
+            success: true,
+            message: "Account information fetched successfully.",
+            account: {
+                id: String(user._id),
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                avatar: {
+                    url: user.avatar?.url ||
+                        "",
+                    publicId: user.avatar?.publicId ||
+                        "",
+                },
+                memberSince: user.createdAt,
+            },
+        });
+    }
+    catch (error) {
+        console.error("GET ACCOUNT INFO ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to fetch account information.",
+        });
+    }
+};
+exports.getAccountInfo = getAccountInfo;
+/* =========================================================
+   UPDATE ACCOUNT INFO
+
+   PATCH /api/user/account
+
+   User can update:
+   ├── name
+   └── phone
+
+   Email ko direct update nahi karenge.
+   Email change ke liye OTP verification alag hona chahiye.
+========================================================= */
+const updateAccountInfo = async (req, res) => {
+    try {
+        /* =====================================================
+           AUTH CHECK
+        ===================================================== */
+        if (!req.user?._id) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required.",
+            });
+        }
+        /* =====================================================
+           REQUEST BODY
+        ===================================================== */
+        const { name, phone, } = req.body;
+        /* =====================================================
+           VALIDATION
+        ===================================================== */
+        if (name === undefined &&
+            phone === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "Name or phone is required.",
+            });
+        }
+        const updateData = {};
+        /* NAME */
+        if (name !== undefined) {
+            if (typeof name !== "string" ||
+                name.trim().length < 2) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Name must be at least 2 characters.",
+                });
+            }
+            updateData.name =
+                name.trim();
+        }
+        /* PHONE */
+        if (phone !== undefined) {
+            if (typeof phone !== "string" ||
+                phone.trim().length < 7) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please enter a valid phone number.",
+                });
+            }
+            updateData.phone =
+                phone.trim();
+        }
+        /* =====================================================
+           UPDATE USER
+        ===================================================== */
+        const user = await User_model_1.default.findByIdAndUpdate(req.user._id, {
+            $set: updateData,
+        }, {
+            new: true,
+            runValidators: true,
+        })
+            .select("name email phone avatar createdAt updatedAt")
+            .lean();
+        /* =====================================================
+           USER NOT FOUND
+        ===================================================== */
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found.",
+            });
+        }
+        /* =====================================================
+           SUCCESS
+        ===================================================== */
+        return res.status(200).json({
+            success: true,
+            message: "Account updated successfully.",
+            account: {
+                id: String(user._id),
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                avatar: {
+                    url: user.avatar?.url ||
+                        "",
+                    publicId: user.avatar?.publicId ||
+                        "",
+                },
+                memberSince: user.createdAt,
+                updatedAt: user.updatedAt,
+            },
+        });
+    }
+    catch (error) {
+        console.error("UPDATE ACCOUNT INFO ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: error instanceof Error
+                ? error.message
+                : "Unable to update account.",
+        });
+    }
+};
+exports.updateAccountInfo = updateAccountInfo;
 //# sourceMappingURL=auth.controller.js.map

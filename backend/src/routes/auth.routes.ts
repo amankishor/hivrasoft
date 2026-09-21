@@ -8,6 +8,8 @@ import {
   loginVerifyOtp,
   getMe,
   logout,
+   getAccountInfo,
+  updateAccountInfo,
 } from "../controllers/auth.controller";
 
 import {
@@ -74,6 +76,25 @@ router.get(
   "/me",
   authenticate,
   getMe
+);
+/* =========================================================
+   ACCOUNT
+========================================================= */
+
+/* GET ACCOUNT */
+
+router.get(
+  "/account",
+  authenticate,
+  getAccountInfo
+);
+
+/* UPDATE ACCOUNT */
+
+router.patch(
+  "/account",
+  authenticate,
+  updateAccountInfo
 );
 
 /* =========================================================

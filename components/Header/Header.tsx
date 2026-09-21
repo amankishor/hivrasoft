@@ -1288,7 +1288,7 @@ function IconLink({
         items-center
         justify-center
         rounded-full
-        text-[#211A18]
+        text-[#8C1839]
         transition-all
         duration-300
 

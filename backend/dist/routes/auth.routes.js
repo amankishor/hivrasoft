@@ -33,6 +33,13 @@ router.post("/login/verify-otp", auth_controller_1.loginVerifyOtp);
 ========================================================= */
 router.get("/me", auth_middleware_1.authenticate, auth_controller_1.getMe);
 /* =========================================================
+   ACCOUNT
+========================================================= */
+/* GET ACCOUNT */
+router.get("/account", auth_middleware_1.authenticate, auth_controller_1.getAccountInfo);
+/* UPDATE ACCOUNT */
+router.patch("/account", auth_middleware_1.authenticate, auth_controller_1.updateAccountInfo);
+/* =========================================================
    LOGOUT
 ========================================================= */
 router.post("/logout", auth_controller_1.logout);
