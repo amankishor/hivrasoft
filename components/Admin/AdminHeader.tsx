@@ -1,6 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
+import { LogOut } from "lucide-react";
 
 const titles: Record<string, string> = {
   "/admin": "Dashboard",
@@ -17,6 +19,23 @@ const titles: Record<string, string> = {
 
 export default function AdminHeader() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
+
+  async function signOut() {
+    setLoggingOut(true);
+    setLogoutError(false);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/auth/logout`, { method: "POST", credentials: "include" });
+      if (!response.ok) throw new Error("Logout failed");
+      router.replace("/admin");
+      router.refresh();
+    } catch {
+      setLogoutError(true);
+      setLoggingOut(false);
+    }
+  }
 
   const title =
     titles[pathname] ||
@@ -118,6 +137,11 @@ export default function AdminHeader() {
         >
           A
         </div>
+        <button type="button" onClick={signOut} disabled={loggingOut} aria-label="Sign out" title="Sign out"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#8C1839] hover:bg-[#8C1839]/10 disabled:opacity-50">
+          <LogOut size={18} />
+        </button>
+        {logoutError && <span role="alert" className="text-xs text-red-700">Sign out failed. Try again.</span>}
       </div>
     </header>
   );

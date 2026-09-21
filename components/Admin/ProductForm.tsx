@@ -1,10 +1,11 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -13,60 +14,37 @@ import {
   useRouter,
 } from "next/navigation";
 
-/* =========================================================
-   TYPES
-========================================================= */
+import ProductImagesUploader, {
+  type ImageValue,
+} from "@/components/Admin/ProductImagesUploader";
+
+import HtmlDescriptionEditor from "@/components/Admin/HtmlDescriptionEditor";
 
 type ProductFormProps = {
-  mode?:
-    | "create"
-    | "edit";
-
+  mode?: "create" | "edit";
   productId?: string;
 };
 
 type CategoryNode = {
-  id: string;
-
+  id?: string;
   _id?: string;
-
   name: string;
-
-  slug: string;
-
-  level: number;
-
-  children: CategoryNode[];
-};
-
-type ImageInput = {
-  url: string;
-
-  publicId: string;
+  level?: number;
+  children?: CategoryNode[];
 };
 
 type SizeInput = {
   size: string;
-
   sku: string;
-
   stock: string;
-
   isActive: boolean;
 };
 
 type ColorInput = {
   name: string;
-
   hex: string;
-
-  images: [
-    ImageInput,
-    ImageInput,
-  ];
-
+  images: ImageValue[];
   sizes: SizeInput[];
-
   isActive: boolean;
 };
 
@@ -76,16 +54,10 @@ type ProductStatus =
   | "inactive";
 
 type ProductApiData = {
-  _id?: string;
-
-  id?: string;
-
   name?: string;
-
+  slug?: string;
   shortDescription?: string;
-
   description?: string;
-
   categories?: Array<
     | string
     | {
@@ -93,103 +65,66 @@ type ProductApiData = {
         id?: string;
       }
   >;
-
   price?: number;
-
   compareAtPrice?: number;
-
   costPrice?: number;
-
-  mainImages?: ImageInput[];
-
+  stock?: number;
+  mainImages?: ImageValue[];
   colors?: Array<{
     name?: string;
-
     hex?: string;
-
-    images?: ImageInput[];
-
+    images?: ImageValue[];
     sizes?: Array<{
       size?: string;
-
       sku?: string;
-
       stock?: number;
-
       isActive?: boolean;
     }>;
-
     isActive?: boolean;
   }>;
-
+  ratings?: {
+    average?: number;
+    count?: number;
+  };
   status?: ProductStatus;
-
   isFeatured?: boolean;
-
   isNewLaunch?: boolean;
-
   tags?: string[];
-
   seoTitle?: string;
-
   seoDescription?: string;
 };
-
-/* =========================================================
-   API
-========================================================= */
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
 
-/* =========================================================
-   EMPTY
-========================================================= */
-
 const emptyImage =
-  (): ImageInput => ({
+  (): ImageValue => ({
     url: "",
-
     publicId: "",
   });
 
 const emptySize =
   (): SizeInput => ({
     size: "",
-
     sku: "",
-
     stock: "0",
-
     isActive: true,
   });
 
 const emptyColor =
   (): ColorInput => ({
     name: "",
-
     hex: "#000000",
-
-    images: [
-      emptyImage(),
-      emptyImage(),
-    ],
-
+    images: [],
     sizes: [
       emptySize(),
     ],
-
     isActive: true,
   });
 
-/* =========================================================
-   PRODUCT FORM
-========================================================= */
-
 export default function ProductForm({
   mode = "create",
-
   productId,
 }: ProductFormProps) {
   const router =
@@ -198,752 +133,1128 @@ export default function ProductForm({
   const isEdit =
     mode === "edit";
 
-  /* =======================================================
-     CATEGORY
-  ======================================================= */
-
   const [
     categories,
     setCategories,
-  ] = useState<
-    CategoryNode[]
-  >([]);
+  ] =
+    useState<CategoryNode[]>(
+      []
+    );
 
   const [
     selectedCategories,
     setSelectedCategories,
-  ] = useState<
-    string[]
-  >([]);
+  ] =
+    useState<string[]>(
+      []
+    );
 
   const [
     categoriesLoading,
     setCategoriesLoading,
-  ] = useState(true);
-
-  /* =======================================================
-     BASIC
-  ======================================================= */
+  ] =
+    useState(true);
 
   const [
     name,
     setName,
-  ] = useState("");
+  ] =
+    useState("");
+
+  const [
+    slug,
+    setSlug,
+  ] =
+    useState("");
+
+  /*
+    Create mode:
+    product name se slug auto-suggest hota rahega
+    jab tak admin slug field manually edit nahi karta.
+  */
+  const slugTouchedRef =
+    useRef(false);
 
   const [
     shortDescription,
     setShortDescription,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     description,
     setDescription,
-  ] = useState("");
-
-  /* =======================================================
-     PRICE
-  ======================================================= */
+  ] =
+    useState("");
 
   const [
     price,
     setPrice,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     compareAtPrice,
     setCompareAtPrice,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     costPrice,
     setCostPrice,
-  ] = useState("");
+  ] =
+    useState("");
 
-  /* =======================================================
-     IMAGES
-  ======================================================= */
+  /*
+    Single product-level stock.
+    Existing variant/size stock stays unchanged.
+  */
+  const [
+    stock,
+    setStock,
+  ] =
+    useState("0");
 
   const [
     mainImages,
     setMainImages,
-  ] = useState<
-    ImageInput[]
-  >([
-    emptyImage(),
-    emptyImage(),
-    emptyImage(),
-    emptyImage(),
-  ]);
-
-  /* =======================================================
-     COLORS
-  ======================================================= */
+  ] =
+    useState<ImageValue[]>(
+      []
+    );
 
   const [
     colors,
     setColors,
-  ] = useState<
-    ColorInput[]
-  >([
-    emptyColor(),
-  ]);
-
-  /* =======================================================
-     PUBLISHING
-  ======================================================= */
+  ] =
+    useState<ColorInput[]>(
+      [
+        emptyColor(),
+      ]
+    );
 
   const [
     status,
     setStatus,
   ] =
     useState<ProductStatus>(
-      "draft",
+      "draft"
     );
 
   const [
     isFeatured,
     setIsFeatured,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     isNewLaunch,
     setIsNewLaunch,
-  ] = useState(false);
+  ] =
+    useState(false);
 
-  /* =======================================================
-     EXTRA
-  ======================================================= */
+  const [
+    ratingAverage,
+    setRatingAverage,
+  ] =
+    useState(0);
+
+  const [
+    ratingCount,
+    setRatingCount,
+  ] =
+    useState(0);
 
   const [
     tags,
     setTags,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     seoTitle,
     setSeoTitle,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     seoDescription,
     setSeoDescription,
-  ] = useState("");
-
-  /* =======================================================
-     FORM
-  ======================================================= */
+  ] =
+    useState("");
 
   const [
     productLoading,
     setProductLoading,
-  ] = useState(
-    isEdit,
-  );
+  ] =
+    useState(isEdit);
 
   const [
     saving,
     setSaving,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     error,
     setError,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     success,
     setSuccess,
-  ] = useState("");
+  ] =
+    useState("");
 
-  /* =========================================================
-     LOAD CATEGORIES
-  ========================================================= */
+  /*
+    Only images uploaded during
+    this unsaved form session.
+  */
+  const newUploadIdsRef =
+    useRef<Set<string>>(
+      new Set()
+    );
 
-  useEffect(() => {
-    const loadCategories =
-      async () => {
-        try {
-          setCategoriesLoading(
-            true,
-          );
+  const savedRef =
+    useRef(false);
 
-          const response =
-            await fetch(
-              `${API_URL}/api/categories/tree`,
-              {
-                method:
-                  "GET",
+  const deleteCloudinaryImage =
+    useCallback(
+      async (
+        publicId: string
+      ) => {
+        if (!publicId) {
+          return;
+        }
 
-                credentials:
-                  "include",
-
-                cache:
-                  "no-store",
+        const response =
+          await fetch(
+            `${API_URL}/api/uploads/image`,
+            {
+              method: "DELETE",
+              credentials:
+                "include",
+              headers: {
+                "Content-Type":
+                  "application/json",
               },
-            );
+              body:
+                JSON.stringify({
+                  publicId,
+                }),
+            }
+          );
 
+        if (!response.ok) {
           const data =
-            await response.json();
+            await response
+              .json()
+              .catch(
+                () => ({})
+              );
 
-          if (!response.ok) {
-            throw new Error(
-              data.message ||
-                "Unable to load categories.",
-            );
-          }
+          throw new Error(
+            data.message ||
+              "Unable to delete image."
+          );
+        }
+      },
+      []
+    );
 
-          setCategories(
-            Array.isArray(
-              data.categories,
-            )
-              ? data.categories
-              : [],
+  const cleanupUnsavedUploads =
+    useCallback(
+      async () => {
+        const ids =
+          Array.from(
+            newUploadIdsRef.current
           );
-        } catch (error) {
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load categories.",
-          );
-        } finally {
-          setCategoriesLoading(
-            false,
+
+        await Promise.allSettled(
+          ids.map(
+            (
+              publicId
+            ) =>
+              deleteCloudinaryImage(
+                publicId
+              )
+          )
+        );
+
+        newUploadIdsRef.current.clear();
+      },
+      [
+        deleteCloudinaryImage,
+      ]
+    );
+
+  useEffect(
+    () => {
+      return () => {
+        if (
+          savedRef.current
+        ) {
+          return;
+        }
+
+        for (
+          const publicId
+          of Array.from(
+            newUploadIdsRef.current
+          )
+        ) {
+          void fetch(
+            `${API_URL}/api/uploads/image`,
+            {
+              method: "DELETE",
+              credentials:
+                "include",
+              keepalive: true,
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body:
+                JSON.stringify({
+                  publicId,
+                }),
+            }
           );
         }
       };
+    },
+    []
+  );
 
-    void loadCategories();
-  }, []);
+  useEffect(
+    () => {
+      let cancelled =
+        false;
 
-  /* =========================================================
-     LOAD PRODUCT FOR EDIT
-  ========================================================= */
-
-  useEffect(() => {
-    if (!isEdit) {
-      setProductLoading(
-        false,
-      );
-
-      return;
-    }
-
-    if (!productId) {
-      setError(
-        "Product ID is missing.",
-      );
-
-      setProductLoading(
-        false,
-      );
-
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadProduct =
-      async () => {
-        try {
-          setProductLoading(
-            true,
-          );
-
-          setError("");
-
-          const response =
-            await fetch(
-              `${API_URL}/api/products/${productId}`,
-              {
-                method:
-                  "GET",
-
-                credentials:
-                  "include",
-
-                cache:
-                  "no-store",
-
-                headers: {
-                  Accept:
-                    "application/json",
-                },
-              },
+      const loadCategories =
+        async () => {
+          try {
+            setCategoriesLoading(
+              true
             );
 
-          const data =
-            await response.json();
+            const response =
+              await fetch(
+                `${API_URL}/api/categories/tree`,
+                {
+                  credentials:
+                    "include",
+                  cache:
+                    "no-store",
+                }
+              );
 
-          if (!response.ok) {
-            throw new Error(
-              data.message ||
-                "Unable to load product.",
+            const data =
+              await response.json();
+
+            if (!response.ok) {
+              throw new Error(
+                data.message ||
+                  "Unable to load categories."
+              );
+            }
+
+            if (!cancelled) {
+              setCategories(
+                Array.isArray(
+                  data.categories
+                )
+                  ? data.categories
+                  : []
+              );
+            }
+          } catch (error) {
+            if (!cancelled) {
+              setError(
+                error instanceof
+                  Error
+                  ? error.message
+                  : "Unable to load categories."
+              );
+            }
+          } finally {
+            if (!cancelled) {
+              setCategoriesLoading(
+                false
+              );
+            }
+          }
+        };
+
+      void loadCategories();
+
+      return () => {
+        cancelled =
+          true;
+      };
+    },
+    []
+  );
+
+  useEffect(
+    () => {
+      if (!isEdit) {
+        setProductLoading(
+          false
+        );
+        return;
+      }
+
+      if (!productId) {
+        setError(
+          "Product ID is missing."
+        );
+        setProductLoading(
+          false
+        );
+        return;
+      }
+
+      let cancelled =
+        false;
+
+      const loadProduct =
+        async () => {
+          try {
+            setProductLoading(
+              true
             );
-          }
 
-          if (cancelled) {
-            return;
-          }
+            const response =
+              await fetch(
+                `${API_URL}/api/products/${productId}`,
+                {
+                  credentials:
+                    "include",
+                  cache:
+                    "no-store",
+                }
+              );
 
-          const product: ProductApiData =
-            data.product ||
-            data.data ||
-            data;
+            const data =
+              await response.json();
 
-          /* BASIC */
+            if (!response.ok) {
+              throw new Error(
+                data.message ||
+                  "Unable to load product."
+              );
+            }
 
-          setName(
-            product.name || "",
-          );
+            if (cancelled) {
+              return;
+            }
 
-          setShortDescription(
-            product.shortDescription ||
-              "",
-          );
+            const product:
+              ProductApiData =
+              data.product ||
+              data;
 
-          setDescription(
-            product.description ||
-              "",
-          );
+            setName(
+              product.name ||
+                ""
+            );
 
-          /* PRICE */
+            setSlug(
+              product.slug ||
+                ""
+            );
 
-          setPrice(
-            product.price !==
-              undefined &&
+            slugTouchedRef.current =
+              true;
+
+            setShortDescription(
+              product.shortDescription ||
+                ""
+            );
+
+            setDescription(
+              product.description ||
+                ""
+            );
+
+            setPrice(
               product.price !==
-                null
-              ? String(
-                  product.price,
-                )
-              : "",
-          );
+                undefined
+                ? String(
+                    product.price
+                  )
+                : ""
+            );
 
-          setCompareAtPrice(
-            product.compareAtPrice
-              ? String(
-                  product.compareAtPrice,
-                )
-              : "",
-          );
+            setCompareAtPrice(
+              product.compareAtPrice !==
+                undefined
+                ? String(
+                    product.compareAtPrice
+                  )
+                : ""
+            );
 
-          setCostPrice(
-            product.costPrice
-              ? String(
-                  product.costPrice,
-                )
-              : "",
-          );
+            setCostPrice(
+              product.costPrice !==
+                undefined
+                ? String(
+                    product.costPrice
+                  )
+                : ""
+            );
 
-          /* CATEGORIES */
+            setStock(
+              product.stock !==
+                undefined
+                ? String(
+                    product.stock
+                  )
+                : "0"
+            );
 
-          const categoryIds =
-            (
-              product.categories ||
-              []
-            )
-              .map(
-                (category) => {
-                  if (
+            setSelectedCategories(
+              (
+                product.categories ||
+                []
+              )
+                .map(
+                  (
+                    category
+                  ) =>
                     typeof category ===
                     "string"
-                  ) {
-                    return category;
-                  }
-
-                  return (
-                    category.id ||
-                    category._id ||
-                    ""
-                  );
-                },
-              )
-              .filter(Boolean);
-
-          setSelectedCategories(
-            categoryIds,
-          );
-
-          /* IMAGES */
-
-          setMainImages(
-            normalizeMainImages(
-              product.mainImages ||
-                [],
-            ),
-          );
-
-          /* COLORS */
-
-          setColors(
-            normalizeColors(
-              product.colors ||
-                [],
-            ),
-          );
-
-          /* PUBLISH */
-
-          setStatus(
-            product.status ||
-              "draft",
-          );
-
-          setIsFeatured(
-            Boolean(
-              product.isFeatured,
-            ),
-          );
-
-          setIsNewLaunch(
-            Boolean(
-              product.isNewLaunch,
-            ),
-          );
-
-          /* EXTRA */
-
-          setTags(
-            Array.isArray(
-              product.tags,
-            )
-              ? product.tags.join(
-                  ", ",
+                      ? category
+                      : (
+                          category.id ||
+                          category._id ||
+                          ""
+                        )
                 )
-              : "",
-          );
-
-          setSeoTitle(
-            product.seoTitle ||
-              "",
-          );
-
-          setSeoDescription(
-            product.seoDescription ||
-              "",
-          );
-        } catch (error) {
-          if (cancelled) {
-            return;
-          }
-
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load product.",
-          );
-        } finally {
-          if (!cancelled) {
-            setProductLoading(
-              false,
+                .filter(
+                  Boolean
+                )
             );
+
+            setMainImages(
+              normalizeMainImages(
+                product.mainImages ||
+                  []
+              )
+            );
+
+            setColors(
+              normalizeColors(
+                product.colors ||
+                  []
+              )
+            );
+
+            setRatingAverage(
+              Number(
+                product.ratings
+                  ?.average ||
+                  0
+              )
+            );
+
+            setRatingCount(
+              Number(
+                product.ratings
+                  ?.count ||
+                  0
+              )
+            );
+
+            setStatus(
+              product.status ||
+                "draft"
+            );
+
+            setIsFeatured(
+              Boolean(
+                product.isFeatured
+              )
+            );
+
+            setIsNewLaunch(
+              Boolean(
+                product.isNewLaunch
+              )
+            );
+
+            setTags(
+              Array.isArray(
+                product.tags
+              )
+                ? product.tags.join(
+                    ", "
+                  )
+                : ""
+            );
+
+            setSeoTitle(
+              product.seoTitle ||
+                ""
+            );
+
+            setSeoDescription(
+              product.seoDescription ||
+                ""
+            );
+          } catch (error) {
+            if (!cancelled) {
+              setError(
+                error instanceof
+                  Error
+                  ? error.message
+                  : "Unable to load product."
+              );
+            }
+          } finally {
+            if (!cancelled) {
+              setProductLoading(
+                false
+              );
+            }
           }
-        }
+        };
+
+      void loadProduct();
+
+      return () => {
+        cancelled =
+          true;
       };
+    },
+    [
+      isEdit,
+      productId,
+    ]
+  );
 
-    void loadProduct();
+  const productFolderName =
+    useMemo(
+      () =>
+        slugifyFolder(
+          name
+        ) ||
+        (
+          productId
+            ? `product-${productId}`
+            : "new-product"
+        ),
+      [
+        name,
+        productId,
+      ]
+    );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    isEdit,
-    productId,
-  ]);
-
-  /* =========================================================
-     CATEGORY
-  ========================================================= */
-
-  const toggleCategory = (
-    categoryId: string,
-  ) => {
-    setSelectedCategories(
-      (current) =>
-        current.includes(
-          categoryId,
-        )
-          ? current.filter(
-              (id) =>
-                id !==
+  const toggleCategory =
+    (
+      categoryId: string
+    ) => {
+      setSelectedCategories(
+        (
+          current
+        ) =>
+          current.includes(
+            categoryId
+          )
+            ? current.filter(
+                (
+                  id
+                ) =>
+                  id !==
+                  categoryId
+              )
+            : [
+                ...current,
                 categoryId,
-            )
-          : [
+              ]
+      );
+    };
+
+  const registerNewUpload =
+    (
+      image: ImageValue
+    ) => {
+      if (image.publicId) {
+        newUploadIdsRef.current.add(
+          image.publicId
+        );
+      }
+    };
+
+  const removeUnsavedImage =
+    async (
+      image: ImageValue
+    ) => {
+      if (
+        !image.publicId ||
+        !newUploadIdsRef.current.has(
+          image.publicId
+        )
+      ) {
+        return;
+      }
+
+      await deleteCloudinaryImage(
+        image.publicId
+      );
+
+      newUploadIdsRef.current.delete(
+        image.publicId
+      );
+    };
+
+  const onMainImagesUploaded =
+    (
+      uploadedImages: ImageValue[]
+    ) => {
+      for (
+        const image
+        of uploadedImages
+      ) {
+        registerNewUpload(
+          image
+        );
+      }
+
+      setMainImages(
+        (
+          current
+        ) => [
+          ...current,
+          ...uploadedImages,
+        ]
+      );
+    };
+
+  const removeMainImage =
+    async (
+      index: number
+    ) => {
+      const oldImage =
+        mainImages[
+          index
+        ];
+
+      if (!oldImage) {
+        return;
+      }
+
+      if (
+        newUploadIdsRef.current.has(
+          oldImage.publicId
+        )
+      ) {
+        await removeUnsavedImage(
+          oldImage
+        );
+      }
+
+      /*
+        Existing DB image:
+        remove only from state.
+        Backend PATCH compares old/new image publicIds
+        and deletes removed Cloudinary images after save.
+      */
+      setMainImages(
+        (
+          current
+        ) =>
+          current.filter(
+            (
+              _,
+              itemIndex
+            ) =>
+              itemIndex !==
+              index
+          )
+      );
+    };
+
+  const makeMainImage =
+    (
+      index: number
+    ) => {
+      setMainImages(
+        (
+          current
+        ) => {
+          if (
+            index <= 0 ||
+            index >= current.length
+          ) {
+            return current;
+          }
+
+          const next =
+            [
               ...current,
+            ];
 
-              categoryId,
-            ],
-    );
-  };
+          const [image] =
+            next.splice(
+              index,
+              1
+            );
 
-  /* =========================================================
-     MAIN IMAGE
-  ========================================================= */
+          next.unshift(
+            image
+          );
 
-  const setMainImage = (
-    index: number,
+          return next;
+        }
+      );
+    };
 
-    image: ImageInput,
-  ) => {
-    setMainImages(
-      (current) =>
-        current.map(
-          (
-            currentImage,
+  const addColor =
+    () => {
+      setColors(
+        (
+          current
+        ) => [
+          ...current,
+          emptyColor(),
+        ]
+      );
+    };
 
-            currentIndex,
-          ) =>
-            currentIndex ===
-            index
-              ? image
-              : currentImage,
-        ),
-    );
-  };
+  const removeColor =
+    async (
+      colorIndex: number
+    ) => {
+      const color =
+        colors[
+          colorIndex
+        ];
 
-  /* =========================================================
-     COLORS
-  ========================================================= */
+      for (
+        const image
+        of color.images
+      ) {
+        if (
+          newUploadIdsRef.current.has(
+            image.publicId
+          )
+        ) {
+          await removeUnsavedImage(
+            image
+          );
+        }
+      }
 
-  const addColor = () => {
-    setColors(
-      (current) => [
-        ...current,
-
-        emptyColor(),
-      ],
-    );
-  };
-
-  const removeColor = (
-    colorIndex: number,
-  ) => {
-    setColors(
-      (current) =>
-        current.filter(
-          (
-            _,
-
-            currentIndex,
-          ) =>
-            currentIndex !==
-            colorIndex,
-        ),
-    );
-  };
-
-  const updateColor = (
-    colorIndex: number,
-
-    field:
-      | "name"
-      | "hex"
-      | "isActive",
-
-    value:
-      | string
-      | boolean,
-  ) => {
-    setColors(
-      (current) =>
-        current.map(
-          (
-            color,
-
-            currentIndex,
-          ) =>
-            currentIndex ===
-            colorIndex
-              ? {
-                  ...color,
-
-                  [field]:
-                    value,
-                }
-              : color,
-        ),
-    );
-  };
-
-  const setColorImage = (
-    colorIndex: number,
-
-    imageIndex: number,
-
-    image: ImageInput,
-  ) => {
-    setColors(
-      (current) =>
-        current.map(
-          (
-            color,
-
-            currentIndex,
-          ) => {
-            if (
-              currentIndex !==
+      setColors(
+        (
+          current
+        ) =>
+          current.filter(
+            (
+              _,
+              index
+            ) =>
+              index !==
               colorIndex
-            ) {
-              return color;
-            }
+          )
+      );
+    };
 
-            const nextImages =
-              [
-                ...color.images,
-              ] as [
-                ImageInput,
-                ImageInput,
-              ];
-
-            nextImages[
-              imageIndex
-            ] = image;
-
-            return {
-              ...color,
-
-              images:
-                nextImages,
-            };
-          },
-        ),
-    );
-  };
-
-  /* =========================================================
-     SIZES
-  ========================================================= */
-
-  const addSize = (
-    colorIndex: number,
-  ) => {
-    setColors(
-      (current) =>
-        current.map(
-          (
-            color,
-
-            currentIndex,
-          ) =>
-            currentIndex ===
-            colorIndex
-              ? {
-                  ...color,
-
-                  sizes: [
-                    ...color.sizes,
-
-                    emptySize(),
-                  ],
-                }
-              : color,
-        ),
-    );
-  };
-
-  const removeSize = (
-    colorIndex: number,
-
-    sizeIndex: number,
-  ) => {
-    setColors(
-      (current) =>
-        current.map(
-          (
-            color,
-
-            currentIndex,
-          ) => {
-            if (
-              currentIndex !==
+  const updateColor =
+    (
+      colorIndex: number,
+      field:
+        | "name"
+        | "hex"
+        | "isActive",
+      value:
+        | string
+        | boolean
+    ) => {
+      setColors(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              color,
+              index
+            ) =>
+              index ===
               colorIndex
-            ) {
-              return color;
-            }
+                ? {
+                    ...color,
+                    [field]:
+                      value,
+                  }
+                : color
+          )
+      );
+    };
 
-            return {
-              ...color,
+  const onColorImagesUploaded =
+    (
+      colorIndex: number,
+      uploadedImages: ImageValue[]
+    ) => {
+      for (
+        const image
+        of uploadedImages
+      ) {
+        registerNewUpload(
+          image
+        );
+      }
 
-              sizes:
-                color.sizes.filter(
-                  (
-                    _,
-
-                    currentSizeIndex,
-                  ) =>
-                    currentSizeIndex !==
-                    sizeIndex,
-                ),
-            };
-          },
-        ),
-    );
-  };
-
-  const updateSize = (
-    colorIndex: number,
-
-    sizeIndex: number,
-
-    field:
-      | "size"
-      | "sku"
-      | "stock"
-      | "isActive",
-
-    value:
-      | string
-      | boolean,
-  ) => {
-    setColors(
-      (current) =>
-        current.map(
-          (
-            color,
-
-            currentColorIndex,
-          ) => {
-            if (
-              currentColorIndex !==
+      setColors(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              color,
+              index
+            ) =>
+              index ===
               colorIndex
-            ) {
-              return color;
+                ? {
+                    ...color,
+                    images: [
+                      ...color.images,
+                      ...uploadedImages,
+                    ],
+                  }
+                : color
+          )
+      );
+    };
+
+  const removeColorImage =
+    async (
+      colorIndex: number,
+      imageIndex: number
+    ) => {
+      const oldImage =
+        colors[
+          colorIndex
+        ]?.images[
+          imageIndex
+        ];
+
+      if (!oldImage) {
+        return;
+      }
+
+      if (
+        newUploadIdsRef.current.has(
+          oldImage.publicId
+        )
+      ) {
+        await removeUnsavedImage(
+          oldImage
+        );
+      }
+
+      setColors(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              color,
+              index
+            ) => {
+              if (
+                index !==
+                colorIndex
+              ) {
+                return color;
+              }
+
+              return {
+                ...color,
+                images:
+                  color.images.filter(
+                    (
+                      _,
+                      currentImageIndex
+                    ) =>
+                      currentImageIndex !==
+                      imageIndex
+                  ),
+              };
             }
+          )
+      );
+    };
 
-            return {
-              ...color,
+  const makeColorMainImage =
+    (
+      colorIndex: number,
+      imageIndex: number
+    ) => {
+      setColors(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              color,
+              index
+            ) => {
+              if (
+                index !==
+                  colorIndex ||
+                imageIndex <= 0 ||
+                imageIndex >=
+                  color.images.length
+              ) {
+                return color;
+              }
 
-              sizes:
-                color.sizes.map(
-                  (
-                    size,
+              const images =
+                [
+                  ...color.images,
+                ];
 
-                    currentSizeIndex,
-                  ) =>
-                    currentSizeIndex ===
-                    sizeIndex
-                      ? {
-                          ...size,
+              const [image] =
+                images.splice(
+                  imageIndex,
+                  1
+                );
 
-                          [field]:
-                            value,
-                        }
-                      : size,
-                ),
-            };
-          },
-        ),
-    );
-  };
+              images.unshift(
+                image
+              );
 
-  /* =========================================================
-     SUBMIT
-  ========================================================= */
+              return {
+                ...color,
+                images,
+              };
+            }
+          )
+      );
+    };
+
+  const addSize =
+    (
+      colorIndex: number
+    ) => {
+      setColors(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              color,
+              index
+            ) =>
+              index ===
+              colorIndex
+                ? {
+                    ...color,
+                    sizes: [
+                      ...color.sizes,
+                      emptySize(),
+                    ],
+                  }
+                : color
+          )
+      );
+    };
+
+  const removeSize =
+    (
+      colorIndex: number,
+      sizeIndex: number
+    ) => {
+      setColors(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              color,
+              index
+            ) =>
+              index ===
+              colorIndex
+                ? {
+                    ...color,
+                    sizes:
+                      color.sizes.filter(
+                        (
+                          _,
+                          currentSizeIndex
+                        ) =>
+                          currentSizeIndex !==
+                          sizeIndex
+                      ),
+                  }
+                : color
+          )
+      );
+    };
+
+  const updateSize =
+    (
+      colorIndex: number,
+      sizeIndex: number,
+      field:
+        | "size"
+        | "sku"
+        | "stock"
+        | "isActive",
+      value:
+        | string
+        | boolean
+    ) => {
+      setColors(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              color,
+              index
+            ) => {
+              if (
+                index !==
+                colorIndex
+              ) {
+                return color;
+              }
+
+              return {
+                ...color,
+                sizes:
+                  color.sizes.map(
+                    (
+                      size,
+                      currentSizeIndex
+                    ) =>
+                      currentSizeIndex ===
+                      sizeIndex
+                        ? {
+                            ...size,
+                            [field]:
+                              value,
+                          }
+                        : size
+                  ),
+              };
+            }
+          )
+      );
+    };
 
   const handleSubmit =
     async (
       event:
-        FormEvent<HTMLFormElement>,
+        FormEvent<HTMLFormElement>
     ) => {
       event.preventDefault();
 
@@ -952,16 +1263,21 @@ export default function ProductForm({
       }
 
       setError("");
-
       setSuccess("");
 
-      /* VALIDATION */
-
       if (!name.trim()) {
-        showFormError(
-          "Product name is required.",
+        setError(
+          "Product name is required."
         );
+        return;
+      }
 
+      if (
+        !slug.trim()
+      ) {
+        setError(
+          "Product slug is required."
+        );
         return;
       }
 
@@ -969,106 +1285,59 @@ export default function ProductForm({
         selectedCategories.length ===
         0
       ) {
-        showFormError(
-          "Please select at least one category.",
+        setError(
+          "Please select at least one category."
         );
-
         return;
       }
 
       if (
-        price.trim() === "" ||
+        price.trim() ===
+          "" ||
         !Number.isFinite(
-          Number(price),
+          Number(
+            price
+          )
         ) ||
-        Number(price) < 0
+        Number(
+          price
+        ) <
+          0
       ) {
-        showFormError(
-          "Please enter a valid selling price.",
+        setError(
+          "Please enter a valid price."
         );
+        return;
+      }
 
+      if (
+        stock.trim() ===
+          "" ||
+        !Number.isInteger(
+          Number(
+            stock
+          )
+        ) ||
+        Number(
+          stock
+        ) <
+          0
+      ) {
+        setError(
+          "Please enter a valid stock quantity (0 or greater)."
+        );
         return;
       }
 
       try {
         setSaving(true);
 
-        const cleanedMainImages =
-          mainImages.filter(
-            (image) =>
-              image.url &&
-              image.publicId,
-          );
-
-        const cleanedColors =
-          colors
-            .filter(
-              (color) =>
-                color.name.trim(),
-            )
-            .map(
-              (
-                color,
-
-                colorIndex,
-              ) => ({
-                name:
-                  color.name.trim(),
-
-                hex:
-                  color.hex.trim(),
-
-                sortOrder:
-                  colorIndex,
-
-                isActive:
-                  color.isActive,
-
-                images:
-                  color.images.filter(
-                    (image) =>
-                      image.url &&
-                      image.publicId,
-                  ),
-
-                sizes:
-                  color.sizes
-                    .filter(
-                      (size) =>
-                        size.size.trim() &&
-                        size.sku.trim(),
-                    )
-                    .map(
-                      (size) => ({
-                        size:
-                          size.size
-                            .trim()
-                            .toUpperCase(),
-
-                        sku:
-                          size.sku
-                            .trim()
-                            .toUpperCase(),
-
-                        stock:
-                          Math.max(
-                            0,
-
-                            Number(
-                              size.stock,
-                            ) || 0,
-                          ),
-
-                        isActive:
-                          size.isActive,
-                      }),
-                    ),
-              }),
-            );
-
         const payload = {
           name:
             name.trim(),
+
+          slug:
+            slug.trim(),
 
           shortDescription:
             shortDescription.trim(),
@@ -1080,27 +1349,112 @@ export default function ProductForm({
             selectedCategories,
 
           price:
-            Number(price),
+            Number(
+              price
+            ),
 
           compareAtPrice:
-            compareAtPrice
+            compareAtPrice.trim()
               ? Number(
-                  compareAtPrice,
+                  compareAtPrice
                 )
               : 0,
 
           costPrice:
-            costPrice
+            costPrice.trim()
               ? Number(
-                  costPrice,
+                  costPrice
                 )
               : 0,
 
+          stock:
+            Number(
+              stock
+            ),
+
           mainImages:
-            cleanedMainImages,
+            mainImages.filter(
+              (
+                image
+              ) =>
+                image.url &&
+                image.publicId
+            ),
 
           colors:
-            cleanedColors,
+            colors
+              .filter(
+                (
+                  color
+                ) =>
+                  color.name.trim()
+              )
+              .map(
+                (
+                  color,
+                  colorIndex
+                ) => ({
+                  name:
+                    color.name.trim(),
+
+                  hex:
+                    color.hex.trim(),
+
+                  sortOrder:
+                    colorIndex,
+
+                  isActive:
+                    color.isActive,
+
+                  images:
+                    color.images.filter(
+                      (
+                        image
+                      ) =>
+                        image.url &&
+                        image.publicId
+                    ),
+
+                  sizes:
+                    color.sizes
+                      .filter(
+                        (
+                          size
+                        ) =>
+                          size.size.trim() &&
+                          size.sku.trim()
+                      )
+                      .map(
+                        (
+                          size
+                        ) => ({
+                          size:
+                            size.size
+                              .trim()
+                              .toUpperCase(),
+
+                          sku:
+                            size.sku
+                              .trim()
+                              .toUpperCase(),
+
+                          stock:
+                            Math.max(
+                              0,
+                              Math.floor(
+                                Number(
+                                  size.stock
+                                ) ||
+                                  0
+                              )
+                            ),
+
+                          isActive:
+                            size.isActive,
+                        })
+                      ),
+                })
+              ),
 
           status,
 
@@ -1108,14 +1462,20 @@ export default function ProductForm({
 
           isNewLaunch,
 
-          tags: tags
-            .split(",")
-            .map((tag) =>
-              tag
-                .trim()
-                .toLowerCase(),
-            )
-            .filter(Boolean),
+          tags:
+            tags
+              .split(",")
+              .map(
+                (
+                  tag
+                ) =>
+                  tag
+                    .trim()
+                    .toLowerCase()
+              )
+              .filter(
+                Boolean
+              ),
 
           seoTitle:
             seoTitle.trim(),
@@ -1124,31 +1484,34 @@ export default function ProductForm({
             seoDescription.trim(),
         };
 
-        /* CREATE / EDIT URL */
-
-        const url = isEdit
-          ? `${API_URL}/api/products/${productId}`
-          : `${API_URL}/api/products`;
+        const endpoint =
+          isEdit
+            ? `${API_URL}/api/products/${productId}`
+            : `${API_URL}/api/products`;
 
         const response =
-          await fetch(url, {
-            method: isEdit
-              ? "PUT"
-              : "POST",
+          await fetch(
+            endpoint,
+            {
+              method:
+                isEdit
+                  ? "PATCH"
+                  : "POST",
 
-            credentials:
-              "include",
+              credentials:
+                "include",
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
 
-            body:
-              JSON.stringify(
-                payload,
-              ),
-          });
+              body:
+                JSON.stringify(
+                  payload
+                ),
+            }
+          );
 
         const data =
           await response.json();
@@ -1156,311 +1519,141 @@ export default function ProductForm({
         if (!response.ok) {
           throw new Error(
             data.message ||
-              (isEdit
-                ? "Unable to update product."
-                : "Unable to create product."),
+              (
+                isEdit
+                  ? "Unable to update product."
+                  : "Unable to create product."
+              )
           );
         }
+
+        newUploadIdsRef.current.clear();
+
+        savedRef.current =
+          true;
 
         setSuccess(
           isEdit
             ? "Product updated successfully."
-            : "Product created successfully.",
+            : "Product created successfully."
         );
-
-        window.scrollTo({
-          top: 0,
-
-          behavior:
-            "smooth",
-        });
 
         window.setTimeout(
           () => {
             router.push(
-              "/admin/products",
+              "/admin/products"
             );
-
             router.refresh();
           },
-          700,
+          500
         );
       } catch (error) {
         setError(
-          error instanceof Error
+          error instanceof
+            Error
             ? error.message
-            : isEdit
-              ? "Unable to update product."
-              : "Unable to create product.",
+            : "Unable to save product."
         );
-
-        window.scrollTo({
-          top: 0,
-
-          behavior:
-            "smooth",
-        });
       } finally {
         setSaving(false);
       }
     };
 
-  const showFormError = (
-    message: string,
-  ) => {
-    setError(message);
+  const handleCancel =
+    async () => {
+      setSaving(true);
 
-    window.scrollTo({
-      top: 0,
+      await cleanupUnsavedUploads();
 
-      behavior:
-        "smooth",
-    });
-  };
+      setSaving(false);
 
-  /* =========================================================
-     PRODUCT LOADING
-  ========================================================= */
+      router.push(
+        "/admin/products"
+      );
+    };
 
-  if (productLoading) {
+  if (
+    productLoading
+  ) {
     return (
-      <div
-        className="
-          mx-auto
-          max-w-[1500px]
-        "
-      >
-        <div
-          className="
-            flex
-            min-h-[450px]
-            items-center
-            justify-center
-            rounded-[22px]
-            border
-            border-[#211A18]/10
-            bg-white
-          "
-        >
-          <div
-            className="
-              text-center
-            "
-          >
-            <LoadingSpinner />
-
-            <p
-              className="
-                mt-4
-                text-[10px]
-                uppercase
-                tracking-[0.1em]
-                text-[#211A18]/45
-              "
-            >
-              Loading product...
-            </p>
-          </div>
-        </div>
+      <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-[#211A18]/10 bg-white">
+        <LoadingSpinner />
       </div>
     );
   }
-
-  /* =========================================================
-     UI
-  ========================================================= */
 
   return (
     <form
       onSubmit={
         handleSubmit
       }
-      className="
-        mx-auto
-        max-w-[1500px]
-      "
+      className="mx-auto max-w-[1500px]"
     >
-      {/* HEADER */}
-
-      <div
-        className="
-          flex
-          flex-col
-          gap-4
-
-          lg:flex-row
-          lg:items-center
-          lg:justify-between
-        "
-      >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p
-            className="
-              text-[9px]
-              font-semibold
-              uppercase
-              tracking-[0.24em]
-              text-[#8C1839]
-            "
-          >
+          <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#8C1839]">
             Catalog Management
           </p>
 
-          <h2
-            className="
-              mt-2
-              text-[27px]
-              font-semibold
-              text-[#211A18]
-            "
-          >
+          <h1 className="mt-2 text-[28px] font-semibold text-[#211A18]">
             {isEdit
               ? "Edit Product"
               : "Add Product"}
-          </h2>
+          </h1>
 
-          <p
-            className="
-              mt-1
-              text-[11px]
-              leading-5
-              text-[#211A18]/45
-            "
-          >
-            {isEdit
-              ? "Update product information, images, colors, sizes and inventory."
-              : "Create product information, images, colors, sizes and inventory."}
+          <p className="mt-1 text-[11px] text-[#211A18]/45">
+            Product details, media,
+            pricing, colors, sizes,
+            stock and publishing.
           </p>
         </div>
 
-        <div
-          className="
-            flex
-            gap-3
-          "
-        >
+        <div className="flex gap-3">
           <button
             type="button"
-            onClick={() =>
-              router.push(
-                "/admin/products",
-              )
+            disabled={
+              saving
             }
-            className="
-              h-[46px]
-              rounded-[12px]
-              border
-              border-[#211A18]/10
-              bg-white
-              px-5
-              text-[9px]
-              font-semibold
-              uppercase
-              tracking-[0.1em]
-              text-[#211A18]
-            "
+            onClick={() =>
+              void handleCancel()
+            }
+            className="h-11 rounded-xl border border-[#211A18]/10 bg-white px-5 text-[9px] font-semibold uppercase disabled:opacity-50"
           >
             Cancel
           </button>
 
           <button
             type="submit"
-            disabled={saving}
-            className="
-              h-[46px]
-              rounded-[12px]
-              bg-[#8C1839]
-              px-6
-              text-[10px]
-              font-semibold
-              uppercase
-              tracking-[0.14em]
-              text-white
-              transition
-
-              hover:bg-[#211A18]
-
-              disabled:cursor-not-allowed
-              disabled:opacity-50
-            "
+            disabled={
+              saving
+            }
+            className="h-11 rounded-xl bg-[#8C1839] px-6 text-[9px] font-semibold uppercase tracking-[0.1em] text-white hover:bg-[#211A18] disabled:opacity-50"
           >
             {saving
-              ? isEdit
-                ? "Updating..."
-                : "Saving..."
+              ? "Saving..."
               : isEdit
                 ? "Update Product"
-                : "Save Product"}
+                : "Create Product"}
           </button>
         </div>
       </div>
 
-      {/* MESSAGES */}
-
       {error && (
-        <div
-          className="
-            mt-5
-            rounded-[14px]
-            border
-            border-red-200
-            bg-red-50
-            px-4
-            py-3
-            text-[11px]
-            text-red-600
-          "
-        >
+        <Message tone="error">
           {error}
-        </div>
+        </Message>
       )}
 
       {success && (
-        <div
-          className="
-            mt-5
-            rounded-[14px]
-            border
-            border-green-200
-            bg-green-50
-            px-4
-            py-3
-            text-[11px]
-            text-green-700
-          "
-        >
+        <Message tone="success">
           {success}
-        </div>
+        </Message>
       )}
 
-      {/* GRID */}
-
-      <div
-        className="
-          mt-6
-          grid
-          grid-cols-1
-          gap-6
-
-          xl:grid-cols-[minmax(0,1fr)_360px]
-        "
-      >
-        {/* LEFT */}
-
-        <div
-          className="
-            min-w-0
-            space-y-6
-          "
-        >
-          {/* PRODUCT DETAILS */}
-
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-6">
           <Card title="Product Details">
-            <div
-              className="
-                space-y-5
-              "
-            >
+            <div className="space-y-4">
               <Field
                 label="Product Name"
                 required
@@ -1468,18 +1661,57 @@ export default function ProductForm({
                 <input
                   value={name}
                   onChange={(
-                    event,
-                  ) =>
+                    event
+                  ) => {
+                    const nextName =
+                      event.target.value;
+
                     setName(
-                      event.target
-                        .value,
-                    )
-                  }
-                  placeholder="e.g. Everyday Sports Bra"
+                      nextName
+                    );
+
+                    if (
+                      !slugTouchedRef.current
+                    ) {
+                      setSlug(
+                        slugifyProductSlug(
+                          nextName
+                        )
+                      );
+                    }
+                  }}
                   className={
                     inputClass
                   }
+                  placeholder="Everyday Sports Bra"
                 />
+              </Field>
+
+              <Field
+                label="Product Slug"
+                required
+              >
+                <input
+                  value={slug}
+                  onChange={(
+                    event
+                  ) => {
+                    slugTouchedRef.current =
+                      true;
+
+                    setSlug(
+                      event.target.value
+                    );
+                  }}
+                  className={
+                    inputClass
+                  }
+                  placeholder="coral-red-maternity-bra"
+                />
+
+                <p className="mt-2 text-[8px] leading-4 text-[#211A18]/40">
+                  Admin kuch bhi readable value type kar sakta hai. Backend ise safe URL slug me convert karega. Example: <b>Coral Red Bra 2026</b> → <b>coral-red-bra-2026</b>.
+                </p>
               </Field>
 
               <Field label="Short Description">
@@ -1488,155 +1720,106 @@ export default function ProductForm({
                     shortDescription
                   }
                   onChange={(
-                    event,
+                    event
                   ) =>
                     setShortDescription(
-                      event.target
-                        .value,
+                      event.target.value
                     )
                   }
-                  placeholder="Short description for product listing"
                   className={
                     inputClass
                   }
+                  placeholder="Short listing description"
                 />
               </Field>
 
-              <Field label="Full Description">
-                <textarea
-                  value={
-                    description
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setDescription(
-                      event.target
-                        .value,
-                    )
-                  }
-                  rows={7}
-                  placeholder="Enter complete product description..."
-                  className={`
-                    ${inputClass}
-
-                    h-auto
-                    resize-y
-                    py-3
-                  `}
+              <Field label="Description (HTML + Inline CSS)">
+                <HtmlDescriptionEditor
+                  value={description}
+                  onChange={setDescription}
+                  disabled={saving}
                 />
               </Field>
             </div>
           </Card>
 
-          {/* PRICING */}
-
           <Card title="Pricing">
-            <div
-              className="
-                grid
-                grid-cols-1
-                gap-4
-
-                md:grid-cols-3
-              "
-            >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field
                 label="Selling Price"
                 required
               >
-                <CurrencyInput
+                <MoneyInput
                   value={price}
-                  onChange={
+                  setValue={
                     setPrice
                   }
-                  placeholder="999"
                 />
               </Field>
 
               <Field label="Compare At Price">
-                <CurrencyInput
+                <MoneyInput
                   value={
                     compareAtPrice
                   }
-                  onChange={
+                  setValue={
                     setCompareAtPrice
                   }
-                  placeholder="1499"
                 />
               </Field>
 
               <Field label="Cost Price">
-                <CurrencyInput
+                <MoneyInput
                   value={
                     costPrice
                   }
-                  onChange={
+                  setValue={
                     setCostPrice
                   }
-                  placeholder="500"
+                />
+              </Field>
+
+              <Field
+                label="Stock"
+                required
+              >
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={stock}
+                  onChange={(
+                    event
+                  ) =>
+                    setStock(
+                      event.target.value
+                    )
+                  }
+                  className={
+                    inputClass
+                  }
+                  placeholder="0"
                 />
               </Field>
             </div>
           </Card>
 
-          {/* MAIN IMAGES */}
-
           <Card title="Main Product Images">
-            <p
-              className="
-                mb-5
-                text-[10px]
-                leading-5
-                text-[#211A18]/45
-              "
-            >
-              Upload maximum 4
-              product images. First
-              image will be used as the
-              main image.
+            <p className="mb-4 text-[9px] leading-5 text-[#211A18]/40">
+              No fixed image limit. Ek baar me multiple photos select kar sakte ho.
+              First image main product image hogi; kisi bhi image ko "Make Main" kar sakte ho.
             </p>
 
-            <div
-              className="
-                grid
-                grid-cols-1
-                gap-4
-
-                sm:grid-cols-2
-
-                2xl:grid-cols-4
-              "
-            >
-              {mainImages.map(
-                (
-                  image,
-
-                  index,
-                ) => (
-                  <ImageUploader
-                    key={index}
-                    label={`Image ${
-                      index + 1
-                    }`}
-                    value={image}
-                    folder="products/main"
-                    onChange={(
-                      uploadedImage,
-                    ) =>
-                      setMainImage(
-                        index,
-
-                        uploadedImage,
-                      )
-                    }
-                  />
-                ),
-              )}
-            </div>
+            <ProductImagesUploader
+              label="Product Gallery"
+              value={mainImages}
+              folder={`products/${productFolderName}/main`}
+              disabled={saving}
+              onUploaded={onMainImagesUploaded}
+              onRemove={removeMainImage}
+              onMakeMain={makeMainImage}
+            />
           </Card>
-
-          {/* COLORS */}
 
           <Card
             title="Color Variants"
@@ -1646,578 +1829,262 @@ export default function ProductForm({
                 onClick={
                   addColor
                 }
-                className="
-                  rounded-[10px]
-                  bg-[#211A18]
-                  px-4
-                  py-2.5
-                  text-[9px]
-                  font-semibold
-                  uppercase
-                  tracking-[0.1em]
-                  text-white
-                  transition
-
-                  hover:bg-[#8C1839]
-                "
+                className="rounded-lg bg-[#211A18] px-4 py-2 text-[8px] font-semibold uppercase text-white"
               >
                 + Add Color
               </button>
             }
           >
-            <div
-              className="
-                space-y-5
-              "
-            >
+            <div className="space-y-5">
               {colors.map(
                 (
                   color,
-
-                  colorIndex,
+                  colorIndex
                 ) => (
                   <div
                     key={
                       colorIndex
                     }
-                    className="
-                      rounded-[20px]
-                      border
-                      border-[#211A18]/10
-                      bg-[#FAF8F6]
-                      p-5
-                    "
+                    className="rounded-2xl border border-[#211A18]/10 bg-[#FAF8F6] p-4"
                   >
-                    {/* HEADER */}
-
-                    <div
-                      className="
-                        flex
-                        items-center
-                        justify-between
-                        gap-4
-                      "
-                    >
-                      <div>
-                        <p
-                          className="
-                            text-[9px]
-                            font-semibold
-                            uppercase
-                            tracking-[0.15em]
-                            text-[#8C1839]
-                          "
-                        >
-                          Variant
-                        </p>
-
-                        <h4
-                          className="
-                            mt-1
-                            text-[14px]
-                            font-semibold
-                            text-[#211A18]
-                          "
-                        >
-                          Color{" "}
-                          {colorIndex +
-                            1}
-                        </h4>
-                      </div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[12px] font-semibold">
+                        Color{" "}
+                        {colorIndex + 1}
+                      </p>
 
                       {colors.length >
                         1 && (
                         <button
                           type="button"
                           onClick={() =>
-                            removeColor(
-                              colorIndex,
+                            void removeColor(
+                              colorIndex
                             )
                           }
-                          className="
-                            rounded-[9px]
-                            border
-                            border-red-200
-                            px-3
-                            py-2
-                            text-[8px]
-                            font-semibold
-                            uppercase
-                            text-red-500
-
-                            hover:bg-red-500
-                            hover:text-white
-                          "
+                          className="text-[8px] font-semibold uppercase text-red-500"
                         >
-                          Remove
+                          Remove Color
                         </button>
                       )}
                     </div>
 
-                    {/* INFO */}
-
-                    <div
-                      className="
-                        mt-5
-                        grid
-                        grid-cols-1
-                        gap-4
-
-                        md:grid-cols-[1fr_140px]
-                      "
-                    >
-                      <Field
-                        label="Color Name"
-                        required
-                      >
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[1fr_150px]">
+                      <Field label="Color Name">
                         <input
                           value={
                             color.name
                           }
                           onChange={(
-                            event,
+                            event
                           ) =>
                             updateColor(
                               colorIndex,
-
                               "name",
-
-                              event
-                                .target
-                                .value,
+                              event.target.value
                             )
                           }
-                          placeholder="Black"
                           className={
                             inputClass
                           }
+                          placeholder="Black"
                         />
                       </Field>
 
-                      <Field label="Color">
-                        <div
-                          className="
-                            flex
-                            h-[48px]
-                            items-center
-                            gap-3
-                            rounded-[12px]
-                            border
-                            border-[#211A18]/12
-                            bg-white
-                            px-3
-                          "
-                        >
+                      <Field label="Hex">
+                        <div className="flex h-12 items-center gap-3 rounded-xl border border-[#211A18]/10 bg-white px-3">
                           <input
                             type="color"
                             value={
                               color.hex
                             }
                             onChange={(
-                              event,
+                              event
                             ) =>
                               updateColor(
                                 colorIndex,
-
                                 "hex",
-
-                                event
-                                  .target
-                                  .value,
+                                event.target.value
                               )
                             }
-                            className="
-                              h-8
-                              w-10
-                              cursor-pointer
-                            "
                           />
 
-                          <span
-                            className="
-                              text-[10px]
-                              uppercase
-                              text-[#211A18]/55
-                            "
-                          >
+                          <span className="text-[9px] uppercase">
                             {color.hex}
                           </span>
                         </div>
                       </Field>
                     </div>
 
-                    {/* COLOR IMAGES */}
+                    <div className="mt-5">
+                      <ProductImagesUploader
+                        label="Color Images"
+                        value={color.images}
+                        folder={`products/${productFolderName}/colors/${
+                          slugifyFolder(
+                            color.name
+                          ) ||
+                          `color-${colorIndex + 1}`
+                        }`}
+                        disabled={saving}
+                        onUploaded={(uploadedImages) =>
+                          onColorImagesUploaded(
+                            colorIndex,
+                            uploadedImages
+                          )
+                        }
+                        onRemove={(imageIndex) =>
+                          removeColorImage(
+                            colorIndex,
+                            imageIndex
+                          )
+                        }
+                        onMakeMain={(imageIndex) =>
+                          makeColorMainImage(
+                            colorIndex,
+                            imageIndex
+                          )
+                        }
+                      />
+                    </div>
 
-                    <div
-                      className="
-                        mt-6
-                      "
-                    >
-                      <p
-                        className="
-                          text-[9px]
-                          font-semibold
-                          uppercase
-                          tracking-[0.14em]
-                          text-[#211A18]/55
-                        "
-                      >
-                        Color Images
+                    <div className="mt-6 flex items-center justify-between">
+                      <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#211A18]/50">
+                        Sizes & Inventory
                       </p>
 
-                      <div
-                        className="
-                          mt-4
-                          grid
-                          grid-cols-1
-                          gap-4
-
-                          sm:grid-cols-2
-
-                          xl:max-w-[650px]
-                        "
+                      <button
+                        type="button"
+                        onClick={() =>
+                          addSize(
+                            colorIndex
+                          )
+                        }
+                        className="rounded-lg border border-[#8C1839]/20 px-3 py-2 text-[8px] font-semibold uppercase text-[#8C1839]"
                       >
-                        {color.images.map(
-                          (
-                            image,
+                        + Add Size
+                      </button>
+                    </div>
 
-                            imageIndex,
-                          ) => (
-                            <ImageUploader
-                              key={
-                                imageIndex
-                              }
-                              label={`Color Image ${
-                                imageIndex +
-                                1
-                              }`}
+                    <div className="mt-3 space-y-3">
+                      {color.sizes.map(
+                        (
+                          size,
+                          sizeIndex
+                        ) => (
+                          <div
+                            key={
+                              sizeIndex
+                            }
+                            className="grid grid-cols-1 gap-3 rounded-xl border border-[#211A18]/10 bg-white p-3 md:grid-cols-[100px_minmax(140px,1fr)_110px_80px_auto] md:items-center"
+                          >
+                            <input
                               value={
-                                image
+                                size.size
                               }
-                              folder={`products/colors/${
-                                slugifyFolder(
-                                  color.name,
-                                ) ||
-                                `color-${
-                                  colorIndex +
-                                  1
-                                }`
-                              }`}
                               onChange={(
-                                uploaded,
+                                event
                               ) =>
-                                setColorImage(
+                                updateSize(
                                   colorIndex,
-
-                                  imageIndex,
-
-                                  uploaded,
+                                  sizeIndex,
+                                  "size",
+                                  event.target.value
                                 )
                               }
-                            />
-                          ),
-                        )}
-                      </div>
-                    </div>
-
-                    {/* SIZES */}
-
-                    <div
-                      className="
-                        mt-7
-                      "
-                    >
-                      <div
-                        className="
-                          flex
-                          items-center
-                          justify-between
-                          gap-4
-                        "
-                      >
-                        <div>
-                          <p
-                            className="
-                              text-[9px]
-                              font-semibold
-                              uppercase
-                              tracking-[0.14em]
-                              text-[#211A18]/55
-                            "
-                          >
-                            Sizes &
-                            Inventory
-                          </p>
-
-                          <p
-                            className="
-                              mt-1
-                              text-[9px]
-                              text-[#211A18]/35
-                            "
-                          >
-                            Each size has
-                            its own SKU
-                            and stock.
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            addSize(
-                              colorIndex,
-                            )
-                          }
-                          className="
-                            rounded-[9px]
-                            border
-                            border-[#8C1839]/20
-                            px-3
-                            py-2
-                            text-[8px]
-                            font-semibold
-                            uppercase
-                            text-[#8C1839]
-
-                            hover:bg-[#8C1839]
-                            hover:text-white
-                          "
-                        >
-                          + Add Size
-                        </button>
-                      </div>
-
-                      <div
-                        className="
-                          mt-4
-                          space-y-3
-                        "
-                      >
-                        {color.sizes.map(
-                          (
-                            size,
-
-                            sizeIndex,
-                          ) => (
-                            <div
-                              key={
-                                sizeIndex
+                              placeholder="Size"
+                              className={
+                                smallInputClass
                               }
-                              className="
-                                grid
-                                grid-cols-1
-                                gap-3
-                                rounded-[14px]
-                                border
-                                border-[#211A18]/10
-                                bg-white
-                                p-3
+                            />
 
-                                md:grid-cols-[110px_minmax(150px,1fr)_120px_90px_auto]
-                                md:items-center
-                              "
+                            <input
+                              value={
+                                size.sku
+                              }
+                              onChange={(
+                                event
+                              ) =>
+                                updateSize(
+                                  colorIndex,
+                                  sizeIndex,
+                                  "sku",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="SKU"
+                              className={
+                                smallInputClass
+                              }
+                            />
+
+                            <input
+                              type="number"
+                              min="0"
+                              value={
+                                size.stock
+                              }
+                              onChange={(
+                                event
+                              ) =>
+                                updateSize(
+                                  colorIndex,
+                                  sizeIndex,
+                                  "stock",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="Stock"
+                              className={
+                                smallInputClass
+                              }
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateSize(
+                                  colorIndex,
+                                  sizeIndex,
+                                  "isActive",
+                                  !size.isActive
+                                )
+                              }
+                              className={`h-10 rounded-lg text-[8px] font-semibold uppercase ${
+                                size.isActive
+                                  ? "bg-green-50 text-green-700"
+                                  : "bg-[#211A18]/5 text-[#211A18]/40"
+                              }`}
                             >
-                              <input
-                                value={
-                                  size.size
-                                }
-                                onChange={(
-                                  event,
-                                ) =>
-                                  updateSize(
-                                    colorIndex,
+                              {size.isActive
+                                ? "Active"
+                                : "Off"}
+                            </button>
 
-                                    sizeIndex,
-
-                                    "size",
-
-                                    event
-                                      .target
-                                      .value,
-                                  )
-                                }
-                                placeholder="Size"
-                                className={
-                                  smallInputClass
-                                }
-                              />
-
-                              <input
-                                value={
-                                  size.sku
-                                }
-                                onChange={(
-                                  event,
-                                ) =>
-                                  updateSize(
-                                    colorIndex,
-
-                                    sizeIndex,
-
-                                    "sku",
-
-                                    event
-                                      .target
-                                      .value,
-                                  )
-                                }
-                                placeholder="SKU"
-                                className={
-                                  smallInputClass
-                                }
-                              />
-
-                              <input
-                                type="number"
-                                min="0"
-                                value={
-                                  size.stock
-                                }
-                                onChange={(
-                                  event,
-                                ) =>
-                                  updateSize(
-                                    colorIndex,
-
-                                    sizeIndex,
-
-                                    "stock",
-
-                                    event
-                                      .target
-                                      .value,
-                                  )
-                                }
-                                placeholder="Stock"
-                                className={
-                                  smallInputClass
-                                }
-                              />
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateSize(
-                                    colorIndex,
-
-                                    sizeIndex,
-
-                                    "isActive",
-
-                                    !size.isActive,
-                                  )
-                                }
-                                className={`
-                                  h-[42px]
-                                  rounded-[10px]
-                                  text-[8px]
-                                  font-semibold
-                                  uppercase
-
-                                  ${
-                                    size.isActive
-                                      ? "bg-green-50 text-green-700"
-                                      : "bg-[#211A18]/5 text-[#211A18]/40"
-                                  }
-                                `}
-                              >
-                                {size.isActive
-                                  ? "Active"
-                                  : "Off"}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeSize(
-                                    colorIndex,
-
-                                    sizeIndex,
-                                  )
-                                }
-                                className="
-                                  h-[42px]
-                                  rounded-[10px]
-                                  px-3
-                                  text-[8px]
-                                  font-semibold
-                                  uppercase
-                                  text-red-500
-
-                                  hover:bg-red-50
-                                "
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ),
-                        )}
-
-                        {color.sizes
-                          .length ===
-                          0 && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              addSize(
-                                colorIndex,
-                              )
-                            }
-                            className="
-                              w-full
-                              rounded-[12px]
-                              border
-                              border-dashed
-                              border-[#211A18]/15
-                              bg-white
-                              py-4
-                              text-[9px]
-                              text-[#211A18]/45
-                            "
-                          >
-                            + Add first
-                            size
-                          </button>
-                        )}
-                      </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeSize(
+                                  colorIndex,
+                                  sizeIndex
+                                )
+                              }
+                              className="h-10 rounded-lg px-3 text-[8px] font-semibold uppercase text-red-500"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )
+                      )}
                     </div>
 
-                    {/* ACTIVE COLOR */}
-
-                    <div
-                      className="
-                        mt-5
-                        flex
-                        items-center
-                        justify-between
-                        rounded-[14px]
-                        border
-                        border-[#211A18]/10
-                        bg-white
-                        px-4
-                        py-4
-                      "
-                    >
+                    <div className="mt-4 flex items-center justify-between rounded-xl bg-white p-3">
                       <div>
-                        <p
-                          className="
-                            text-[10px]
-                            font-semibold
-                          "
-                        >
+                        <p className="text-[10px] font-semibold">
                           Active Color
                         </p>
-
-                        <p
-                          className="
-                            mt-1
-                            text-[8px]
-                            text-[#211A18]/40
-                          "
-                        >
-                          Show this color
-                          to customers.
+                        <p className="mt-1 text-[8px] text-[#211A18]/40">
+                          Show to customers
                         </p>
                       </div>
 
@@ -2226,49 +2093,39 @@ export default function ProductForm({
                           color.isActive
                         }
                         onChange={(
-                          value,
+                          value
                         ) =>
                           updateColor(
                             colorIndex,
-
                             "isActive",
-
-                            value,
+                            value
                           )
                         }
                       />
                     </div>
                   </div>
-                ),
+                )
               )}
             </div>
           </Card>
 
-          {/* SEO */}
-
           <Card title="SEO">
-            <div
-              className="
-                space-y-4
-              "
-            >
+            <div className="space-y-4">
               <Field label="SEO Title">
                 <input
                   value={
                     seoTitle
                   }
                   onChange={(
-                    event,
+                    event
                   ) =>
                     setSeoTitle(
-                      event.target
-                        .value,
+                      event.target.value
                     )
                   }
                   className={
                     inputClass
                   }
-                  placeholder="SEO title"
                 />
               </Field>
 
@@ -2278,51 +2135,33 @@ export default function ProductForm({
                     seoDescription
                   }
                   onChange={(
-                    event,
+                    event
                   ) =>
                     setSeoDescription(
-                      event.target
-                        .value,
+                      event.target.value
                     )
                   }
                   rows={4}
-                  placeholder="SEO description"
-                  className={`
-                    ${inputClass}
-
-                    h-auto
-                    py-3
-                  `}
+                  className={`${inputClass} h-auto py-3`}
                 />
               </Field>
             </div>
           </Card>
         </div>
 
-        {/* RIGHT */}
-
-        <div
-          className="
-            min-w-0
-            space-y-6
-
-            xl:sticky
-            xl:top-[100px]
-            xl:h-fit
-          "
-        >
-          {/* PUBLISHING */}
-
+        <div className="space-y-6 xl:sticky xl:top-[100px] xl:h-fit">
           <Card title="Publishing">
             <Field label="Status">
               <select
-                value={status}
+                value={
+                  status
+                }
                 onChange={(
-                  event,
+                  event
                 ) =>
                   setStatus(
-                    event.target
-                      .value as ProductStatus,
+                    event.target.value as
+                      ProductStatus
                   )
                 }
                 className={
@@ -2332,26 +2171,18 @@ export default function ProductForm({
                 <option value="draft">
                   Draft
                 </option>
-
                 <option value="active">
                   Published
                 </option>
-
                 <option value="inactive">
                   Inactive
                 </option>
               </select>
             </Field>
 
-            <div
-              className="
-                mt-4
-                space-y-3
-              "
-            >
+            <div className="mt-4 space-y-3">
               <ToggleRow
                 label="Featured Product"
-                description="Feature this product on selected storefront sections."
                 checked={
                   isFeatured
                 }
@@ -2362,7 +2193,6 @@ export default function ProductForm({
 
               <ToggleRow
                 label="New Launch"
-                description="Mark this product as a new launch."
                 checked={
                   isNewLaunch
                 }
@@ -2373,49 +2203,20 @@ export default function ProductForm({
             </div>
           </Card>
 
-          {/* CATEGORIES */}
-
           <Card title="Categories">
             {categoriesLoading ? (
-              <div
-                className="
-                  flex
-                  items-center
-                  gap-3
-                  py-5
-                  text-[10px]
-                  text-[#211A18]/45
-                "
-              >
-                <LoadingSpinner />
-
-                Loading categories...
-              </div>
-            ) : categories.length ===
-              0 ? (
-              <p
-                className="
-                  text-[10px]
-                  text-[#211A18]/45
-                "
-              >
-                No categories found.
-              </p>
+              <LoadingSpinner />
             ) : (
-              <div
-                className="
-                  max-h-[430px]
-                  overflow-y-auto
-                "
-              >
+              <div className="max-h-[420px] overflow-y-auto">
                 {categories.map(
                   (
-                    category,
+                    category
                   ) => (
                     <CategoryOption
                       key={
-                        category.id ||
-                        category._id
+                        getCategoryId(
+                          category
+                        )
                       }
                       category={
                         category
@@ -2427,486 +2228,123 @@ export default function ProductForm({
                         toggleCategory
                       }
                     />
-                  ),
+                  )
                 )}
               </div>
             )}
           </Card>
 
-          {/* TAGS */}
+          {isEdit && (
+            <Card title="Ratings">
+              <div className="rounded-xl bg-[#FAF8F6] p-4">
+                <p className="text-2xl font-semibold">
+                  {ratingAverage.toFixed(
+                    1
+                  )}{" "}
+                  <span className="text-[#8C1839]">
+                    ★
+                  </span>
+                </p>
+                <p className="mt-1 text-[9px] text-[#211A18]/40">
+                  {ratingCount} review
+                  {ratingCount ===
+                  1
+                    ? ""
+                    : "s"}
+                </p>
+              </div>
+
+              <p className="mt-3 text-[8px] text-[#211A18]/35">
+                Rating read-only hai.
+                Review service update karegi.
+              </p>
+            </Card>
+          )}
 
           <Card title="Tags">
             <textarea
-              value={tags}
+              value={
+                tags
+              }
               onChange={(
-                event,
+                event
               ) =>
                 setTags(
-                  event.target
-                    .value,
+                  event.target.value
                 )
               }
               rows={4}
+              className={`${inputClass} h-auto py-3`}
               placeholder="sports bra, padded, seamless"
-              className={`
-                ${inputClass}
-
-                h-auto
-                py-3
-              `}
             />
-
-            <p
-              className="
-                mt-2
-                text-[9px]
-                text-[#211A18]/40
-              "
-            >
-              Separate multiple tags
-              using commas.
-            </p>
           </Card>
 
-          {/* SUMMARY */}
-
-          <Card title="Product Summary">
-            <div
-              className="
-                space-y-3
-              "
-            >
+          <Card title="Summary">
+            <div className="space-y-2">
               <SummaryRow
-                label="Main Images"
-                value={`${
-                  mainImages.filter(
-                    (image) =>
-                      image.url,
-                  ).length
-                }/4`}
+                label="Images"
+                value={`${mainImages.filter(
+                  (
+                    image
+                  ) =>
+                    image.url
+                ).length}`}
               />
 
               <SummaryRow
                 label="Colors"
                 value={String(
                   colors.filter(
-                    (color) =>
-                      color.name.trim(),
-                  ).length,
+                    (
+                      color
+                    ) =>
+                      color.name.trim()
+                  ).length
                 )}
               />
 
               <SummaryRow
                 label="Categories"
                 value={String(
-                  selectedCategories.length,
+                  selectedCategories.length
                 )}
               />
 
               <SummaryRow
-                label="Status"
-                value={
-                  status === "active"
-                    ? "Published"
-                    : status
-                }
+                label="Total Stock"
+                value={String(
+                  calculateTotalStock(
+                    colors
+                  )
+                )}
               />
             </div>
           </Card>
         </div>
       </div>
-
-      {/* BOTTOM BUTTON */}
-
-      <div
-        className="
-          mt-7
-          flex
-          justify-end
-          border-t
-          border-[#211A18]/10
-          pt-6
-        "
-      >
-        <button
-          type="submit"
-          disabled={saving}
-          className="
-            h-[48px]
-            min-w-[210px]
-            rounded-[12px]
-            bg-[#8C1839]
-            px-6
-            text-[10px]
-            font-semibold
-            uppercase
-            tracking-[0.14em]
-            text-white
-
-            hover:bg-[#211A18]
-
-            disabled:opacity-50
-          "
-        >
-          {saving
-            ? isEdit
-              ? "Updating..."
-              : "Creating..."
-            : isEdit
-              ? "Update Product"
-              : "Create Product"}
-        </button>
-      </div>
     </form>
   );
 }
 
-/* =========================================================
-   IMAGE UPLOADER
-========================================================= */
-
-function ImageUploader({
-  label,
-
-  value,
-
-  folder,
-
-  onChange,
-}: {
-  label: string;
-
-  value: ImageInput;
-
-  folder: string;
-
-  onChange: (
-    image: ImageInput,
-  ) => void;
-}) {
-  const inputRef =
-    useRef<HTMLInputElement | null>(
-      null,
-    );
-
-  const [
-    uploading,
-    setUploading,
-  ] = useState(false);
-
-  const [
-    uploadError,
-    setUploadError,
-  ] = useState("");
-
-  const handleFileChange =
-    async (
-      event:
-        ChangeEvent<HTMLInputElement>,
-    ) => {
-      const file =
-        event.target.files?.[0];
-
-      if (!file) {
-        return;
-      }
-
-      const allowedTypes = [
-        "image/jpeg",
-
-        "image/png",
-
-        "image/webp",
-
-        "image/avif",
-      ];
-
-      if (
-        !allowedTypes.includes(
-          file.type,
-        )
-      ) {
-        setUploadError(
-          "Only JPG, PNG, WEBP or AVIF allowed.",
-        );
-
-        return;
-      }
-
-      try {
-        setUploading(true);
-
-        setUploadError("");
-
-        const formData =
-          new FormData();
-
-        formData.append(
-          "image",
-
-          file,
-        );
-
-        formData.append(
-          "folder",
-
-          folder,
-        );
-
-        const response =
-          await fetch(
-            `${API_URL}/api/uploads/image`,
-            {
-              method:
-                "POST",
-
-              credentials:
-                "include",
-
-              body:
-                formData,
-            },
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Image upload failed.",
-          );
-        }
-
-        if (
-          !data.image?.url ||
-          !data.image
-            ?.publicId
-        ) {
-          throw new Error(
-            "Invalid image response.",
-          );
-        }
-
-        onChange({
-          url:
-            data.image.url,
-
-          publicId:
-            data.image
-              .publicId,
-        });
-      } catch (error) {
-        setUploadError(
-          error instanceof Error
-            ? error.message
-            : "Upload failed.",
-        );
-      } finally {
-        setUploading(false);
-
-        if (
-          inputRef.current
-        ) {
-          inputRef.current.value =
-            "";
-        }
-      }
-    };
-
-  return (
-    <div
-      className="
-        rounded-[16px]
-        border
-        border-[#211A18]/10
-        bg-[#FAF8F6]
-        p-3
-      "
-    >
-      <div
-        className="
-          mb-3
-          flex
-          items-center
-          justify-between
-        "
-      >
-        <p
-          className="
-            text-[10px]
-            font-semibold
-          "
-        >
-          {label}
-        </p>
-
-        {value.url && (
-          <button
-            type="button"
-            onClick={() =>
-              onChange(
-                emptyImage(),
-              )
-            }
-            className="
-              text-[8px]
-              font-semibold
-              uppercase
-              text-red-500
-            "
-          >
-            Remove
-          </button>
-        )}
-      </div>
-
-      {value.url ? (
-        <div
-          className="
-            group
-            relative
-            aspect-[4/5]
-            overflow-hidden
-            rounded-[12px]
-            bg-[#EFE9E4]
-          "
-        >
-          <img
-            src={value.url}
-            alt={label}
-            className="
-              h-full
-              w-full
-              object-cover
-            "
-          />
-
-          <button
-            type="button"
-            onClick={() =>
-              inputRef.current?.click()
-            }
-            className="
-              absolute
-              inset-0
-              flex
-              items-center
-              justify-center
-              bg-black/40
-              text-[9px]
-              font-semibold
-              uppercase
-              text-white
-              opacity-0
-              transition
-
-              group-hover:opacity-100
-            "
-          >
-            Replace
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          disabled={
-            uploading
-          }
-          onClick={() =>
-            inputRef.current?.click()
-          }
-          className="
-            flex
-            aspect-[4/5]
-            w-full
-            flex-col
-            items-center
-            justify-center
-            rounded-[12px]
-            border
-            border-dashed
-            border-[#211A18]/20
-            bg-white
-            text-[10px]
-            font-semibold
-
-            hover:border-[#8C1839]
-          "
-        >
-          {uploading ? (
-            <LoadingSpinner />
-          ) : (
-            <>
-              <span
-                className="
-                  text-[25px]
-                  text-[#8C1839]
-                "
-              >
-                +
-              </span>
-
-              <span
-                className="
-                  mt-2
-                "
-              >
-                Choose Image
-              </span>
-            </>
-          )}
-        </button>
-      )}
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/avif"
-        onChange={
-          handleFileChange
-        }
-        className="hidden"
-      />
-
-      {uploadError && (
-        <p
-          className="
-            mt-2
-            text-[8px]
-            text-red-500
-          "
-        >
-          {uploadError}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================
-   CATEGORY
-========================================================= */
-
 function CategoryOption({
   category,
-
   selected,
-
   toggle,
 }: {
   category: CategoryNode;
-
   selected: string[];
-
   toggle: (
-    id: string,
+    id: string
   ) => void;
 }) {
   const id =
-    category.id ||
-    category._id ||
-    "";
+    getCategoryId(
+      category
+    );
+
+  if (!id) {
+    return null;
+  }
 
   return (
     <>
@@ -2916,121 +2354,73 @@ function CategoryOption({
             8 +
             Number(
               category.level ||
-                0,
+                0
             ) *
               14,
         }}
-        className="
-          mb-1
-          flex
-          cursor-pointer
-          items-center
-          gap-2
-          rounded-[9px]
-          py-2
-          pr-2
-          text-[10px]
-
-          hover:bg-[#FAF8F6]
-        "
+        className="mb-1 flex cursor-pointer items-center gap-2 rounded-lg py-2 pr-2 text-[10px] hover:bg-[#FAF8F6]"
       >
         <input
           type="checkbox"
           checked={
             selected.includes(
-              id,
+              id
             )
           }
           onChange={() =>
             toggle(id)
           }
-          className="
-            h-4
-            w-4
-            accent-[#8C1839]
-          "
+          className="h-4 w-4 accent-[#8C1839]"
         />
-
-        <span>
-          {category.name}
-        </span>
+        {category.name}
       </label>
 
-      {category.children?.map(
-        (child) => (
+      {(category.children ||
+        []).map(
+        (
+          child
+        ) => (
           <CategoryOption
             key={
-              child.id ||
-              child._id
+              getCategoryId(
+                child
+              )
             }
-            category={child}
+            category={
+              child
+            }
             selected={
               selected
             }
-            toggle={toggle}
+            toggle={
+              toggle
+            }
           />
-        ),
+        )
       )}
     </>
   );
 }
 
-/* =========================================================
-   UI COMPONENTS
-========================================================= */
-
 function Card({
   title,
-
   children,
-
   action,
 }: {
   title: string;
-
   children: ReactNode;
-
   action?: ReactNode;
 }) {
   return (
-    <section
-      className="
-        overflow-hidden
-        rounded-[22px]
-        border
-        border-[#211A18]/10
-        bg-white
-      "
-    >
-      <div
-        className="
-          flex
-          items-center
-          justify-between
-          gap-4
-          border-b
-          border-[#211A18]/10
-          px-5
-          py-5
-        "
-      >
-        <h3
-          className="
-            text-[14px]
-            font-semibold
-          "
-        >
+    <section className="overflow-hidden rounded-[22px] border border-[#211A18]/10 bg-white">
+      <div className="flex items-center justify-between gap-4 border-b border-[#211A18]/10 px-5 py-4">
+        <h2 className="text-[14px] font-semibold">
           {title}
-        </h3>
-
+        </h2>
         {action}
       </div>
 
-      <div
-        className="
-          p-5
-        "
-      >
+      <div className="p-5">
         {children}
       </div>
     </section>
@@ -3039,39 +2429,19 @@ function Card({
 
 function Field({
   label,
-
   required,
-
   children,
 }: {
   label: string;
-
   required?: boolean;
-
   children: ReactNode;
 }) {
   return (
     <div>
-      <label
-        className="
-          mb-2
-          block
-          text-[9px]
-          font-semibold
-          uppercase
-          tracking-[0.14em]
-          text-[#211A18]/50
-        "
-      >
+      <label className="mb-2 block text-[9px] font-semibold uppercase tracking-[0.12em] text-[#211A18]/50">
         {label}
-
         {required && (
-          <span
-            className="
-              ml-1
-              text-[#8C1839]
-            "
-          >
+          <span className="ml-1 text-[#8C1839]">
             *
           </span>
         )}
@@ -3082,46 +2452,18 @@ function Field({
   );
 }
 
-function CurrencyInput({
+function MoneyInput({
   value,
-
-  onChange,
-
-  placeholder,
+  setValue,
 }: {
   value: string;
-
-  onChange: (
-    value: string,
+  setValue: (
+    value: string
   ) => void;
-
-  placeholder: string;
 }) {
   return (
-    <div
-      className="
-        flex
-        h-[48px]
-        overflow-hidden
-        rounded-[12px]
-        border
-        border-[#211A18]/12
-        bg-[#FAF8F6]
-
-        focus-within:border-[#8C1839]
-      "
-    >
-      <span
-        className="
-          flex
-          items-center
-          border-r
-          border-[#211A18]/10
-          px-3
-          text-[13px]
-          font-semibold
-        "
-      >
+    <div className="flex h-12 overflow-hidden rounded-xl border border-[#211A18]/10 bg-[#FAF8F6]">
+      <span className="flex items-center border-r border-[#211A18]/10 px-3">
         ₹
       </span>
 
@@ -3129,25 +2471,17 @@ function CurrencyInput({
         type="number"
         min="0"
         step="0.01"
-        value={value}
+        value={
+          value
+        }
         onChange={(
-          event,
+          event
         ) =>
-          onChange(
-            event.target.value,
+          setValue(
+            event.target.value
           )
         }
-        placeholder={
-          placeholder
-        }
-        className="
-          min-w-0
-          flex-1
-          bg-transparent
-          px-3
-          text-[12px]
-          outline-none
-        "
+        className="min-w-0 flex-1 bg-transparent px-3 text-[11px] outline-none"
       />
     </div>
   );
@@ -3155,60 +2489,25 @@ function CurrencyInput({
 
 function ToggleRow({
   label,
-
-  description,
-
   checked,
-
   onChange,
 }: {
   label: string;
-
-  description: string;
-
   checked: boolean;
-
   onChange: (
-    value: boolean,
+    value: boolean
   ) => void;
 }) {
   return (
-    <div
-      className="
-        flex
-        items-center
-        justify-between
-        gap-4
-        rounded-[13px]
-        bg-[#FAF8F6]
-        px-3
-        py-3
-      "
-    >
-      <div>
-        <p
-          className="
-            text-[10px]
-            font-semibold
-          "
-        >
-          {label}
-        </p>
-
-        <p
-          className="
-            mt-1
-            text-[8px]
-            leading-4
-            text-[#211A18]/40
-          "
-        >
-          {description}
-        </p>
-      </div>
+    <div className="flex items-center justify-between rounded-xl bg-[#FAF8F6] p-3">
+      <span className="text-[10px] font-semibold">
+        {label}
+      </span>
 
       <Toggle
-        checked={checked}
+        checked={
+          checked
+        }
         onChange={
           onChange
         }
@@ -3219,13 +2518,11 @@ function ToggleRow({
 
 function Toggle({
   checked,
-
   onChange,
 }: {
   checked: boolean;
-
   onChange: (
-    value: boolean,
+    value: boolean
   ) => void;
 }) {
   return (
@@ -3233,41 +2530,21 @@ function Toggle({
       type="button"
       onClick={() =>
         onChange(
-          !checked,
+          !checked
         )
       }
-      className={`
-        relative
-        h-7
-        w-12
-        shrink-0
-        rounded-full
-        transition
-
-        ${
-          checked
-            ? "bg-[#8C1839]"
-            : "bg-[#211A18]/15"
-        }
-      `}
+      className={`relative h-7 w-12 rounded-full ${
+        checked
+          ? "bg-[#8C1839]"
+          : "bg-[#211A18]/15"
+      }`}
     >
       <span
-        className={`
-          absolute
-          top-1
-          h-5
-          w-5
-          rounded-full
-          bg-white
-          shadow
-          transition-all
-
-          ${
-            checked
-              ? "left-6"
-              : "left-1"
-          }
-        `}
+        className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${
+          checked
+            ? "left-6"
+            : "left-1"
+        }`}
       />
     </button>
   );
@@ -3275,79 +2552,82 @@ function Toggle({
 
 function SummaryRow({
   label,
-
   value,
 }: {
   label: string;
-
   value: string;
 }) {
   return (
-    <div
-      className="
-        flex
-        items-center
-        justify-between
-        rounded-[11px]
-        bg-[#FAF8F6]
-        px-3
-        py-3
-      "
-    >
-      <span
-        className="
-          text-[9px]
-          text-[#211A18]/50
-        "
-      >
+    <div className="flex items-center justify-between rounded-lg bg-[#FAF8F6] px-3 py-3">
+      <span className="text-[9px] text-[#211A18]/50">
         {label}
       </span>
-
-      <span
-        className="
-          text-[9px]
-          font-semibold
-          capitalize
-        "
-      >
+      <span className="text-[9px] font-semibold">
         {value}
       </span>
     </div>
   );
 }
 
-/* =========================================================
-   NORMALIZE API DATA
-========================================================= */
+function Message({
+  tone,
+  children,
+}: {
+  tone:
+    | "error"
+    | "success";
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`mt-5 rounded-xl border px-4 py-3 text-[11px] ${
+        tone === "error"
+          ? "border-red-200 bg-red-50 text-red-600"
+          : "border-green-200 bg-green-50 text-green-700"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
 
 function normalizeMainImages(
-  images: ImageInput[],
-): ImageInput[] {
-  return Array.from(
-    {
-      length: 4,
-    },
+  images: ImageValue[]
+): ImageValue[] {
+  return (
+    images ||
+    []
+  )
+    .filter(
+      (
+        image
+      ) =>
+        Boolean(
+          image?.url &&
+          image?.publicId
+        )
+    )
+    .map(
+      (
+        image
+      ) => ({
+        url:
+          image.url,
 
-    (_, index) => ({
-      url:
-        images[index]
-          ?.url || "",
-
-      publicId:
-        images[index]
-          ?.publicId ||
-        "",
-    }),
-  );
+        publicId:
+          image.publicId,
+      })
+    );
 }
 
 function normalizeColors(
   apiColors:
-    ProductApiData["colors"],
+    ProductApiData["colors"]
 ): ColorInput[] {
   if (
     !apiColors ||
-    apiColors.length === 0
+    apiColors.length ===
+      0
   ) {
     return [
       emptyColor(),
@@ -3355,43 +2635,51 @@ function normalizeColors(
   }
 
   return apiColors.map(
-    (color) => {
-      const images =
-        color.images || [];
+    (
+      color
+    ) => ({
+      name:
+        color.name ||
+        "",
 
-      const normalizedImages: [
-        ImageInput,
-        ImageInput,
-      ] = [
-        {
-          url:
-            images[0]?.url ||
-            "",
+      hex:
+        color.hex ||
+        "#000000",
 
-          publicId:
-            images[0]
-              ?.publicId ||
-            "",
-        },
+      images:
+        (
+          color.images ||
+          []
+        )
+          .filter(
+            (
+              image
+            ) =>
+              Boolean(
+                image?.url &&
+                image?.publicId
+              )
+          )
+          .map(
+            (
+              image
+            ) => ({
+              url:
+                image.url,
 
-        {
-          url:
-            images[1]?.url ||
-            "",
+              publicId:
+                image.publicId,
+            })
+          ),
 
-          publicId:
-            images[1]
-              ?.publicId ||
-            "",
-        },
-      ];
-
-      const sizes: SizeInput[] =
+      sizes:
         color.sizes &&
         color.sizes.length >
           0
           ? color.sizes.map(
-              (size) => ({
+              (
+                size
+              ) => ({
                 size:
                   size.size ||
                   "",
@@ -3403,116 +2691,142 @@ function normalizeColors(
                 stock:
                   String(
                     size.stock ??
-                      0,
+                      0
                   ),
 
                 isActive:
                   size.isActive !==
                   false,
-              }),
+              })
             )
           : [
               emptySize(),
-            ];
+            ],
 
-      return {
-        name:
-          color.name ||
-          "",
-
-        hex:
-          color.hex ||
-          "#000000",
-
-        images:
-          normalizedImages,
-
-        sizes,
-
-        isActive:
-          color.isActive !==
-          false,
-      };
-    },
+      isActive:
+        color.isActive !==
+        false,
+    })
   );
 }
 
-/* =========================================================
-   HELPERS
-========================================================= */
+function getCategoryId(
+  category: CategoryNode
+) {
+  return String(
+    category.id ||
+      category._id ||
+      ""
+  );
+}
+
+function slugifyProductSlug(
+  value: string
+) {
+  return value
+    .normalize(
+      "NFKC"
+    )
+    .toLowerCase()
+    .trim()
+    .replace(
+      /&/g,
+      " and "
+    )
+    .replace(
+      /[^\p{L}\p{N}]+/gu,
+      "-"
+    )
+    .replace(
+      /^-+|-+$/g,
+      ""
+    );
+}
 
 function slugifyFolder(
-  value: string,
+  value: string
 ) {
   return value
     .trim()
     .toLowerCase()
+    .normalize(
+      "NFKD"
+    )
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
+    .replace(
+      /&/g,
+      " and "
+    )
     .replace(
       /[^a-z0-9]+/g,
-
-      "-",
+      "-"
     )
     .replace(
       /^-+|-+$/g,
-
-      "",
+      ""
     );
+}
+
+function calculateTotalStock(
+  colors: ColorInput[]
+) {
+  return colors.reduce(
+    (
+      productTotal,
+      color
+    ) =>
+      productTotal +
+      color.sizes.reduce(
+        (
+          colorTotal,
+          size
+        ) =>
+          colorTotal +
+          Math.max(
+            0,
+            Number(
+              size.stock
+            ) ||
+              0
+          ),
+        0
+      ),
+    0
+  );
 }
 
 function LoadingSpinner() {
   return (
-    <span
-      className="
-        mx-auto
-        block
-        h-6
-        w-6
-        animate-spin
-        rounded-full
-        border-2
-        border-[#211A18]/10
-        border-t-[#8C1839]
-      "
-    />
+    <span className="block h-7 w-7 animate-spin rounded-full border-2 border-[#211A18]/10 border-t-[#8C1839]" />
   );
 }
 
-/* =========================================================
-   INPUT CSS
-========================================================= */
-
 const inputClass = `
-  h-[48px]
+  h-12
   w-full
-  rounded-[12px]
+  rounded-xl
   border
-  border-[#211A18]/12
+  border-[#211A18]/10
   bg-[#FAF8F6]
   px-4
-  text-[12px]
+  text-[11px]
   text-[#211A18]
   outline-none
-  transition
-
-  placeholder:text-[#211A18]/25
-
   focus:border-[#8C1839]
-  focus:ring-4
-  focus:ring-[#8C1839]/5
 `;
 
 const smallInputClass = `
-  h-[42px]
+  h-10
   w-full
-  min-w-0
-  rounded-[10px]
+  rounded-lg
   border
-  border-[#211A18]/12
+  border-[#211A18]/10
   bg-[#FAF8F6]
   px-3
   text-[10px]
-  text-[#211A18]
   outline-none
-
   focus:border-[#8C1839]
 `;

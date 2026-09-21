@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 
 import authRoutes from "./routes/auth.routes";
+import adminRoutes from "./routes/admin.routes";
 
 import categoryRoutes from "./routes/category.routes";
 
@@ -88,6 +89,7 @@ app.use(
   "/api/auth",
   authRoutes
 );
+app.use("/api/admin", adminRoutes);
 
 /* =========================================================
    CATEGORIES

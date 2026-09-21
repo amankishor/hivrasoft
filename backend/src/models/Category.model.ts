@@ -7,11 +7,22 @@ import mongoose, {
 
 /* =========================================================
    CATEGORY IMAGE
+
+   alt:
+   - Admin ka "Photo Name / ALT Text"
+   - Frontend <img alt=""> me use hoga
+   - Upload ke time isi text ka slug Cloudinary image name banta hai
+
+   Example:
+   alt: "Front View"
+   publicId:
+   hivrasoft/category-images/women/sports-bra/front-view
 ========================================================= */
 
 export interface ICategoryImage {
   url: string;
   publicId: string;
+  alt: string;
 }
 
 /* =========================================================
@@ -31,7 +42,7 @@ export interface ICategory extends Document {
 
   level: number;
 
-  image?: ICategoryImage;
+  images: ICategoryImage[];
 
   isActive: boolean;
 
@@ -51,14 +62,21 @@ const categoryImageSchema =
     {
       url: {
         type: String,
-        default: "",
+        required: true,
         trim: true,
       },
 
       publicId: {
         type: String,
-        default: "",
+        required: true,
         trim: true,
+      },
+
+      alt: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 160,
       },
     },
     {
@@ -86,6 +104,7 @@ const categorySchema =
         unique: true,
         lowercase: true,
         trim: true,
+        index: true,
       },
 
       description: {
@@ -94,12 +113,27 @@ const categorySchema =
         trim: true,
       },
 
+      /*
+        null = root category
+
+        Women
+        └── Bra
+            └── Sports Bra
+      */
       parent: {
         type: Schema.Types.ObjectId,
         ref: "Category",
         default: null,
+        index: true,
       },
 
+      /*
+        Sports Bra example:
+        [
+          Women._id,
+          Bra._id
+        ]
+      */
       ancestors: [
         {
           type: Schema.Types.ObjectId,
@@ -111,19 +145,33 @@ const categorySchema =
         type: Number,
         default: 0,
         min: 0,
+        index: true,
       },
 
-      image: {
-        type: categoryImageSchema,
-        default: () => ({
-          url: "",
-          publicId: "",
-        }),
+      /*
+        All root / sub / sub-sub categories
+        use the SAME images[] field.
+
+        [
+          {
+            url: "https://res.cloudinary.com/...",
+            publicId:
+              "hivrasoft/category-images/women/bra/front-view",
+            alt: "Front View"
+          }
+        ]
+      */
+      images: {
+        type: [
+          categoryImageSchema,
+        ],
+        default: [],
       },
 
       isActive: {
         type: Boolean,
         default: true,
+        index: true,
       },
 
       sortOrder: {
@@ -150,7 +198,9 @@ categorySchema.index({
 });
 
 categorySchema.index({
-  isActive: 1,
+  level: 1,
+  sortOrder: 1,
+  name: 1,
 });
 
 /* =========================================================

@@ -3,6 +3,14 @@ import {
 } from "express";
 
 import {
+  authenticate,
+} from "../middleware/auth.middleware";
+
+import {
+  requireAdmin,
+} from "../middleware/admin.middleware";
+
+import {
   createProductController,
   getAllProductsController,
   getActiveProductsController,
@@ -12,62 +20,30 @@ import {
   deleteProductController,
 } from "../controllers/product.controller";
 
-import {
-  authenticate,
-} from "../middleware/auth.middleware";
-
-import {
-  requireAdmin,
-} from "../middleware/admin.middleware";
-
 const router =
   Router();
 
 /* =========================================================
-   PUBLIC / STOREFRONT ROUTES
-========================================================= */
+   PUBLIC / STOREFRONT
 
-/*
-GET
-/api/products/active
-*/
+   IMPORTANT:
+   static routes /active and /slug/:slug
+   must come BEFORE /:id.
+========================================================= */
 
 router.get(
   "/active",
   getActiveProductsController
 );
 
-/*
-GET
-/api/products/slug/everyday-sports-bra
-*/
-
 router.get(
   "/slug/:slug",
   getProductBySlugController
 );
 
-/*
-GET
-/api/products/:id
-*/
-
-router.get(
-  "/:id",
-  getProductByIdController
-);
-
 /* =========================================================
-   ADMIN ROUTES
+   ADMIN
 ========================================================= */
-
-/*
-GET
-/api/products
-
-All products:
-draft + active + inactive
-*/
 
 router.get(
   "/",
@@ -76,11 +52,6 @@ router.get(
   getAllProductsController
 );
 
-/*
-POST
-/api/products
-*/
-
 router.post(
   "/",
   authenticate,
@@ -88,10 +59,12 @@ router.post(
   createProductController
 );
 
-/*
-PATCH
-/api/products/:id
-*/
+router.get(
+  "/:id",
+  authenticate,
+  requireAdmin,
+  getProductByIdController
+);
 
 router.patch(
   "/:id",
@@ -99,11 +72,6 @@ router.patch(
   requireAdmin,
   updateProductController
 );
-
-/*
-DELETE
-/api/products/:id
-*/
 
 router.delete(
   "/:id",

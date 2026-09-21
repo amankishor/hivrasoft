@@ -1,224 +1,443 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 /* =========================================================
-   DEMO PRODUCTS
-   API READY HONE KE BAAD ISKO API DATA SE REPLACE KAR DENA
+   API
 ========================================================= */
 
-const DEMO_PRODUCTS = [
-  {
-    id: "PRD-1001",
-    name: "Everyday Comfort Bra",
-    shortDescription:
-      "Soft everyday bra with breathable fabric and comfortable support.",
-    price: 1299,
-    compareAtPrice: 1699,
-    status: "active",
-    totalStock: 32,
-    image:
-      "https://images.unsplash.com/photo-1596755389378-c31d21fd1273?auto=format&fit=crop&w=500&q=85",
-  },
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000";
 
-  {
-    id: "PRD-1002",
-    name: "Floral Midi Dress",
-    shortDescription:
-      "Elegant floral midi dress for casual and evening styling.",
-    price: 2199,
-    compareAtPrice: 2799,
-    status: "active",
-    totalStock: 18,
-    image:
-      "https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=500&q=85",
-  },
+/* =========================================================
+   SAFE JSON RESPONSE
+========================================================= */
 
-  {
-    id: "PRD-1003",
-    name: "Classic White Top",
-    shortDescription:
-      "Minimal white top with a clean silhouette and soft texture.",
-    price: 899,
-    compareAtPrice: 1199,
-    status: "draft",
-    totalStock: 8,
-    image:
-      "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=500&q=85",
-  },
-
-  {
-    id: "PRD-1004",
-    name: "Textured Shoulder Bag",
-    shortDescription:
-      "Compact shoulder bag with premium textured finish.",
-    price: 1799,
-    compareAtPrice: 2299,
-    status: "active",
-    totalStock: 5,
-    image:
-      "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=500&q=85",
-  },
-
-  {
-    id: "PRD-1005",
-    name: "Premium Linen Kurta Set",
-    shortDescription:
-      "Lightweight linen blend kurta set with an elegant everyday finish.",
-    price: 2499,
-    compareAtPrice: 3199,
-    status: "draft",
-    totalStock: 14,
-    image:
-      "https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=500&q=85",
-  },
-
-  {
-    id: "PRD-1006",
-    name: "Summer Fashion Top",
-    shortDescription:
-      "Relaxed fit summer top designed for lightweight comfort.",
-    price: 1099,
-    compareAtPrice: 1499,
-    status: "inactive",
-    totalStock: 0,
-    image:
-      "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=500&q=85",
-  },
-];
+async function readJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
+}
 
 /* =========================================================
    PRODUCTS MANAGER
 ========================================================= */
 
 export default function ProductsManager() {
-  const [products, setProducts] =
-    useState(DEMO_PRODUCTS);
+  const [
+    products,
+    setProducts,
+  ] = useState([]);
 
-  const [search, setSearch] =
-    useState("");
+  const [
+    search,
+    setSearch,
+  ] = useState("");
 
-  const [status, setStatus] =
-    useState("all");
+  const [
+    status,
+    setStatus,
+  ] = useState("all");
 
-  /* =======================================================
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    actionId,
+    setActionId,
+  ] = useState(null);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  const [
+    success,
+    setSuccess,
+  ] = useState("");
+
+  /* =========================================================
+     LOAD PRODUCTS
+     GET /api/products
+  ========================================================= */
+
+  const loadProducts =
+    useCallback(
+      async () => {
+        try {
+          setLoading(true);
+          setError("");
+
+          const response =
+            await fetch(
+              `${API_URL}/api/products`,
+              {
+                method:
+                  "GET",
+
+                credentials:
+                  "include",
+
+                cache:
+                  "no-store",
+
+                headers: {
+                  Accept:
+                    "application/json",
+                },
+              }
+            );
+
+          const data =
+            await readJson(
+              response
+            );
+
+          if (
+            !response.ok
+          ) {
+            throw new Error(
+              data.message ||
+                "Unable to load products."
+            );
+          }
+
+          const productList =
+            Array.isArray(
+              data.products
+            )
+              ? data.products
+              : [];
+
+          setProducts(
+            productList
+              .map(
+                normalizeProduct
+              )
+              .filter(
+                (
+                  product
+                ) =>
+                  Boolean(
+                    product.id
+                  )
+              )
+          );
+        } catch (
+          error
+        ) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load products."
+          );
+        } finally {
+          setLoading(false);
+        }
+      },
+      []
+    );
+
+  useEffect(
+    () => {
+      void loadProducts();
+    },
+    [
+      loadProducts,
+    ]
+  );
+
+  /* =========================================================
      SEARCH + FILTER
-  ======================================================= */
+  ========================================================= */
 
   const filteredProducts =
-    useMemo(() => {
-      const searchText =
-        search
-          .trim()
-          .toLowerCase();
+    useMemo(
+      () => {
+        const text =
+          search
+            .trim()
+            .toLowerCase();
 
-      return products.filter(
-        (product) => {
-          const matchesSearch =
-            !searchText ||
-            product.name
-              .toLowerCase()
-              .includes(
-                searchText,
-              ) ||
-            product.id
-              .toLowerCase()
-              .includes(
-                searchText,
-              );
+        return products.filter(
+          (
+            product
+          ) => {
+            const searchMatch =
+              !text ||
+              product.name
+                .toLowerCase()
+                .includes(
+                  text
+                ) ||
+              product.slug
+                .toLowerCase()
+                .includes(
+                  text
+                ) ||
+              product.id
+                .toLowerCase()
+                .includes(
+                  text
+                );
 
-          const matchesStatus =
-            status === "all" ||
-            product.status ===
-              status;
+            const statusMatch =
+              status ===
+                "all" ||
+              product.status ===
+                status;
 
-          return (
-            matchesSearch &&
-            matchesStatus
-          );
-        },
-      );
-    }, [
-      products,
-      search,
-      status,
-    ]);
+            return (
+              searchMatch &&
+              statusMatch
+            );
+          }
+        );
+      },
+      [
+        products,
+        search,
+        status,
+      ]
+    );
 
-  /* =======================================================
-     STATUS UPDATE
-     ABHI SIRF FRONTEND STATE
-  ======================================================= */
+  /* =========================================================
+     UPDATE STATUS
+     PATCH /api/products/:id
+  ========================================================= */
 
-  const updateStatus = (
-    productId,
-    nextStatus,
-  ) => {
-    setProducts(
-      (currentProducts) =>
-        currentProducts.map(
-          (product) =>
-            product.id ===
-            productId
-              ? {
-                  ...product,
+  const updateStatus =
+    async (
+      id,
+      nextStatus
+    ) => {
+      if (
+        actionId
+      ) {
+        return;
+      }
+
+      try {
+        setActionId(id);
+        setError("");
+        setSuccess("");
+
+        const response =
+          await fetch(
+            `${API_URL}/api/products/${id}`,
+            {
+              method:
+                "PATCH",
+
+              credentials:
+                "include",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                Accept:
+                  "application/json",
+              },
+
+              body:
+                JSON.stringify({
                   status:
                     nextStatus,
-                }
-              : product,
-        ),
-    );
-  };
+                }),
+            }
+          );
 
-  /* =======================================================
-     DELETE
-     ABHI SIRF FRONTEND STATE
-  ======================================================= */
+        const data =
+          await readJson(
+            response
+          );
 
-  const deleteProduct = (
-    productId,
-    productName,
-  ) => {
-    const confirmed =
-      window.confirm(
-        `Delete "${productName}"?\n\nThis product will be removed from the demo list.`,
-      );
+        if (
+          !response.ok
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to update product status."
+          );
+        }
 
-    if (!confirmed) {
-      return;
-    }
+        setProducts(
+          (
+            current
+          ) =>
+            current.map(
+              (
+                product
+              ) =>
+                product.id ===
+                id
+                  ? {
+                      ...product,
+                      status:
+                        nextStatus,
+                    }
+                  : product
+            )
+        );
 
-    setProducts(
-      (currentProducts) =>
-        currentProducts.filter(
-          (product) =>
-            product.id !==
-            productId,
-        ),
-    );
-  };
+        setSuccess(
+          nextStatus ===
+            "active"
+            ? "Product published successfully."
+            : nextStatus ===
+                "draft"
+              ? "Product moved to draft."
+              : "Product marked inactive."
+        );
+      } catch (
+        error
+      ) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Unable to update product status."
+        );
+      } finally {
+        setActionId(null);
+      }
+    };
 
-  /* =======================================================
+  /* =========================================================
+     DELETE PRODUCT
+     DELETE /api/products/:id
+  ========================================================= */
+
+  const deleteProduct =
+    async (
+      id,
+      name
+    ) => {
+      if (
+        actionId
+      ) {
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          `Delete "${name}"?\n\nProduct and its Cloudinary images will also be deleted.`
+        );
+
+      if (
+        !confirmed
+      ) {
+        return;
+      }
+
+      try {
+        setActionId(id);
+        setError("");
+        setSuccess("");
+
+        const response =
+          await fetch(
+            `${API_URL}/api/products/${id}`,
+            {
+              method:
+                "DELETE",
+
+              credentials:
+                "include",
+
+              headers: {
+                Accept:
+                  "application/json",
+              },
+            }
+          );
+
+        const data =
+          await readJson(
+            response
+          );
+
+        if (
+          !response.ok
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to delete product."
+          );
+        }
+
+        setProducts(
+          (
+            current
+          ) =>
+            current.filter(
+              (
+                product
+              ) =>
+                product.id !==
+                id
+            )
+        );
+
+        const deletedImages =
+          typeof data.deletedImages ===
+          "number"
+            ? data.deletedImages
+            : null;
+
+        setSuccess(
+          `${data.message || "Product deleted successfully."}${
+            deletedImages !==
+            null
+              ? ` Deleted images: ${deletedImages}.`
+              : ""
+          }`
+        );
+      } catch (
+        error
+      ) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Unable to delete product."
+        );
+      } finally {
+        setActionId(null);
+      }
+    };
+
+  /* =========================================================
      UI
-  ======================================================= */
+  ========================================================= */
 
   return (
     <div
       className="
         mx-auto
+        w-full
         max-w-[1500px]
       "
     >
-      {/* ===================================================
-          PAGE HEADER
-      =================================================== */}
+      {/* HEADER */}
 
       <div
         className="
           flex
           flex-col
           gap-5
-
           lg:flex-row
           lg:items-end
           lg:justify-between
@@ -240,12 +459,10 @@ export default function ProductsManager() {
           <h1
             className="
               mt-2
-              text-[28px]
+              text-[30px]
               font-semibold
               tracking-tight
               text-[#211A18]
-
-              md:text-[32px]
             "
           >
             All Products
@@ -253,201 +470,210 @@ export default function ProductsManager() {
 
           <p
             className="
-              mt-2
-              max-w-[650px]
+              mt-1
               text-[11px]
               leading-5
               text-[#211A18]/45
             "
           >
-            Manage all products,
-            inventory, publishing
-            status and product
-            information.
+            Products, stock, ratings,
+            publishing status and
+            product images.
           </p>
         </div>
-
-        {/* ADD PRODUCT */}
 
         <Link
           href="/admin/products/new"
           className="
             inline-flex
-            h-[48px]
+            h-12
             items-center
             justify-center
-            gap-2
-            rounded-[12px]
+            rounded-xl
             bg-[#8C1839]
             px-6
-            text-[10px]
+            text-[9px]
             font-semibold
             uppercase
-            tracking-[0.12em]
+            tracking-[0.1em]
             text-white
             transition
-            duration-200
-
             hover:bg-[#211A18]
           "
         >
-          <span
-            className="
-              text-[18px]
-              leading-none
-            "
-          >
-            +
-          </span>
-
-          Add Product
+          + Add Product
         </Link>
       </div>
 
-      {/* ===================================================
-          SEARCH + FILTER AREA
-      =================================================== */}
+      {/* MESSAGES */}
+
+      {error && (
+        <Message tone="error">
+          {error}
+        </Message>
+      )}
+
+      {success && (
+        <Message tone="success">
+          {success}
+        </Message>
+      )}
+
+      {/* FILTERS */}
 
       <section
         className="
           mt-6
-          rounded-[20px]
+          grid
+          grid-cols-1
+          gap-3
+          rounded-2xl
           border
           border-[#211A18]/10
           bg-white
           p-4
+          md:grid-cols-[minmax(0,1fr)_220px_auto]
         "
       >
         <div
           className="
-            grid
-            grid-cols-1
+            flex
+            h-12
+            items-center
             gap-3
-
-            md:grid-cols-[minmax(0,1fr)_220px]
+            rounded-xl
+            border
+            border-[#211A18]/10
+            bg-[#FAF8F6]
+            px-4
+            focus-within:border-[#8C1839]
           "
         >
-          {/* SEARCH */}
+          <SearchIcon />
 
-          <div
-            className="
-              flex
-              h-[50px]
-              items-center
-              gap-3
-              rounded-[12px]
-              border
-              border-[#211A18]/10
-              bg-[#FAF8F6]
-              px-4
-              transition
-
-              focus-within:border-[#8C1839]
-              focus-within:ring-4
-              focus-within:ring-[#8C1839]/5
-            "
-          >
-            <SearchIcon />
-
-            <input
-              type="search"
-              value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target
-                    .value,
-                )
-              }
-              placeholder="Search by product name or ID..."
-              className="
-                min-w-0
-                flex-1
-                bg-transparent
-                text-[12px]
-                text-[#211A18]
-                outline-none
-
-                placeholder:text-[#211A18]/30
-              "
-            />
-
-            {search && (
-              <button
-                type="button"
-                onClick={() =>
-                  setSearch("")
-                }
-                className="
-                  flex
-                  h-7
-                  w-7
-                  items-center
-                  justify-center
-                  rounded-full
-                  text-[18px]
-                  text-[#211A18]/40
-                  transition
-
-                  hover:bg-[#211A18]/5
-                  hover:text-[#8C1839]
-                "
-              >
-                ×
-              </button>
-            )}
-          </div>
-
-          {/* STATUS FILTER */}
-
-          <select
-            value={status}
-            onChange={(event) =>
-              setStatus(
-                event.target
-                  .value,
+          <input
+            type="search"
+            value={
+              search
+            }
+            onChange={(
+              event
+            ) =>
+              setSearch(
+                event.target.value
               )
             }
+            placeholder="Search by name, ID or slug..."
             className="
-              h-[50px]
-              rounded-[12px]
-              border
-              border-[#211A18]/10
-              bg-[#FAF8F6]
-              px-4
+              min-w-0
+              flex-1
+              bg-transparent
               text-[11px]
-              text-[#211A18]
               outline-none
-              transition
-
-              focus:border-[#8C1839]
+              placeholder:text-[#211A18]/30
             "
-          >
-            <option value="all">
-              All Status
-            </option>
+          />
 
-            <option value="active">
-              Published
-            </option>
-
-            <option value="draft">
-              Draft
-            </option>
-
-            <option value="inactive">
-              Inactive
-            </option>
-          </select>
+          {search && (
+            <button
+              type="button"
+              onClick={() =>
+                setSearch("")
+              }
+              className="
+                flex
+                h-7
+                w-7
+                items-center
+                justify-center
+                rounded-full
+                text-[17px]
+                text-[#211A18]/35
+                hover:bg-[#211A18]/5
+                hover:text-[#8C1839]
+              "
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          )}
         </div>
+
+        <select
+          value={
+            status
+          }
+          onChange={(
+            event
+          ) =>
+            setStatus(
+              event.target.value
+            )
+          }
+          className="
+            h-12
+            rounded-xl
+            border
+            border-[#211A18]/10
+            bg-[#FAF8F6]
+            px-4
+            text-[11px]
+            outline-none
+            focus:border-[#8C1839]
+          "
+        >
+          <option value="all">
+            All Status
+          </option>
+
+          <option value="active">
+            Published
+          </option>
+
+          <option value="draft">
+            Draft
+          </option>
+
+          <option value="inactive">
+            Inactive
+          </option>
+        </select>
+
+        <button
+          type="button"
+          disabled={
+            loading
+          }
+          onClick={() =>
+            void loadProducts()
+          }
+          className="
+            h-12
+            rounded-xl
+            border
+            border-[#211A18]/10
+            bg-white
+            px-4
+            text-[8px]
+            font-semibold
+            uppercase
+            tracking-[0.1em]
+            text-[#211A18]/65
+            transition
+            hover:border-[#8C1839]/20
+            hover:text-[#8C1839]
+            disabled:opacity-50
+          "
+        >
+          Refresh
+        </button>
       </section>
 
-      {/* ===================================================
-          RESULT INFO
-      =================================================== */}
+      {/* COUNT */}
 
       <div
         className="
-          mt-5
+          mt-4
           flex
           flex-wrap
           items-center
@@ -457,48 +683,50 @@ export default function ProductsManager() {
       >
         <p
           className="
-            text-[10px]
-            text-[#211A18]/45
+            text-[9px]
+            text-[#211A18]/40
           "
         >
           Showing{" "}
-          <span
+          <strong
             className="
-              font-semibold
               text-[#211A18]
             "
           >
             {
               filteredProducts.length
             }
-          </span>{" "}
+          </strong>{" "}
           of{" "}
-          <span
+          <strong
             className="
-              font-semibold
               text-[#211A18]
             "
           >
-            {products.length}
-          </span>{" "}
+            {
+              products.length
+            }
+          </strong>{" "}
           products
         </p>
 
         {(search ||
-          status !== "all") && (
+          status !==
+            "all") && (
           <button
             type="button"
             onClick={() => {
               setSearch("");
-              setStatus("all");
+              setStatus(
+                "all"
+              );
             }}
             className="
-              text-[9px]
+              text-[8px]
               font-semibold
               uppercase
               tracking-[0.08em]
               text-[#8C1839]
-
               hover:underline
             "
           >
@@ -507,15 +735,13 @@ export default function ProductsManager() {
         )}
       </div>
 
-      {/* ===================================================
-          PRODUCTS TABLE
-      =================================================== */}
+      {/* TABLE */}
 
       <section
         className="
           mt-3
           overflow-hidden
-          rounded-[20px]
+          rounded-2xl
           border
           border-[#211A18]/10
           bg-white
@@ -526,15 +752,13 @@ export default function ProductsManager() {
         <div
           className="
             hidden
-            min-h-[54px]
-            grid-cols-[minmax(310px,1.6fr)_140px_120px_140px_330px]
-            items-center
+            grid-cols-[minmax(280px,1.5fr)_120px_90px_110px_110px_300px]
             gap-4
             border-b
             border-[#211A18]/10
             bg-[#FAF8F6]
             px-5
-
+            py-4
             xl:grid
           "
         >
@@ -547,7 +771,11 @@ export default function ProductsManager() {
           </ColumnTitle>
 
           <ColumnTitle>
-            Quantity
+            Stock
+          </ColumnTitle>
+
+          <ColumnTitle>
+            Rating
           </ColumnTitle>
 
           <ColumnTitle>
@@ -559,18 +787,119 @@ export default function ProductsManager() {
           </ColumnTitle>
         </div>
 
-        {/* PRODUCTS */}
+        {/* LOADING */}
 
-        {filteredProducts.length >
-        0 ? (
+        {loading ? (
+          <div
+            className="
+              flex
+              min-h-[300px]
+              items-center
+              justify-center
+            "
+          >
+            <div
+              className="
+                text-center
+              "
+            >
+              <span
+                className="
+                  mx-auto
+                  block
+                  h-7
+                  w-7
+                  animate-spin
+                  rounded-full
+                  border-2
+                  border-[#211A18]/10
+                  border-t-[#8C1839]
+                "
+              />
+
+              <p
+                className="
+                  mt-3
+                  text-[8px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.1em]
+                  text-[#211A18]/35
+                "
+              >
+                Loading products...
+              </p>
+            </div>
+          </div>
+        ) : filteredProducts.length ===
+          0 ? (
+          /* EMPTY */
+
+          <div
+            className="
+              flex
+              min-h-[300px]
+              flex-col
+              items-center
+              justify-center
+              px-6
+              text-center
+            "
+          >
+            <div
+              className="
+                flex
+                h-14
+                w-14
+                items-center
+                justify-center
+                rounded-full
+                bg-[#F8E5E8]
+                text-[#8C1839]
+              "
+            >
+              <BoxIcon />
+            </div>
+
+            <p
+              className="
+                mt-4
+                text-[12px]
+                font-semibold
+                text-[#211A18]
+              "
+            >
+              No products found.
+            </p>
+
+            <p
+              className="
+                mt-1
+                text-[9px]
+                text-[#211A18]/40
+              "
+            >
+              Add a product or change
+              the current filters.
+            </p>
+          </div>
+        ) : (
+          /* PRODUCT ROWS */
+
           filteredProducts.map(
-            (product) => (
+            (
+              product
+            ) => (
               <ProductRow
                 key={
                   product.id
                 }
                 product={
                   product
+                }
+                busy={
+                  actionId ===
+                  product.id
                 }
                 updateStatus={
                   updateStatus
@@ -579,10 +908,8 @@ export default function ProductsManager() {
                   deleteProduct
                 }
               />
-            ),
+            )
           )
-        ) : (
-          <EmptyProducts />
         )}
       </section>
     </div>
@@ -595,13 +922,12 @@ export default function ProductsManager() {
 
 function ProductRow({
   product,
+  busy,
   updateStatus,
   deleteProduct,
 }) {
   const stock =
-    Number(
-      product.totalStock,
-    ) || 0;
+    product.totalStock;
 
   return (
     <div
@@ -614,19 +940,14 @@ function ProductRow({
         px-5
         py-5
         transition
-
-        last:border-b-0
-
+        last:border-0
         hover:bg-[#FFFCFB]
-
-        xl:grid-cols-[minmax(310px,1.6fr)_140px_120px_140px_330px]
+        xl:grid-cols-[minmax(280px,1.5fr)_120px_90px_110px_110px_300px]
         xl:items-center
         xl:gap-4
       "
     >
-      {/* ===================================================
-          PRODUCT
-      =================================================== */}
+      {/* PRODUCT */}
 
       <div
         className="
@@ -636,37 +957,49 @@ function ProductRow({
           gap-4
         "
       >
-        {/* IMAGE */}
-
         <div
           className="
-            h-[96px]
-            w-[76px]
+            h-20
+            w-16
             shrink-0
             overflow-hidden
-            rounded-[13px]
+            rounded-xl
             border
             border-[#211A18]/8
-            bg-[#F2ECE8]
+            bg-[#F3EEE8]
           "
         >
-          <img
-            src={product.image}
-            alt={product.name}
-            className="
-              h-full
-              w-full
-              object-cover
-              object-center
-              transition
-              duration-300
-
-              hover:scale-105
-            "
-          />
+          {product.image ? (
+            <img
+              src={
+                product.image
+              }
+              alt={
+                product.name
+              }
+              className="
+                h-full
+                w-full
+                object-cover
+              "
+            />
+          ) : (
+            <div
+              className="
+                flex
+                h-full
+                items-center
+                justify-center
+                text-[7px]
+                font-semibold
+                uppercase
+                text-[#211A18]/25
+              "
+            >
+              No Image
+            </div>
+          )}
         </div>
-
-        {/* TITLE */}
 
         <div
           className="
@@ -676,313 +1009,536 @@ function ProductRow({
           <p
             className="
               truncate
-              text-[13px]
+              text-[12px]
               font-semibold
               text-[#211A18]
             "
           >
-            {product.name}
+            {
+              product.name
+            }
           </p>
 
           <p
             className="
               mt-1
               line-clamp-2
-              max-w-[430px]
-              text-[10px]
-              leading-5
-              text-[#211A18]/45
+              text-[9px]
+              leading-4
+              text-[#211A18]/40
             "
           >
             {
-              product.shortDescription
+              product.shortDescription ||
+              "No description"
             }
           </p>
 
-          <div
+          <p
             className="
               mt-2
-              flex
-              items-center
-              gap-2
+              truncate
+              text-[7px]
+              text-[#211A18]/30
             "
           >
-            <span
-              className="
-                rounded-[5px]
-                bg-[#F5F1EE]
-                px-2
-                py-1
-                text-[8px]
-                font-medium
-                tracking-[0.05em]
-                text-[#211A18]/45
-              "
-            >
-              {product.id}
-            </span>
-          </div>
+            {
+              product.id
+            }
+          </p>
         </div>
       </div>
 
-      {/* ===================================================
-          PRICE
-      =================================================== */}
+      {/* PRICE */}
 
-      <TableCell
-        label="Price"
-      >
-        <div>
+      <Cell label="Price">
+        <p
+          className="
+            text-[12px]
+            font-semibold
+            text-[#211A18]
+          "
+        >
+          ₹
+          {
+            product.price.toLocaleString(
+              "en-IN"
+            )
+          }
+        </p>
+
+        {product.compareAtPrice >
+          product.price && (
           <p
             className="
-              text-[13px]
-              font-semibold
-              text-[#211A18]
+              mt-1
+              text-[8px]
+              text-[#211A18]/30
+              line-through
             "
           >
             ₹
-            {product.price.toLocaleString(
-              "en-IN",
-            )}
+            {
+              product.compareAtPrice.toLocaleString(
+                "en-IN"
+              )
+            }
           </p>
+        )}
+      </Cell>
 
-          {product.compareAtPrice >
-            product.price && (
-            <p
-              className="
-                mt-1
-                text-[9px]
-                text-[#211A18]/35
-                line-through
-              "
-            >
-              ₹
-              {product.compareAtPrice.toLocaleString(
-                "en-IN",
-              )}
-            </p>
-          )}
-        </div>
-      </TableCell>
+      {/* STOCK */}
 
-      {/* ===================================================
-          QUANTITY
-      =================================================== */}
+      <Cell label="Stock">
+        <p
+          className="
+            text-[12px]
+            font-semibold
+            text-[#211A18]
+          "
+        >
+          {
+            stock
+          }
+        </p>
 
-      <TableCell
-        label="Quantity"
-      >
-        <div>
-          <p
+        <p
+          className={`
+            mt-1
+            text-[7px]
+            font-medium
+
+            ${
+              stock <= 0
+                ? "text-red-500"
+                : stock <=
+                    5
+                  ? "text-orange-500"
+                  : "text-green-600"
+            }
+          `}
+        >
+          {
+            stock <= 0
+              ? "Out of stock"
+              : stock <=
+                  5
+                ? "Low stock"
+                : "In stock"
+          }
+        </p>
+      </Cell>
+
+      {/* RATING */}
+
+      <Cell label="Rating">
+        <p
+          className="
+            text-[10px]
+            font-semibold
+            text-[#211A18]
+          "
+        >
+          <span
             className="
-              text-[14px]
-              font-semibold
-              text-[#211A18]
+              text-[#8C1839]
             "
           >
-            {stock}
-          </p>
+            ★
+          </span>{" "}
+          {
+            product.ratings.average.toFixed(
+              1
+            )
+          }
+        </p>
 
-          <p
-            className={`
-              mt-1
-              text-[8px]
-              font-medium
+        <p
+          className="
+            mt-1
+            text-[7px]
+            text-[#211A18]/30
+          "
+        >
+          {
+            product.ratings.count
+          }{" "}
+          review
+          {
+            product.ratings.count ===
+            1
+              ? ""
+              : "s"
+          }
+        </p>
+      </Cell>
 
-              ${
-                stock <= 0
-                  ? "text-red-500"
-                  : stock <= 5
-                    ? "text-orange-500"
-                    : "text-green-600"
-              }
-            `}
-          >
-            {stock <= 0
-              ? "Out of stock"
-              : stock <= 5
-                ? "Low stock"
-                : "In stock"}
-          </p>
-        </div>
-      </TableCell>
+      {/* STATUS */}
 
-      {/* ===================================================
-          STATUS
-      =================================================== */}
-
-      <TableCell
-        label="Status"
-      >
+      <Cell label="Status">
         <StatusBadge
           status={
             product.status
           }
         />
-      </TableCell>
+      </Cell>
 
-      {/* ===================================================
-          ACTIONS
-      =================================================== */}
+      {/* ACTIONS */}
 
-      <TableCell
-        label="Actions"
-      >
+      <Cell label="Actions">
         <div
           className="
             flex
             flex-wrap
-            items-center
             gap-2
           "
         >
-          {/* EDIT */}
-
           <Link
             href={`/admin/products/${product.id}/edit`}
             className="
               inline-flex
-              h-[36px]
+              h-9
               items-center
               justify-center
-              gap-1.5
-              rounded-[9px]
+              rounded-lg
               border
               border-[#211A18]/10
-              bg-white
               px-3
               text-[8px]
               font-semibold
               uppercase
-              tracking-[0.07em]
+              tracking-[0.06em]
               text-[#211A18]
               transition
-
-              hover:border-[#8C1839]/25
+              hover:border-[#8C1839]/20
               hover:bg-[#FFF7F8]
               hover:text-[#8C1839]
             "
           >
-            <EditIcon />
-
             Edit
           </Link>
-
-          {/* PUBLISH */}
 
           {product.status !==
             "active" && (
             <button
               type="button"
+              disabled={
+                busy
+              }
               onClick={() =>
-                updateStatus(
+                void updateStatus(
                   product.id,
-                  "active",
+                  "active"
                 )
               }
               className="
-                inline-flex
-                h-[36px]
-                items-center
-                justify-center
-                rounded-[9px]
+                h-9
+                rounded-lg
                 bg-green-50
                 px-3
                 text-[8px]
                 font-semibold
                 uppercase
-                tracking-[0.07em]
                 text-green-700
                 transition
-
                 hover:bg-green-600
                 hover:text-white
+                disabled:opacity-50
               "
             >
-              Publish
+              {
+                busy
+                  ? "..."
+                  : "Publish"
+              }
             </button>
           )}
-
-          {/* DRAFT */}
 
           {product.status !==
             "draft" && (
             <button
               type="button"
+              disabled={
+                busy
+              }
               onClick={() =>
-                updateStatus(
+                void updateStatus(
                   product.id,
-                  "draft",
+                  "draft"
                 )
               }
               className="
-                inline-flex
-                h-[36px]
-                items-center
-                justify-center
-                rounded-[9px]
+                h-9
+                rounded-lg
                 bg-[#F5F1EE]
                 px-3
                 text-[8px]
                 font-semibold
                 uppercase
-                tracking-[0.07em]
                 text-[#211A18]/65
                 transition
-
                 hover:bg-[#211A18]
                 hover:text-white
+                disabled:opacity-50
               "
             >
-              Draft
+              {
+                busy
+                  ? "..."
+                  : "Draft"
+              }
             </button>
           )}
 
-          {/* DELETE */}
-
           <button
             type="button"
+            disabled={
+              busy
+            }
             onClick={() =>
-              deleteProduct(
+              void deleteProduct(
                 product.id,
-                product.name,
+                product.name
               )
             }
             className="
-              inline-flex
-              h-[36px]
-              items-center
-              justify-center
-              gap-1.5
-              rounded-[9px]
+              h-9
+              rounded-lg
               bg-red-50
               px-3
               text-[8px]
               font-semibold
               uppercase
-              tracking-[0.07em]
               text-red-600
               transition
-
               hover:bg-red-600
               hover:text-white
+              disabled:opacity-50
             "
           >
-            <TrashIcon />
-
-            Delete
+            {
+              busy
+                ? "..."
+                : "Delete"
+            }
           </button>
         </div>
-      </TableCell>
+      </Cell>
     </div>
   );
 }
 
 /* =========================================================
-   TABLE CELL
+   NORMALIZE PRODUCT
 ========================================================= */
 
-function TableCell({
+function normalizeProduct(
+  product
+) {
+  const id =
+    String(
+      product?.id ||
+        product?._id ||
+        ""
+    );
+
+  const mainImage =
+    Array.isArray(
+      product?.mainImages
+    )
+      ? product.mainImages.find(
+          (
+            image
+          ) =>
+            Boolean(
+              image?.url
+            )
+        )?.url
+      : "";
+
+  const allColorImages =
+    Array.isArray(
+      product?.colors
+    )
+      ? product.colors.flatMap(
+          (
+            color
+          ) =>
+            Array.isArray(
+              color?.images
+            )
+              ? color.images
+              : []
+        )
+      : [];
+
+  const colorImage =
+    allColorImages.find(
+      (
+        image
+      ) =>
+        Boolean(
+          image?.url
+        )
+    )?.url ||
+    "";
+
+  /*
+    IMPORTANT:
+
+    New Product model has direct product-level stock:
+
+      product.stock
+
+    So All Products page should show that value.
+
+    For OLD products created before stock field existed,
+    fallback to colors[].sizes[].stock total.
+  */
+
+  const variantStock =
+    Array.isArray(
+      product?.colors
+    )
+      ? product.colors.reduce(
+          (
+            total,
+            color
+          ) => {
+            const sizes =
+              Array.isArray(
+                color?.sizes
+              )
+                ? color.sizes
+                : [];
+
+            return (
+              total +
+              sizes.reduce(
+                (
+                  sum,
+                  size
+                ) =>
+                  sum +
+                  Math.max(
+                    0,
+                    Number(
+                      size?.stock
+                    ) ||
+                      0
+                  ),
+                0
+              )
+            );
+          },
+          0
+        )
+      : 0;
+
+  const totalStock =
+    product?.stock !==
+      undefined &&
+    product?.stock !==
+      null
+      ? Math.max(
+          0,
+          Number(
+            product.stock
+          ) ||
+            0
+        )
+      : variantStock;
+
+  const average =
+    Math.max(
+      0,
+      Math.min(
+        5,
+        Number(
+          product?.ratings
+            ?.average ||
+            0
+        )
+      )
+    );
+
+  const count =
+    Math.max(
+      0,
+      Math.floor(
+        Number(
+          product?.ratings
+            ?.count ||
+            0
+        )
+      )
+    );
+
+  const productStatus =
+    product?.status ===
+      "active" ||
+    product?.status ===
+      "inactive" ||
+    product?.status ===
+      "draft"
+      ? product.status
+      : "draft";
+
+  return {
+    id,
+
+    name:
+      product?.name ||
+      "Unnamed Product",
+
+    slug:
+      product?.slug ||
+      "",
+
+    shortDescription:
+      product?.shortDescription ||
+      "",
+
+    price:
+      Math.max(
+        0,
+        Number(
+          product?.price ||
+            0
+        )
+      ),
+
+    compareAtPrice:
+      Math.max(
+        0,
+        Number(
+          product?.compareAtPrice ||
+            0
+        )
+      ),
+
+    status:
+      productStatus,
+
+    image:
+      mainImage ||
+      colorImage ||
+      "",
+
+    totalStock,
+
+    ratings: {
+      average,
+      count,
+    },
+  };
+}
+
+/* =========================================================
+   SMALL UI
+========================================================= */
+
+function Cell({
   label,
   children,
 }) {
@@ -991,26 +1547,25 @@ function TableCell({
       <p
         className="
           mb-2
-          text-[8px]
+          text-[7px]
           font-semibold
           uppercase
-          tracking-[0.13em]
-          text-[#211A18]/35
-
+          tracking-[0.1em]
+          text-[#211A18]/30
           xl:hidden
         "
       >
-        {label}
+        {
+          label
+        }
       </p>
 
-      {children}
+      {
+        children
+      }
     </div>
   );
 }
-
-/* =========================================================
-   COLUMN TITLE
-========================================================= */
 
 function ColumnTitle({
   children,
@@ -1021,176 +1576,84 @@ function ColumnTitle({
         text-[8px]
         font-semibold
         uppercase
-        tracking-[0.14em]
+        tracking-[0.1em]
         text-[#211A18]/40
       "
     >
-      {children}
+      {
+        children
+      }
     </span>
   );
 }
-
-/* =========================================================
-   STATUS BADGE
-========================================================= */
 
 function StatusBadge({
   status,
 }) {
-  if (
-    status === "active"
-  ) {
-    return (
-      <span
-        className="
-          inline-flex
-          items-center
-          gap-2
-          rounded-full
-          bg-green-50
-          px-3
-          py-2
-          text-[8px]
-          font-semibold
-          uppercase
-          tracking-[0.08em]
-          text-green-700
-        "
-      >
-        <span
-          className="
-            h-1.5
-            w-1.5
-            rounded-full
-            bg-green-600
-          "
-        />
+  const style =
+    status ===
+    "active"
+      ? "bg-green-50 text-green-700"
+      : status ===
+          "inactive"
+        ? "bg-red-50 text-red-600"
+        : "bg-[#F4F0ED] text-[#211A18]/60";
 
-        Published
-      </span>
-    );
-  }
-
-  if (
-    status === "inactive"
-  ) {
-    return (
-      <span
-        className="
-          inline-flex
-          items-center
-          gap-2
-          rounded-full
-          bg-red-50
-          px-3
-          py-2
-          text-[8px]
-          font-semibold
-          uppercase
-          tracking-[0.08em]
-          text-red-600
-        "
-      >
-        <span
-          className="
-            h-1.5
-            w-1.5
-            rounded-full
-            bg-red-500
-          "
-        />
-
-        Inactive
-      </span>
-    );
-  }
+  const label =
+    status ===
+    "active"
+      ? "Published"
+      : status ===
+          "inactive"
+        ? "Inactive"
+        : "Draft";
 
   return (
     <span
-      className="
+      className={`
         inline-flex
         items-center
-        gap-2
         rounded-full
-        bg-[#F4F0ED]
         px-3
         py-2
-        text-[8px]
+        text-[7px]
         font-semibold
         uppercase
-        tracking-[0.08em]
-        text-[#211A18]/60
-      "
+        ${style}
+      `}
     >
-      <span
-        className="
-          h-1.5
-          w-1.5
-          rounded-full
-          bg-[#211A18]/35
-        "
-      />
-
-      Draft
+      {
+        label
+      }
     </span>
   );
 }
 
-/* =========================================================
-   EMPTY
-========================================================= */
-
-function EmptyProducts() {
+function Message({
+  tone,
+  children,
+}) {
   return (
     <div
-      className="
-        flex
-        min-h-[360px]
-        flex-col
-        items-center
-        justify-center
-        px-6
-        text-center
-      "
+      className={`
+        mt-5
+        rounded-xl
+        border
+        px-4
+        py-3
+        text-[10px]
+
+        ${
+          tone ===
+          "error"
+            ? "border-red-200 bg-red-50 text-red-600"
+            : "border-green-200 bg-green-50 text-green-700"
+        }
+      `}
     >
-      <div
-        className="
-          flex
-          h-16
-          w-16
-          items-center
-          justify-center
-          rounded-full
-          bg-[#F8E5E8]
-          text-[#8C1839]
-        "
-      >
-        <BoxIcon />
-      </div>
-
-      <h3
-        className="
-          mt-4
-          text-[15px]
-          font-semibold
-          text-[#211A18]
-        "
-      >
-        No products found
-      </h3>
-
-      <p
-        className="
-          mt-2
-          max-w-[330px]
-          text-[10px]
-          leading-5
-          text-[#211A18]/45
-        "
-      >
-        Try changing the product
-        search or status filter.
-      </p>
+      {
+        children
+      }
     </div>
   );
 }
@@ -1202,8 +1665,8 @@ function EmptyProducts() {
 function SearchIcon() {
   return (
     <svg
-      width="17"
-      height="17"
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -1212,7 +1675,7 @@ function SearchIcon() {
       strokeLinejoin="round"
       className="
         shrink-0
-        text-[#211A18]/40
+        text-[#211A18]/35
       "
     >
       <circle
@@ -1226,61 +1689,21 @@ function SearchIcon() {
   );
 }
 
-function EditIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 20h9" />
-
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 6h18" />
-
-      <path d="M8 6V4h8v2" />
-
-      <path d="M19 6l-1 14H6L5 6" />
-
-      <path d="M10 11v5M14 11v5" />
-    </svg>
-  );
-}
-
 function BoxIcon() {
   return (
     <svg
-      width="28"
-      height="28"
+      width="26"
+      height="26"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
       <path d="M4 7 12 3l8 4-8 4-8-4Z" />
-
-      <path d="M4 7v10l8 4 8-4V7M12 11v10" />
+      <path d="M4 7v10l8 4 8-4V7" />
+      <path d="M12 11v10" />
     </svg>
   );
 }

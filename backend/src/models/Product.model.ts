@@ -40,6 +40,11 @@ export interface IProductColor {
   sortOrder: number;
 }
 
+export interface IProductRating {
+  average: number;
+  count: number;
+}
+
 export interface IProduct extends Document {
   name: string;
 
@@ -57,9 +62,18 @@ export interface IProduct extends Document {
 
   costPrice?: number;
 
+  /*
+    Product-level stock.
+    This is a single overall stock value entered by admin.
+    Existing color/size stock fields remain unchanged.
+  */
+  stock: number;
+
   mainImages: IProductImage[];
 
   colors: IProductColor[];
+
+  ratings: IProductRating;
 
   status: ProductStatus;
 
@@ -166,30 +180,23 @@ const productColorSchema =
         trim: true,
       },
 
+      /*
+        Unlimited color images at application level.
+        Admin can upload as many images as needed.
+      */
       images: {
         type: [
           productImageSchema,
         ],
-        default: [],
-        validate: {
-          validator:
-            (
-              value: IProductImage[]
-            ) => {
-              return (
-                value.length <= 2
-              );
-            },
 
-          message:
-            "Each product color can have maximum 2 images.",
-        },
+        default: [],
       },
 
       sizes: {
         type: [
           productSizeSchema,
         ],
+
         default: [],
       },
 
@@ -205,6 +212,36 @@ const productColorSchema =
     },
     {
       _id: true,
+    }
+  );
+
+/* =========================================================
+   RATING SCHEMA
+
+   Review documents ko Product ke andar store mat karo.
+   Sirf summary rakho:
+   average = 0..5
+   count   = total reviews
+========================================================= */
+
+const productRatingSchema =
+  new Schema<IProductRating>(
+    {
+      average: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5,
+      },
+
+      count: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+    },
+    {
+      _id: false,
     }
   );
 
@@ -228,6 +265,7 @@ const productSchema =
         unique: true,
         lowercase: true,
         trim: true,
+        maxlength: 250,
       },
 
       shortDescription: {
@@ -243,16 +281,30 @@ const productSchema =
         trim: true,
       },
 
-      categories: [
-        {
-          type:
-            Schema.Types
-              .ObjectId,
+      categories: {
+        type: [
+          {
+            type:
+              Schema.Types.ObjectId,
 
-          ref:
-            "Category",
+            ref:
+              "Category",
+          },
+        ],
+
+        default: [],
+
+        validate: {
+          validator:
+            (
+              value: Types.ObjectId[]
+            ) =>
+              value.length > 0,
+
+          message:
+            "At least one category is required.",
         },
-      ],
+      },
 
       price: {
         type: Number,
@@ -272,28 +324,34 @@ const productSchema =
         min: 0,
       },
 
+      /*
+        Single product-level stock entered from Add/Edit Product.
+        Existing variant size stock remains available separately.
+      */
+      stock: {
+        type: Number,
+        required: true,
+        default: 0,
+        min: 0,
+        validate: {
+          validator: (value: number) =>
+            Number.isInteger(value),
+
+          message:
+            "Product stock must be a whole number.",
+        },
+      },
+
+      /*
+        Unlimited main gallery images at application level.
+        mainImages[0] is the main / primary product image.
+      */
       mainImages: {
         type: [
           productImageSchema,
         ],
 
         default: [],
-
-        validate: {
-          validator:
-            (
-              value:
-                IProductImage[]
-            ) => {
-              return (
-                value.length <=
-                4
-              );
-            },
-
-          message:
-            "Product can have maximum 4 main images.",
-        },
       },
 
       colors: {
@@ -302,6 +360,16 @@ const productSchema =
         ],
 
         default: [],
+      },
+
+      ratings: {
+        type:
+          productRatingSchema,
+
+        default: () => ({
+          average: 0,
+          count: 0,
+        }),
       },
 
       status: {
@@ -375,7 +443,15 @@ productSchema.index({
 });
 
 productSchema.index({
+  "ratings.average": -1,
+});
+
+productSchema.index({
   createdAt: -1,
+});
+
+productSchema.index({
+  "colors.sizes.sku": 1,
 });
 
 productSchema.index({
@@ -395,4 +471,4 @@ const Product: Model<IProduct> =
     productSchema
   );
 
-export default Product;     
+export default Product;

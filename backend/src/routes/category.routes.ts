@@ -3,6 +3,14 @@ import {
 } from "express";
 
 import {
+  authenticate,
+} from "../middleware/auth.middleware";
+
+import {
+  requireAdmin,
+} from "../middleware/admin.middleware";
+
+import {
   createCategoryController,
   getAllCategoriesController,
   getActiveCategoriesController,
@@ -13,39 +21,28 @@ import {
   deleteCategoryController,
 } from "../controllers/category.controller";
 
-import {
-  authenticate,
-} from "../middleware/auth.middleware";
-
-import {
-  requireAdmin,
-} from "../middleware/admin.middleware";
-
-const router = Router();
+const router =
+  Router();
 
 /* =========================================================
-   PUBLIC CATEGORY ROUTES
+   PUBLIC
 ========================================================= */
-
-/* Storefront active categories */
 
 router.get(
   "/active",
   getActiveCategoriesController
 );
 
-/* Category tree
+/*
+  Must be before /:id
 
-   /api/categories/tree
-   /api/categories/tree?active=true
+  GET /api/categories/tree
+  GET /api/categories/tree?active=true
 */
-
 router.get(
   "/tree",
   getCategoryTreeController
 );
-
-/* Find category by slug */
 
 router.get(
   "/slug/:slug",
@@ -53,10 +50,8 @@ router.get(
 );
 
 /* =========================================================
-   ADMIN CATEGORY ROUTES
+   ADMIN
 ========================================================= */
-
-/* All categories including disabled */
 
 router.get(
   "/",
@@ -65,8 +60,6 @@ router.get(
   getAllCategoriesController
 );
 
-/* Create */
-
 router.post(
   "/",
   authenticate,
@@ -74,16 +67,12 @@ router.post(
   createCategoryController
 );
 
-/* Update */
-
 router.patch(
   "/:id",
   authenticate,
   requireAdmin,
   updateCategoryController
 );
-
-/* Delete */
 
 router.delete(
   "/:id",
@@ -93,8 +82,7 @@ router.delete(
 );
 
 /* =========================================================
-   CATEGORY BY ID
-   IMPORTANT: :id route last me hi rahe
+   CATEGORY BY ID - KEEP LAST
 ========================================================= */
 
 router.get(

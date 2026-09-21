@@ -9,38 +9,125 @@ import {
 } from "../services/cloudinary.service";
 
 /* =========================================================
-   SAFE FOLDER
+   SAFE TEXT -> CLOUDINARY SEGMENT
 ========================================================= */
 
-const createSafeFolder = (
-  folderInput: unknown
-): string => {
-  const folder =
-    typeof folderInput ===
-    "string"
-      ? folderInput
-      : "products";
+const createSafeSegment =
+  (
+    value: unknown,
+    fallback: string
+  ): string => {
+    if (
+      typeof value !==
+      "string"
+    ) {
+      return fallback;
+    }
 
-  const safeFolder =
-    folder
-      .trim()
-      .toLowerCase()
-      .replace(
-        /[^a-z0-9/_-]/g,
-        "-"
-      )
-      .replace(
-        /\/+/g,
+    const safe =
+      value
+        .trim()
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(
+          /[\u0300-\u036f]/g,
+          ""
+        )
+        .replace(
+          /[^a-z0-9_-]+/g,
+          "-"
+        )
+        .replace(
+          /-+/g,
+          "-"
+        )
+        .replace(
+          /^[-_]+|[-_]+$/g,
+          ""
+        );
+
+    return safe ||
+      fallback;
+  };
+
+/* =========================================================
+   SAFE FOLDER
+
+   Input:
+   category-images/Women/Bra/Sports Bra
+
+   Output:
+   category-images/women/bra/sports-bra
+========================================================= */
+
+const createSafeFolder =
+  (
+    folderInput: unknown
+  ): string => {
+    const raw =
+      typeof folderInput ===
+      "string"
+        ? folderInput
+        : "products";
+
+    const segments =
+      raw
+        .split("/")
+        .map(
+          (
+            segment
+          ) =>
+            createSafeSegment(
+              segment,
+              ""
+            )
+        )
+        .filter(
+          Boolean
+        );
+
+    return (
+      segments.join(
         "/"
-      )
-      .replace(
-        /^\/+|\/+$/g,
-        ""
-      );
+      ) ||
+      "products"
+    );
+  };
 
-  return safeFolder ||
-    "products";
-};
+/* =========================================================
+   SAFE IMAGE NAME
+
+   Admin:
+   "Front View"
+
+   Cloudinary public_id filename:
+   "front-view"
+========================================================= */
+
+const createSafeImageName =
+  (
+    imageNameInput: unknown
+  ):
+    | string
+    | undefined => {
+    if (
+      typeof imageNameInput !==
+      "string" ||
+      !imageNameInput.trim()
+    ) {
+      /*
+        Product uploader jaise existing callers
+        imageName nahi bhejte.
+        Unke liye Cloudinary unique filename use karega.
+      */
+      return undefined;
+    }
+
+    return createSafeSegment(
+      imageNameInput,
+      "image"
+    );
+  };
 
 /* =========================================================
    UPLOAD IMAGE
@@ -56,7 +143,8 @@ export const uploadImageController =
         return res
           .status(400)
           .json({
-            success: false,
+            success:
+              false,
 
             message:
               "Image file is required.",
@@ -71,16 +159,23 @@ export const uploadImageController =
       const folder =
         `hivrasoft/${safeFolder}`;
 
+      const imageName =
+        createSafeImageName(
+          req.body.imageName
+        );
+
       const result =
         await uploadImageBuffer(
           req.file.buffer,
-          folder
+          folder,
+          imageName
         );
 
       return res
         .status(201)
         .json({
-          success: true,
+          success:
+            true,
 
           message:
             "Image uploaded successfully.",
@@ -100,16 +195,28 @@ export const uploadImageController =
 
             format:
               result.format,
+
+            /*
+              Actual final Cloudinary filename.
+              publicId ke last part ko return kar rahe hain.
+            */
+            cloudinaryName:
+              result.public_id
+                .split("/")
+                .pop() ||
+              "",
           },
         });
     } catch (error) {
       return res
         .status(500)
         .json({
-          success: false,
+          success:
+            false,
 
           message:
-            error instanceof Error
+            error instanceof
+            Error
               ? error.message
               : "Unable to upload image.",
         });
@@ -128,7 +235,8 @@ export const deleteImageController =
     try {
       const {
         publicId,
-      } = req.body;
+      } =
+        req.body;
 
       if (
         !publicId ||
@@ -138,7 +246,8 @@ export const deleteImageController =
         return res
           .status(400)
           .json({
-            success: false,
+            success:
+              false,
 
             message:
               "publicId is required.",
@@ -153,7 +262,8 @@ export const deleteImageController =
       return res
         .status(200)
         .json({
-          success: true,
+          success:
+            true,
 
           message:
             "Image deleted successfully.",
@@ -165,10 +275,12 @@ export const deleteImageController =
       return res
         .status(500)
         .json({
-          success: false,
+          success:
+            false,
 
           message:
-            error instanceof Error
+            error instanceof
+            Error
               ? error.message
               : "Unable to delete image.",
         });

@@ -11,6 +11,8 @@ export type UserRole =
 
 export interface IUser extends Document {
   name: string;
+  username?: string;
+  passwordHash?: string;
   email: string;
   phone: string;
 
@@ -30,6 +32,8 @@ export interface IUser extends Document {
 
 const userSchema = new Schema<IUser>(
   {
+    username: { type: String, unique: true, sparse: true, trim: true },
+    passwordHash: { type: String, select: false },
     name: {
       type: String,
       required: true,

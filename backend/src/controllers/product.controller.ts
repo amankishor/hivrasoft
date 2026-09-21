@@ -30,7 +30,11 @@ const getRouteParam = (
     );
   }
 
-  if (Array.isArray(value)) {
+  if (
+    Array.isArray(
+      value
+    )
+  ) {
     if (!value[0]) {
       throw new Error(
         `${paramName} is required.`
@@ -55,12 +59,14 @@ export const createProductController =
     try {
       const {
         name,
+        slug,
         shortDescription,
         description,
         categories,
         price,
         compareAtPrice,
         costPrice,
+        stock,
         mainImages,
         colors,
         status,
@@ -69,13 +75,20 @@ export const createProductController =
         tags,
         seoTitle,
         seoDescription,
-      } = req.body;
+      } =
+        req.body;
 
-      if (!name) {
+      if (
+        !name ||
+        !String(
+          name
+        ).trim()
+      ) {
         return res
           .status(400)
           .json({
             success: false,
+
             message:
               "Product name is required.",
           });
@@ -84,14 +97,36 @@ export const createProductController =
       if (
         price ===
           undefined ||
-        price === null
+        price ===
+          null ||
+        price ===
+          ""
       ) {
         return res
           .status(400)
           .json({
             success: false,
+
             message:
               "Product price is required.",
+          });
+      }
+
+      if (
+        stock ===
+          undefined ||
+        stock ===
+          null ||
+        stock ===
+          ""
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Product stock is required.",
           });
       }
 
@@ -99,12 +134,14 @@ export const createProductController =
         !Array.isArray(
           categories
         ) ||
-        categories.length === 0
+        categories.length ===
+          0
       ) {
         return res
           .status(400)
           .json({
             success: false,
+
             message:
               "At least one category is required.",
           });
@@ -113,6 +150,8 @@ export const createProductController =
       const product =
         await createProduct({
           name,
+
+          slug,
 
           shortDescription,
 
@@ -125,6 +164,8 @@ export const createProductController =
           compareAtPrice,
 
           costPrice,
+
+          stock,
 
           mainImages,
 
@@ -153,7 +194,9 @@ export const createProductController =
 
           product,
         });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       return res
         .status(400)
         .json({
@@ -173,7 +216,7 @@ export const createProductController =
 
 export const getAllProductsController =
   async (
-    req: Request,
+    _req: Request,
     res: Response
   ) => {
     try {
@@ -190,7 +233,9 @@ export const getAllProductsController =
 
           products,
         });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       return res
         .status(500)
         .json({
@@ -210,7 +255,7 @@ export const getAllProductsController =
 
 export const getActiveProductsController =
   async (
-    req: Request,
+    _req: Request,
     res: Response
   ) => {
     try {
@@ -227,7 +272,9 @@ export const getActiveProductsController =
 
           products,
         });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       return res
         .status(500)
         .json({
@@ -268,7 +315,9 @@ export const getProductByIdController =
           success: true,
           product,
         });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       return res
         .status(404)
         .json({
@@ -309,7 +358,9 @@ export const getProductBySlugController =
           success: true,
           product,
         });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       return res
         .status(404)
         .json({
@@ -346,6 +397,9 @@ export const updateProductController =
             name:
               req.body.name,
 
+            slug:
+              req.body.slug,
+
             shortDescription:
               req.body
                 .shortDescription,
@@ -368,6 +422,9 @@ export const updateProductController =
             costPrice:
               req.body
                 .costPrice,
+
+            stock:
+              req.body.stock,
 
             mainImages:
               req.body
@@ -410,7 +467,9 @@ export const updateProductController =
 
           product,
         });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       return res
         .status(400)
         .json({
@@ -451,7 +510,9 @@ export const deleteProductController =
           success: true,
           ...result,
         });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       return res
         .status(400)
         .json({
