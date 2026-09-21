@@ -39,9 +39,7 @@ export type BannerPosition =
 
 export interface IBannerImage {
   url: string;
-
   publicId: string;
-
   alt: string;
 }
 
@@ -51,7 +49,6 @@ export interface IBannerImage {
 
 export interface IBannerVideoPoster {
   url: string;
-
   publicId: string;
 }
 
@@ -61,17 +58,13 @@ export interface IBannerVideoPoster {
 
 export interface IBannerVideo {
   url: string;
-
   publicId: string;
 
   poster?: IBannerVideoPoster;
 
   autoplay: boolean;
-
   muted: boolean;
-
   loop: boolean;
-
   controls: boolean;
 }
 
@@ -85,11 +78,11 @@ export interface IBanner
 
   title: string;
 
-  subtitle?: string;
+  subtitle: string;
 
   slug: string;
 
-  description?: string;
+  description: string;
 
   /* MEDIA */
 
@@ -107,20 +100,17 @@ export interface IBanner
   linkType:
     BannerLinkType;
 
-  customLink?: string;
+  customLink: string;
 
   /*
-    Root category aur subcategory
-    dono same Category model use karenge.
-
-    Example:
+    Same Category model handles:
 
     Women
     └── Bra
         └── Sports Bra
 
-    category field me kisi bhi level
-    ka Category ObjectId save ho sakta hai.
+    Root category ya subcategory,
+    dono ka ObjectId yahan save ho sakta hai.
   */
   category:
     Types.ObjectId | null;
@@ -131,7 +121,7 @@ export interface IBanner
   page:
     Types.ObjectId | null;
 
-  buttonText?: string;
+  buttonText: string;
 
   openInNewTab: boolean;
 
@@ -147,9 +137,11 @@ export interface IBanner
 
   /* SCHEDULE */
 
-  startAt?: Date | null;
+  startAt:
+    Date | null;
 
-  endAt?: Date | null;
+  endAt:
+    Date | null;
 
   /* STATUS */
 
@@ -169,27 +161,20 @@ const bannerImageSchema =
     {
       url: {
         type: String,
-
         required: true,
-
         trim: true,
       },
 
       publicId: {
         type: String,
-
         required: true,
-
         trim: true,
       },
 
       alt: {
         type: String,
-
         default: "",
-
         trim: true,
-
         maxlength: 200,
       },
     },
@@ -207,17 +192,13 @@ const bannerVideoPosterSchema =
     {
       url: {
         type: String,
-
         default: "",
-
         trim: true,
       },
 
       publicId: {
         type: String,
-
         default: "",
-
         trim: true,
       },
     },
@@ -235,17 +216,13 @@ const bannerVideoSchema =
     {
       url: {
         type: String,
-
         required: true,
-
         trim: true,
       },
 
       publicId: {
         type: String,
-
         required: true,
-
         trim: true,
       },
 
@@ -253,33 +230,27 @@ const bannerVideoSchema =
         type:
           bannerVideoPosterSchema,
 
-        default: () => ({
-          url: "",
-          publicId: "",
-        }),
+        default:
+          undefined,
       },
 
       autoplay: {
         type: Boolean,
-
         default: true,
       },
 
       muted: {
         type: Boolean,
-
         default: true,
       },
 
       loop: {
         type: Boolean,
-
         default: true,
       },
 
       controls: {
         type: Boolean,
-
         default: false,
       },
     },
@@ -296,51 +267,42 @@ const bannerSchema =
   new Schema<IBanner>(
     {
       /* =====================================================
-         BASIC
+         BASIC DETAILS
       ===================================================== */
 
       title: {
         type: String,
-
         required: true,
-
         trim: true,
-
         maxlength: 200,
       },
 
       subtitle: {
         type: String,
-
         default: "",
-
         trim: true,
-
         maxlength: 300,
       },
 
       slug: {
         type: String,
-
         required: true,
-
         unique: true,
-
         lowercase: true,
-
         trim: true,
-
         maxlength: 250,
+
+        match: [
+          /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+          "Banner slug must contain only lowercase letters, numbers and hyphens.",
+        ],
       },
 
       description: {
         type: String,
-
         default: "",
-
         trim: true,
-
-        maxlength: 1000,
+        maxlength: 2000,
       },
 
       /* =====================================================
@@ -362,7 +324,7 @@ const bannerSchema =
       },
 
       /* =====================================================
-         IMAGES
+         IMAGE ARRAY
       ===================================================== */
 
       images: {
@@ -374,7 +336,7 @@ const bannerSchema =
       },
 
       /* =====================================================
-         VIDEOS
+         VIDEO ARRAY
       ===================================================== */
 
       videos: {
@@ -410,27 +372,22 @@ const bannerSchema =
 
       customLink: {
         type: String,
-
         default: "",
-
         trim: true,
       },
 
       /* =====================================================
          CATEGORY / SUBCATEGORY
 
-         Same Category model.
+         Same Category collection.
 
-         Root:
-         Women
+         Example:
 
-         Child:
-         Bra
+         Women            level 0
+         └── Bra          level 1
+             └── Sports   level 2
 
-         Grand Child:
-         Sports Bra
-
-         kisi bhi Category ID ko yahan save kar sakte ho.
+         Kisi bhi level ki category ka ID save hoga.
       ===================================================== */
 
       category: {
@@ -445,7 +402,7 @@ const bannerSchema =
       },
 
       /* =====================================================
-         PRODUCT LINK
+         PRODUCT
       ===================================================== */
 
       product: {
@@ -460,7 +417,7 @@ const bannerSchema =
       },
 
       /* =====================================================
-         PAGE LINK
+         PAGE
       ===================================================== */
 
       page: {
@@ -475,29 +432,23 @@ const bannerSchema =
       },
 
       /* =====================================================
-         CTA BUTTON
+         BUTTON
       ===================================================== */
 
       buttonText: {
         type: String,
-
-        default:
-          "Shop Now",
-
+        default: "Shop Now",
         trim: true,
-
         maxlength: 100,
       },
 
       openInNewTab: {
         type: Boolean,
-
-        default:
-          false,
+        default: false,
       },
 
       /* =====================================================
-         POSITION
+         BANNER POSITION
       ===================================================== */
 
       position: {
@@ -539,9 +490,7 @@ const bannerSchema =
 
       sortOrder: {
         type: Number,
-
         default: 0,
-
         min: 0,
       },
 
@@ -551,27 +500,21 @@ const bannerSchema =
 
       startAt: {
         type: Date,
-
-        default:
-          null,
+        default: null,
       },
 
       endAt: {
         type: Date,
-
-        default:
-          null,
+        default: null,
       },
 
       /* =====================================================
-         STATUS
+         ACTIVE
       ===================================================== */
 
       isActive: {
         type: Boolean,
-
-        default:
-          true,
+        default: true,
       },
     },
     {
@@ -581,108 +524,180 @@ const bannerSchema =
 
 /* =========================================================
    VALIDATION
-
-   IMAGE BANNER -> at least one image
-
-   VIDEO BANNER -> at least one video
 ========================================================= */
 
 bannerSchema.pre(
   "validate",
-  function (
-    next
-  ) {
+  function () {
+    /* =====================================================
+       IMAGE BANNER
+    ===================================================== */
+
     if (
       this.mediaType ===
-        "image" &&
-      (
+      "image"
+    ) {
+      if (
         !Array.isArray(
           this.images
         ) ||
         this.images.length ===
           0
-      )
-    ) {
-      return next(
-        new Error(
+      ) {
+        throw new Error(
           "Image banner requires at least one image."
-        )
-      );
+        );
+      }
+
+      /*
+        Image banner me old video accidentally
+        save nahi rehna chahiye.
+      */
+
+      this.videos = [];
     }
+
+    /* =====================================================
+       VIDEO BANNER
+    ===================================================== */
 
     if (
       this.mediaType ===
-        "video" &&
-      (
+      "video"
+    ) {
+      if (
         !Array.isArray(
           this.videos
         ) ||
         this.videos.length ===
           0
-      )
-    ) {
-      return next(
-        new Error(
+      ) {
+        throw new Error(
           "Video banner requires at least one video."
-        )
-      );
+        );
+      }
+
+      /*
+        Video banner me old image accidentally
+        save nahi rehni chahiye.
+      */
+
+      this.images = [];
     }
 
-    /* ===============================================
+    /* =====================================================
        LINK VALIDATION
-    =============================================== */
+    ===================================================== */
 
     if (
       this.linkType ===
-        "custom" &&
-      !this.customLink
+      "custom"
     ) {
-      return next(
-        new Error(
+      if (
+        !this.customLink
+          ?.trim()
+      ) {
+        throw new Error(
           "Custom link is required."
-        )
-      );
+        );
+      }
+
+      this.category =
+        null;
+
+      this.product =
+        null;
+
+      this.page =
+        null;
     }
 
     if (
       this.linkType ===
-        "category" &&
-      !this.category
+      "category"
     ) {
-      return next(
-        new Error(
-          "Category is required for category banner link."
-        )
-      );
+      if (
+        !this.category
+      ) {
+        throw new Error(
+          "Category is required."
+        );
+      }
+
+      this.customLink =
+        "";
+
+      this.product =
+        null;
+
+      this.page =
+        null;
     }
 
     if (
       this.linkType ===
-        "product" &&
-      !this.product
+      "product"
     ) {
-      return next(
-        new Error(
-          "Product is required for product banner link."
-        )
-      );
+      if (
+        !this.product
+      ) {
+        throw new Error(
+          "Product is required."
+        );
+      }
+
+      this.customLink =
+        "";
+
+      this.category =
+        null;
+
+      this.page =
+        null;
     }
 
     if (
       this.linkType ===
-        "page" &&
-      !this.page
+      "page"
     ) {
-      return next(
-        new Error(
-          "Page is required for page banner link."
-        )
-      );
+      if (
+        !this.page
+      ) {
+        throw new Error(
+          "Page is required."
+        );
+      }
+
+      this.customLink =
+        "";
+
+      this.category =
+        null;
+
+      this.product =
+        null;
     }
 
-    /* ===============================================
-       DATE VALIDATION
-    =============================================== */
+    if (
+      this.linkType ===
+      "none"
+    ) {
+      this.customLink =
+        "";
+
+      this.category =
+        null;
+
+      this.product =
+        null;
+
+      this.page =
+        null;
+    }
+
+    /* =====================================================
+       SCHEDULE VALIDATION
+    ===================================================== */
 
     if (
       this.startAt &&
@@ -690,14 +705,10 @@ bannerSchema.pre(
       this.endAt <
         this.startAt
     ) {
-      return next(
-        new Error(
-          "Banner end date cannot be before start date."
-        )
+      throw new Error(
+        "Banner end date cannot be before start date."
       );
     }
-
-    next();
   }
 );
 
@@ -705,31 +716,13 @@ bannerSchema.pre(
    INDEXES
 ========================================================= */
 
+/*
+  slug me unique:true already index create karega,
+  isliye slug ka separate index dobara nahi banana.
+*/
+
 bannerSchema.index({
   isActive: 1,
-});
-
-bannerSchema.index({
-  position: 1,
-});
-
-bannerSchema.index({
-  device: 1,
-});
-
-bannerSchema.index({
-  sortOrder: 1,
-});
-
-bannerSchema.index({
-  startAt: 1,
-  endAt: 1,
-});
-
-bannerSchema.index({
-  position: 1,
-  isActive: 1,
-  sortOrder: 1,
 });
 
 bannerSchema.index({
@@ -740,13 +733,32 @@ bannerSchema.index({
   product: 1,
 });
 
+bannerSchema.index({
+  page: 1,
+});
+
+bannerSchema.index({
+  position: 1,
+  device: 1,
+  isActive: 1,
+  sortOrder: 1,
+});
+
+bannerSchema.index({
+  startAt: 1,
+  endAt: 1,
+});
+
 /* =========================================================
    MODEL
 ========================================================= */
 
-const Banner:
-  Model<IBanner> =
-  mongoose.models.Banner ||
+const Banner =
+  (
+    mongoose.models
+      .Banner as
+      Model<IBanner>
+  ) ||
   mongoose.model<IBanner>(
     "Banner",
     bannerSchema
