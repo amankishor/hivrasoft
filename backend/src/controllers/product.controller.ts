@@ -232,6 +232,8 @@ export const getAllProductsController =
             products.length,
 
           products,
+
+          data: products,
         });
     } catch (
       error
@@ -271,6 +273,8 @@ export const getActiveProductsController =
             products.length,
 
           products,
+
+          data: products,
         });
     } catch (
       error

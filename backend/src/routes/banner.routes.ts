@@ -3,37 +3,31 @@ import {
 } from "express";
 
 import {
+  authenticate,
+} from "../middleware/auth.middleware";
+
+import {
+  requireAdmin,
+} from "../middleware/admin.middleware";
+
+import {
+  bannerUpload,
+} from "../middleware/bannerUpload.middleware";
+
+import {
   createBannerController,
+  deleteBannerController,
+  getActiveBannersController,
   getAllBannersController,
   getBannerByIdController,
   getBannerBySlugController,
   updateBannerController,
-  getActiveBannersController,
 } from "../controllers/banner.controller";
 
-const router =
-  Router();
+const router = Router();
 
 /* =========================================================
-   CREATE BANNER
-========================================================= */
-
-router.post(
-  "/",
-  createBannerController
-);
-
-/* =========================================================
-   GET ALL BANNERS
-========================================================= */
-
-router.get(
-  "/",
-  getAllBannersController
-);
-
-/* =========================================================
-   GET ACTIVE BANNERS
+   PUBLIC - STATIC ROUTES FIRST
 ========================================================= */
 
 router.get(
@@ -41,31 +35,50 @@ router.get(
   getActiveBannersController
 );
 
-/* =========================================================
-   GET BY SLUG
-========================================================= */
-
 router.get(
   "/slug/:slug",
   getBannerBySlugController
 );
 
 /* =========================================================
-   GET BY ID
+   ADMIN
 ========================================================= */
 
 router.get(
-  "/:id",
-  getBannerByIdController
+  "/",
+  authenticate,
+  requireAdmin,
+  getAllBannersController
 );
 
-/* =========================================================
-   UPDATE BANNER
-========================================================= */
+router.post(
+  "/",
+  authenticate,
+  requireAdmin,
+  bannerUpload,
+  createBannerController
+);
 
 router.patch(
   "/:id",
+  authenticate,
+  requireAdmin,
+  bannerUpload,
   updateBannerController
+);
+
+router.delete(
+  "/:id",
+  authenticate,
+  requireAdmin,
+  deleteBannerController
+);
+
+router.get(
+  "/:id",
+  authenticate,
+  requireAdmin,
+  getBannerByIdController
 );
 
 export default router;

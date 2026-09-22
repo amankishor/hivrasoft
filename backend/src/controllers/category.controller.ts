@@ -133,6 +133,7 @@ export const getAllCategoriesController =
           count:
             categories.length,
           categories,
+          data: categories,
         });
     } catch (error) {
       return res
@@ -167,6 +168,7 @@ export const getActiveCategoriesController =
           count:
             categories.length,
           categories,
+          data: categories,
         });
     } catch (error) {
       return res
@@ -210,6 +212,7 @@ export const getCategoryTreeController =
           count:
             categories.length,
           categories,
+          data: categories,
         });
     } catch (error) {
       return res

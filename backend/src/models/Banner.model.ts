@@ -17,8 +17,7 @@ export type BannerLinkType =
   | "none"
   | "custom"
   | "category"
-  | "product"
-  | "page";
+  | "product";
 
 export type BannerDevice =
   | "all"
@@ -34,10 +33,34 @@ export type BannerPosition =
   | "category_middle";
 
 /* =========================================================
+   COMMON MEDIA CONTENT + LINK
+
+   IMPORTANT:
+   Har image / har video ka apna content + apna link hai.
+========================================================= */
+
+export interface IBannerMediaContent {
+  title: string;
+  subtitle: string;
+  description: string;
+
+  buttonText: string;
+
+  linkType: BannerLinkType;
+  customLink: string;
+
+  category: Types.ObjectId | null;
+  product: Types.ObjectId | null;
+
+  openInNewTab: boolean;
+}
+
+/* =========================================================
    IMAGE
 ========================================================= */
 
-export interface IBannerImage {
+export interface IBannerImage
+  extends IBannerMediaContent {
   url: string;
   publicId: string;
   alt: string;
@@ -56,7 +79,8 @@ export interface IBannerVideoPoster {
    VIDEO
 ========================================================= */
 
-export interface IBannerVideo {
+export interface IBannerVideo
+  extends IBannerMediaContent {
   url: string;
   publicId: string;
 
@@ -74,83 +98,99 @@ export interface IBannerVideo {
 
 export interface IBanner
   extends Document {
-  /* BASIC */
+  /* ADMIN / GROUP DETAILS */
 
   title: string;
-
-  subtitle: string;
-
   slug: string;
-
   description: string;
 
   /* MEDIA */
 
-  mediaType:
-    BannerMediaType;
-
-  images:
-    IBannerImage[];
-
-  videos:
-    IBannerVideo[];
-
-  /* LINK */
-
-  linkType:
-    BannerLinkType;
-
-  customLink: string;
-
-  /*
-    Same Category model handles:
-
-    Women
-    └── Bra
-        └── Sports Bra
-
-    Root category ya subcategory,
-    dono ka ObjectId yahan save ho sakta hai.
-  */
-  category:
-    Types.ObjectId | null;
-
-  product:
-    Types.ObjectId | null;
-
-  page:
-    Types.ObjectId | null;
-
-  buttonText: string;
-
-  openInNewTab: boolean;
+  mediaType: BannerMediaType;
+  images: IBannerImage[];
+  videos: IBannerVideo[];
 
   /* PLACEMENT */
 
-  position:
-    BannerPosition;
-
-  device:
-    BannerDevice;
-
+  position: BannerPosition;
+  device: BannerDevice;
   sortOrder: number;
-
-  /* SCHEDULE */
-
-  startAt:
-    Date | null;
-
-  endAt:
-    Date | null;
 
   /* STATUS */
 
   isActive: boolean;
 
   createdAt: Date;
-
   updatedAt: Date;
 }
+
+/* =========================================================
+   COMMON MEDIA FIELDS
+========================================================= */
+
+const commonMediaFields: Record<string, unknown> = {
+  title: {
+    type: String,
+    default: "",
+    trim: true,
+    maxlength: 200,
+  },
+
+  subtitle: {
+    type: String,
+    default: "",
+    trim: true,
+    maxlength: 300,
+  },
+
+  description: {
+    type: String,
+    default: "",
+    trim: true,
+    maxlength: 2000,
+  },
+
+  buttonText: {
+    type: String,
+    default: "Shop Now",
+    trim: true,
+    maxlength: 100,
+  },
+
+  linkType: {
+    type: String,
+    enum: [
+      "none",
+      "custom",
+      "category",
+      "product",
+    ],
+    default: "none",
+  },
+
+  customLink: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  category: {
+    type: Schema.Types.ObjectId,
+    ref: "Category",
+    default: null,
+  },
+
+  product: {
+    type: Schema.Types.ObjectId,
+    ref: "Product",
+    default: null,
+  },
+
+  openInNewTab: {
+    type: Boolean,
+    default: false,
+  },
+};
 
 /* =========================================================
    IMAGE SCHEMA
@@ -177,6 +217,8 @@ const bannerImageSchema =
         trim: true,
         maxlength: 200,
       },
+
+      ...(commonMediaFields as any),
     },
     {
       _id: false,
@@ -192,13 +234,13 @@ const bannerVideoPosterSchema =
     {
       url: {
         type: String,
-        default: "",
+        required: true,
         trim: true,
       },
 
       publicId: {
         type: String,
-        default: "",
+        required: true,
         trim: true,
       },
     },
@@ -227,11 +269,8 @@ const bannerVideoSchema =
       },
 
       poster: {
-        type:
-          bannerVideoPosterSchema,
-
-        default:
-          undefined,
+        type: bannerVideoPosterSchema,
+        default: undefined,
       },
 
       autoplay: {
@@ -253,11 +292,61 @@ const bannerVideoSchema =
         type: Boolean,
         default: false,
       },
+
+      ...(commonMediaFields as any),
     },
     {
       _id: false,
     }
   );
+
+/* =========================================================
+   NORMALIZE / VALIDATE MEDIA LINK
+========================================================= */
+
+const normalizeMediaLink = (
+  item: IBannerImage | IBannerVideo
+) => {
+  if (item.linkType === "custom") {
+    if (!item.customLink?.trim()) {
+      throw new Error(
+        "Custom link is required for every media item using custom link."
+      );
+    }
+
+    item.category = null;
+    item.product = null;
+    return;
+  }
+
+  if (item.linkType === "category") {
+    if (!item.category) {
+      throw new Error(
+        "Category is required for every media item using category link."
+      );
+    }
+
+    item.customLink = "";
+    item.product = null;
+    return;
+  }
+
+  if (item.linkType === "product") {
+    if (!item.product) {
+      throw new Error(
+        "Product is required for every media item using product link."
+      );
+    }
+
+    item.customLink = "";
+    item.category = null;
+    return;
+  }
+
+  item.customLink = "";
+  item.category = null;
+  item.product = null;
+};
 
 /* =========================================================
    BANNER SCHEMA
@@ -267,7 +356,7 @@ const bannerSchema =
   new Schema<IBanner>(
     {
       /* =====================================================
-         BASIC DETAILS
+         ADMIN / GROUP DETAILS
       ===================================================== */
 
       title: {
@@ -277,13 +366,6 @@ const bannerSchema =
         maxlength: 200,
       },
 
-      subtitle: {
-        type: String,
-        default: "",
-        trim: true,
-        maxlength: 300,
-      },
-
       slug: {
         type: String,
         required: true,
@@ -291,7 +373,6 @@ const bannerSchema =
         lowercase: true,
         trim: true,
         maxlength: 250,
-
         match: [
           /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
           "Banner slug must contain only lowercase letters, numbers and hyphens.",
@@ -306,154 +387,35 @@ const bannerSchema =
       },
 
       /* =====================================================
-         MEDIA TYPE
+         MEDIA
       ===================================================== */
 
       mediaType: {
         type: String,
-
         enum: [
           "image",
           "video",
         ],
-
         required: true,
-
-        default:
-          "image",
+        default: "image",
       },
-
-      /* =====================================================
-         IMAGE ARRAY
-      ===================================================== */
 
       images: {
-        type: [
-          bannerImageSchema,
-        ],
-
+        type: [bannerImageSchema],
         default: [],
       },
-
-      /* =====================================================
-         VIDEO ARRAY
-      ===================================================== */
 
       videos: {
-        type: [
-          bannerVideoSchema,
-        ],
-
+        type: [bannerVideoSchema],
         default: [],
       },
 
       /* =====================================================
-         LINK TYPE
-      ===================================================== */
-
-      linkType: {
-        type: String,
-
-        enum: [
-          "none",
-          "custom",
-          "category",
-          "product",
-          "page",
-        ],
-
-        default:
-          "none",
-      },
-
-      /* =====================================================
-         CUSTOM LINK
-      ===================================================== */
-
-      customLink: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      /* =====================================================
-         CATEGORY / SUBCATEGORY
-
-         Same Category collection.
-
-         Example:
-
-         Women            level 0
-         └── Bra          level 1
-             └── Sports   level 2
-
-         Kisi bhi level ki category ka ID save hoga.
-      ===================================================== */
-
-      category: {
-        type:
-          Schema.Types.ObjectId,
-
-        ref:
-          "Category",
-
-        default:
-          null,
-      },
-
-      /* =====================================================
-         PRODUCT
-      ===================================================== */
-
-      product: {
-        type:
-          Schema.Types.ObjectId,
-
-        ref:
-          "Product",
-
-        default:
-          null,
-      },
-
-      /* =====================================================
-         PAGE
-      ===================================================== */
-
-      page: {
-        type:
-          Schema.Types.ObjectId,
-
-        ref:
-          "Page",
-
-        default:
-          null,
-      },
-
-      /* =====================================================
-         BUTTON
-      ===================================================== */
-
-      buttonText: {
-        type: String,
-        default: "Shop Now",
-        trim: true,
-        maxlength: 100,
-      },
-
-      openInNewTab: {
-        type: Boolean,
-        default: false,
-      },
-
-      /* =====================================================
-         BANNER POSITION
+         PLACEMENT
       ===================================================== */
 
       position: {
         type: String,
-
         enum: [
           "home_hero",
           "home_top",
@@ -462,31 +424,18 @@ const bannerSchema =
           "category_top",
           "category_middle",
         ],
-
-        default:
-          "home_hero",
+        default: "home_hero",
       },
-
-      /* =====================================================
-         DEVICE
-      ===================================================== */
 
       device: {
         type: String,
-
         enum: [
           "all",
           "desktop",
           "mobile",
         ],
-
-        default:
-          "all",
+        default: "all",
       },
-
-      /* =====================================================
-         SORT ORDER
-      ===================================================== */
 
       sortOrder: {
         type: Number,
@@ -495,21 +444,7 @@ const bannerSchema =
       },
 
       /* =====================================================
-         SCHEDULE
-      ===================================================== */
-
-      startAt: {
-        type: Date,
-        default: null,
-      },
-
-      endAt: {
-        type: Date,
-        default: null,
-      },
-
-      /* =====================================================
-         ACTIVE
+         STATUS
       ===================================================== */
 
       isActive: {
@@ -529,184 +464,37 @@ const bannerSchema =
 bannerSchema.pre(
   "validate",
   function () {
-    /* =====================================================
-       IMAGE BANNER
-    ===================================================== */
-
-    if (
-      this.mediaType ===
-      "image"
-    ) {
+    if (this.mediaType === "image") {
       if (
-        !Array.isArray(
-          this.images
-        ) ||
-        this.images.length ===
-          0
+        !Array.isArray(this.images) ||
+        this.images.length === 0
       ) {
         throw new Error(
           "Image banner requires at least one image."
         );
       }
 
-      /*
-        Image banner me old video accidentally
-        save nahi rehna chahiye.
-      */
-
       this.videos = [];
+
+      this.images.forEach(
+        normalizeMediaLink
+      );
     }
 
-    /* =====================================================
-       VIDEO BANNER
-    ===================================================== */
-
-    if (
-      this.mediaType ===
-      "video"
-    ) {
+    if (this.mediaType === "video") {
       if (
-        !Array.isArray(
-          this.videos
-        ) ||
-        this.videos.length ===
-          0
+        !Array.isArray(this.videos) ||
+        this.videos.length === 0
       ) {
         throw new Error(
           "Video banner requires at least one video."
         );
       }
 
-      /*
-        Video banner me old image accidentally
-        save nahi rehni chahiye.
-      */
-
       this.images = [];
-    }
 
-    /* =====================================================
-       LINK VALIDATION
-    ===================================================== */
-
-    if (
-      this.linkType ===
-      "custom"
-    ) {
-      if (
-        !this.customLink
-          ?.trim()
-      ) {
-        throw new Error(
-          "Custom link is required."
-        );
-      }
-
-      this.category =
-        null;
-
-      this.product =
-        null;
-
-      this.page =
-        null;
-    }
-
-    if (
-      this.linkType ===
-      "category"
-    ) {
-      if (
-        !this.category
-      ) {
-        throw new Error(
-          "Category is required."
-        );
-      }
-
-      this.customLink =
-        "";
-
-      this.product =
-        null;
-
-      this.page =
-        null;
-    }
-
-    if (
-      this.linkType ===
-      "product"
-    ) {
-      if (
-        !this.product
-      ) {
-        throw new Error(
-          "Product is required."
-        );
-      }
-
-      this.customLink =
-        "";
-
-      this.category =
-        null;
-
-      this.page =
-        null;
-    }
-
-    if (
-      this.linkType ===
-      "page"
-    ) {
-      if (
-        !this.page
-      ) {
-        throw new Error(
-          "Page is required."
-        );
-      }
-
-      this.customLink =
-        "";
-
-      this.category =
-        null;
-
-      this.product =
-        null;
-    }
-
-    if (
-      this.linkType ===
-      "none"
-    ) {
-      this.customLink =
-        "";
-
-      this.category =
-        null;
-
-      this.product =
-        null;
-
-      this.page =
-        null;
-    }
-
-    /* =====================================================
-       SCHEDULE VALIDATION
-    ===================================================== */
-
-    if (
-      this.startAt &&
-      this.endAt &&
-      this.endAt <
-        this.startAt
-    ) {
-      throw new Error(
-        "Banner end date cannot be before start date."
+      this.videos.forEach(
+        normalizeMediaLink
       );
     }
   }
@@ -716,25 +504,8 @@ bannerSchema.pre(
    INDEXES
 ========================================================= */
 
-/*
-  slug me unique:true already index create karega,
-  isliye slug ka separate index dobara nahi banana.
-*/
-
 bannerSchema.index({
   isActive: 1,
-});
-
-bannerSchema.index({
-  category: 1,
-});
-
-bannerSchema.index({
-  product: 1,
-});
-
-bannerSchema.index({
-  page: 1,
 });
 
 bannerSchema.index({
@@ -745,8 +516,19 @@ bannerSchema.index({
 });
 
 bannerSchema.index({
-  startAt: 1,
-  endAt: 1,
+  "images.category": 1,
+});
+
+bannerSchema.index({
+  "images.product": 1,
+});
+
+bannerSchema.index({
+  "videos.category": 1,
+});
+
+bannerSchema.index({
+  "videos.product": 1,
 });
 
 /* =========================================================
@@ -755,8 +537,7 @@ bannerSchema.index({
 
 const Banner =
   (
-    mongoose.models
-      .Banner as
+    mongoose.models.Banner as
       Model<IBanner>
   ) ||
   mongoose.model<IBanner>(

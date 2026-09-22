@@ -1,405 +1,340 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useState,
 } from "react";
 
 import {
   useRouter,
+  useSearchParams,
 } from "next/navigation";
 
-type BannerImage = {
-  url: string;
-  publicId: string;
-  alt: string;
-};
-
-type BannerVideo = {
-  url: string;
-  publicId: string;
-
-  poster?: {
-    url: string;
-    publicId: string;
-  };
-
-  autoplay: boolean;
-  muted: boolean;
-  loop: boolean;
-  controls: boolean;
-};
-
-type Banner = {
-  _id: string;
-
-  title: string;
-  subtitle: string;
-  slug: string;
-
-  mediaType:
-    | "image"
-    | "video";
-
-  images: BannerImage[];
-
-  videos: BannerVideo[];
-
-  linkType:
-    | "none"
-    | "custom"
-    | "category"
-    | "product"
-    | "page";
-
-  customLink: string;
-
-  category?: {
-    _id: string;
-    name: string;
-    slug: string;
-  } | null;
-
-  product?: {
-    _id: string;
-    name: string;
-    slug: string;
-  } | null;
-
-  buttonText: string;
-
-  position: string;
-
-  device: string;
-
-  sortOrder: number;
-
-  isActive: boolean;
-
-  createdAt: string;
-};
+import {
+  getBannerSectionLabel,
+} from "@/lib/banner";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
 
-export default function BannerPage() {
+interface MediaItem {
+  url: string;
+  publicId: string;
+  title: string;
+  linkType:
+    | "none"
+    | "custom"
+    | "category"
+    | "product";
+  poster?: {
+    url: string;
+    publicId: string;
+  };
+}
+
+interface Banner {
+  _id: string;
+  title: string;
+  slug: string;
+  mediaType:
+    | "image"
+    | "video";
+  images: MediaItem[];
+  videos: MediaItem[];
+  position: string;
+  device: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export default function BannerListPage() {
   const router =
     useRouter();
 
-  const [
-    banners,
-    setBanners,
-  ] = useState<Banner[]>([]);
+  const searchParams =
+    useSearchParams();
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const position =
+    searchParams.get(
+      "position"
+    );
 
-  const [
-    error,
-    setError,
-  ] = useState("");
+  const [banners, setBanners] =
+    useState<Banner[]>([]);
 
-  /* ======================================================
-     FETCH BANNERS
-  ====================================================== */
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+  const [deletingId, setDeletingId] =
+    useState<string | null>(
+      null
+    );
 
   const loadBanners =
-    async () => {
-      try {
-        setLoading(true);
+    useCallback(
+      async () => {
+        try {
+          setLoading(true);
+          setError("");
 
-        setError("");
+          const response =
+            await fetch(
+              `${API_URL}/api/banners`,
+              {
+                credentials:
+                  "include",
+                cache:
+                  "no-store",
+              }
+            );
 
-        const response =
-          await fetch(
-            `${API_URL}/api/banners`,
-            {
-              method: "GET",
+          const result =
+            await response.json();
 
-              credentials:
-                "include",
+          if (!response.ok) {
+            throw new Error(
+              result.message ||
+                "Unable to load banners."
+            );
+          }
 
-              cache:
-                "no-store",
-            }
+          setBanners(
+            result.data || []
           );
-
-        const result =
-          await response.json();
-
-        if (
-          !response.ok
-        ) {
-          throw new Error(
-            result.message ||
-              "Failed to load banners."
+        } catch (error) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load banners."
           );
+        } finally {
+          setLoading(false);
         }
-
-        setBanners(
-          result.data || []
-        );
-      } catch (error) {
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Something went wrong."
-        );
-      } finally {
-        setLoading(
-          false
-        );
-      }
-    };
+      },
+      []
+    );
 
   useEffect(() => {
     loadBanners();
-  }, []);
+  }, [loadBanners]);
 
-  /* ======================================================
-     IMAGE
-  ====================================================== */
+  const filtered =
+    position
+      ? banners.filter(
+          banner =>
+            banner.position ===
+            position
+        )
+      : banners;
 
-  const getBannerImage = (
+  const pageTitle =
+    position
+      ? getBannerSectionLabel(
+          position
+        )
+      : "All Banners";
+
+  const handleDelete = async (
     banner: Banner
   ) => {
-    if (
-      banner.mediaType ===
-        "image" &&
-      banner.images?.length >
-        0
-    ) {
-      return banner
-        .images[0].url;
-    }
-
-    if (
-      banner.mediaType ===
-        "video" &&
-      banner.videos?.length >
-        0
-    ) {
-      return (
-        banner.videos[0]
-          .poster?.url || ""
+    const confirmed =
+      window.confirm(
+        `Delete "${banner.title}"? Cloudinary media will also be deleted.`
       );
+
+    if (!confirmed) {
+      return;
     }
 
-    return "";
-  };
+    try {
+      setDeletingId(
+        banner._id
+      );
 
-  /* ======================================================
-     LINK TEXT
-  ====================================================== */
-
-  const getLinkText = (
-    banner: Banner
-  ) => {
-    switch (
-      banner.linkType
-    ) {
-      case "category":
-        return (
-          banner.category
-            ?.name ||
-          "Category"
+      const response =
+        await fetch(
+          `${API_URL}/api/banners/${banner._id}`,
+          {
+            method: "DELETE",
+            credentials:
+              "include",
+          }
         );
 
-      case "product":
-        return (
-          banner.product
-            ?.name ||
-          "Product"
+      const result =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message ||
+            "Unable to delete banner."
         );
+      }
 
-      case "custom":
-        return (
-          banner.customLink ||
-          "Custom Link"
-        );
-
-      case "page":
-        return "Page";
-
-      default:
-        return "No Link";
+      setBanners(
+        previous =>
+          previous.filter(
+            item =>
+              item._id !==
+              banner._id
+          )
+      );
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Unable to delete banner."
+      );
+    } finally {
+      setDeletingId(null);
     }
   };
-
-  /* ======================================================
-     UI
-  ====================================================== */
 
   return (
-    <div className="min-h-screen bg-[#f7f3ef]">
-      <div className="px-8 py-8">
-        {/* HEADER */}
-
-        <div className="mb-8 flex items-center justify-between">
+    <div className="min-h-screen bg-[#f8f4f0] px-8 py-14">
+      <div className="mx-auto max-w-[1450px]">
+        <div className="mb-9 flex items-end justify-between gap-5">
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.25em] text-[#a6163c]">
-              Homepage
-              Management
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.28em] text-[#b51d49]">
+              Homepage Management
             </p>
-
-            <h1 className="text-3xl font-semibold text-[#17110f]">
-              Banners
+            <h1 className="text-4xl font-semibold text-[#17110f]">
+              {pageTitle}
             </h1>
-
-            <p className="mt-2 text-sm text-gray-500">
-              Manage home,
-              category and
-              promotional
-              banners.
+            <p className="mt-3 text-sm text-[#706763]">
+              Each image/video can have its own content and link.
             </p>
           </div>
 
           <button
+            type="button"
             onClick={() =>
               router.push(
-                "/admin/banners/new"
+                `/admin/banners/new${
+                  position
+                    ? `?position=${position}`
+                    : ""
+                }`
               )
             }
-            className="rounded-xl bg-[#a6163c] px-7 py-4 text-sm font-semibold text-white transition hover:bg-[#891331]"
+            className="rounded-2xl bg-[#b51d49] px-8 py-5 text-sm font-bold text-white"
           >
-            + ADD BANNER
+            + ADD NEW BANNER
           </button>
         </div>
 
-        {/* CARD */}
-
-        <div className="overflow-hidden rounded-[24px] border border-[#e7e0da] bg-white">
-          <div className="flex items-center justify-between border-b border-[#eee7e2] px-7 py-6">
+        <div className="overflow-hidden rounded-[28px] border border-[#e5ddd7] bg-white">
+          <div className="flex items-center justify-between border-b border-[#eee7e2] px-8 py-7">
             <div>
-              <h2 className="text-xl font-semibold text-[#17110f]">
-                All Banners
+              <h2 className="text-2xl font-semibold text-[#17110f]">
+                {pageTitle}
               </h2>
-
-              <p className="mt-1 text-xs text-gray-400">
-                Homepage and
-                promotional
-                banner list.
+              <p className="mt-1 text-sm text-gray-400">
+                Banner media list.
               </p>
             </div>
 
-            <div className="rounded-full bg-[#f5efeb] px-4 py-2 text-xs font-semibold text-[#a6163c]">
-              {
-                banners.length
-              }{" "}
-              BANNERS
-            </div>
+            <span className="rounded-full bg-[#f6f0ed] px-5 py-2 text-xs font-bold text-[#b51d49]">
+              {filtered.length} BANNERS
+            </span>
           </div>
 
-          {/* LOADING */}
-
           {loading && (
-            <div className="p-10 text-center text-sm text-gray-500">
-              Loading
-              banners...
+            <div className="p-20 text-center text-sm text-gray-500">
+              Loading banners...
             </div>
           )}
 
-          {/* ERROR */}
-
           {!loading &&
             error && (
-              <div className="p-10 text-center text-sm text-red-500">
+              <div className="p-20 text-center text-sm text-red-500">
                 {error}
               </div>
             )}
 
-          {/* EMPTY */}
-
           {!loading &&
             !error &&
-            banners.length ===
+            filtered.length ===
               0 && (
-              <div className="p-14 text-center">
-                <h3 className="text-lg font-semibold">
-                  No banners
-                  found
+              <div className="flex min-h-[300px] flex-col items-center justify-center">
+                <h3 className="text-xl font-semibold">
+                  No banners found
                 </h3>
-
-                <p className="mt-2 text-sm text-gray-500">
-                  Create your
-                  first banner.
+                <p className="mt-3 text-sm text-gray-500">
+                  Create your first banner.
                 </p>
-
-                <button
-                  onClick={() =>
-                    router.push(
-                      "/admin/banners/new"
-                    )
-                  }
-                  className="mt-5 rounded-lg bg-[#17110f] px-5 py-3 text-sm font-semibold text-white"
-                >
-                  + NEW BANNER
-                </button>
               </div>
             )}
 
-          {/* LIST */}
-
           {!loading &&
             !error &&
-            banners.length >
-              0 && (
-              <div className="space-y-3 p-5">
-                {banners.map(
-                  (
-                    banner
-                  ) => {
-                    const image =
-                      getBannerImage(
-                        banner
-                      );
+            filtered.length > 0 && (
+              <div className="space-y-4 p-6">
+                {filtered.map(
+                  banner => {
+                    const media =
+                      banner.mediaType ===
+                      "image"
+                        ? banner.images
+                        : banner.videos;
+
+                    const first =
+                      media[0];
 
                     return (
                       <div
-                        key={
-                          banner._id
-                        }
-                        className="flex items-center justify-between rounded-[18px] border border-[#ebe5df] bg-[#fdfbf9] p-4"
+                        key={banner._id}
+                        className="flex items-center justify-between gap-6 rounded-[20px] border border-[#ece5e0] bg-[#fdfbf9] p-4"
                       >
-                        {/* LEFT */}
-
-                        <div className="flex min-w-0 items-center gap-4">
-                          {/* PREVIEW */}
-
-                          <div className="h-[76px] w-[120px] overflow-hidden rounded-xl border bg-[#f4f0ec]">
-                            {image ? (
-                              <img
-                                src={
-                                  image
-                                }
-                                alt={
-                                  banner.title
-                                }
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
+                        <div className="flex min-w-0 flex-1 items-center gap-5">
+                          <div className="h-[92px] w-[155px] shrink-0 overflow-hidden rounded-2xl border bg-[#f5f1ee]">
+                            {!first && (
                               <div className="flex h-full items-center justify-center text-xs text-gray-400">
-                                NO
-                                MEDIA
+                                NO MEDIA
                               </div>
                             )}
+
+                            {first &&
+                              banner.mediaType ===
+                                "image" && (
+                                <img
+                                  src={first.url}
+                                  alt={
+                                    first.title ||
+                                    banner.title
+                                  }
+                                  className="h-full w-full object-cover"
+                                />
+                              )}
+
+                            {first &&
+                              banner.mediaType ===
+                                "video" && (
+                                <video
+                                  src={first.url}
+                                  poster={
+                                    first.poster
+                                      ?.url
+                                  }
+                                  muted
+                                  className="h-full w-full object-cover"
+                                />
+                              )}
                           </div>
 
-                          {/* DETAILS */}
-
                           <div className="min-w-0">
-                            <div className="flex items-center gap-3">
-                              <h3 className="truncate text-base font-semibold text-[#17110f]">
-                                {
-                                  banner.title
-                                }
+                            <div className="flex flex-wrap items-center gap-3">
+                              <h3 className="truncate text-base font-bold text-[#17110f]">
+                                {banner.title}
                               </h3>
 
                               <span
-                                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                                className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
                                   banner.isActive
                                     ? "bg-green-50 text-green-600"
                                     : "bg-gray-100 text-gray-500"
@@ -411,53 +346,52 @@ export default function BannerPage() {
                               </span>
                             </div>
 
-                            <p className="mt-1 text-xs text-gray-400">
-                              /
-                              {
-                                banner.slug
-                              }{" "}
-                              •{" "}
-                              {
-                                banner.mediaType
-                              }{" "}
-                              •{" "}
-                              {
-                                banner.position
-                              }
+                            <p className="mt-2 text-xs text-gray-400">
+                              /{banner.slug}
                             </p>
 
-                            <p className="mt-2 text-xs text-[#a6163c]">
-                              Link:{" "}
-                              {getLinkText(
-                                banner
+                            <p className="mt-2 text-xs font-medium text-[#b51d49]">
+                              {getBannerSectionLabel(
+                                banner.position
                               )}
                             </p>
 
                             <p className="mt-1 text-xs text-gray-400">
-                              Device:{" "}
-                              {
-                                banner.device
-                              }{" "}
-                              • Sort:{" "}
-                              {
-                                banner.sortOrder
-                              }
+                              {media.length} {banner.mediaType}(s) • each media has own link/content • {banner.device}
                             </p>
                           </div>
                         </div>
 
-                        {/* ACTION */}
-
-                        <div className="ml-5 flex items-center gap-3">
+                        <div className="flex shrink-0 items-center gap-3">
                           <button
+                            type="button"
                             onClick={() =>
                               router.push(
                                 `/admin/banners/${banner._id}/edit`
                               )
                             }
-                            className="rounded-lg border border-[#ddd5d0] px-5 py-3 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                            className="rounded-xl border border-[#dfd6d1] px-5 py-3 text-xs font-bold"
                           >
                             EDIT
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={
+                              deletingId ===
+                              banner._id
+                            }
+                            onClick={() =>
+                              handleDelete(
+                                banner
+                              )
+                            }
+                            className="rounded-xl border border-red-200 px-5 py-3 text-xs font-bold text-red-500 disabled:opacity-50"
+                          >
+                            {deletingId ===
+                            banner._id
+                              ? "DELETING..."
+                              : "DELETE"}
                           </button>
                         </div>
                       </div>

@@ -37,11 +37,43 @@ export default function AdminHeader() {
     }
   }
 
-  const title =
-    titles[pathname] ||
-    (pathname.includes("/edit")
-      ? "Edit Product"
-      : "Admin");
+  const title = (() => {
+    if (titles[pathname]) {
+      return titles[pathname];
+    }
+
+    if (pathname === "/admin/banners/new") {
+      return "Add Banner";
+    }
+
+    if (
+      pathname.startsWith(
+        "/admin/banners/"
+      ) &&
+      pathname.endsWith(
+        "/edit"
+      )
+    ) {
+      return "Edit Banner";
+    }
+
+    if (pathname === "/admin/products/new") {
+      return "Add Product";
+    }
+
+    if (
+      pathname.startsWith(
+        "/admin/products/"
+      ) &&
+      pathname.endsWith(
+        "/edit"
+      )
+    ) {
+      return "Edit Product";
+    }
+
+    return "Admin";
+  })();
 
   return (
     <header
