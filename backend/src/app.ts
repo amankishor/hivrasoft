@@ -10,6 +10,8 @@ import categoryRoutes from "./routes/category.routes";
 import productRoutes from "./routes/product.routes";
 import uploadRoutes from "./routes/upload.routes";
 import  addressRoutes from "./routes/user/address.routes"
+import bannerRoutes from "./routes/banner.routes";
+import wishlistRoutes from "./routes/wishlist.routes";
 
 const app =
   express();
@@ -116,6 +118,16 @@ app.use(
 app.use(
   "/api/address",
   addressRoutes
+);
+
+
+app.use(
+  "/api/banners",
+  bannerRoutes
+);
+app.use(
+  "/api/wishlist",
+  wishlistRoutes
 );
 
 /* =========================================================
