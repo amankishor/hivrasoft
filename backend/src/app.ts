@@ -12,6 +12,7 @@ import uploadRoutes from "./routes/upload.routes";
 import  addressRoutes from "./routes/user/address.routes"
 import bannerRoutes from "./routes/banner.routes";
 import wishlistRoutes from "./routes/wishlist.routes";
+import cartRoutes from "./routes/cart.routes";
 
 const app =
   express();
@@ -128,6 +129,10 @@ app.use(
 app.use(
   "/api/wishlist",
   wishlistRoutes
+);
+app.use(
+  "/api/cart",
+  cartRoutes
 );
 
 /* =========================================================
