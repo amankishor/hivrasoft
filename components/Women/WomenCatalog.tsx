@@ -10,19 +10,14 @@ import {
 } from "react";
 
 import { gsap } from "gsap";
-
-import {
-  ScrollTrigger,
-} from "gsap/ScrollTrigger";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 import {
   womenMenu,
   getWomenMenuItem,
-  getWomenPageTitle,
   type WomenBanner,
   type WomenProduct,
 } from "@/data/women";
-
 
 /* =========================================================
    TYPES
@@ -30,24 +25,17 @@ import {
 
 type WomenCatalogProps = {
   products: WomenProduct[];
-
   banners: WomenBanner[];
 
   title: string;
-
   description: string;
 
   category?: string;
-
   subcategory?: string;
 };
 
-
 /* =========================================================
-   PAGE BANNER SLIDER
-
-   REQUIRED IMAGE SIZE:
-   1600 x 558
+   BANNER SLIDER
 ========================================================= */
 
 function WomenBannerSlider({
@@ -55,66 +43,78 @@ function WomenBannerSlider({
 }: {
   banners: WomenBanner[];
 }) {
-  const [
-    active,
-    setActive,
-  ] = useState(0);
+  const [active, setActive] =
+    useState(0);
 
+  const validBanners =
+    useMemo(() => {
+      return banners.filter(
+        (banner) =>
+          Boolean(
+            banner.image
+          )
+      );
+    }, [banners]);
+
+  /* =======================================================
+     AUTO BANNER SLIDER
+  ======================================================= */
 
   useEffect(() => {
-    /*
-     * Route change hone par
-     * first banner se start karo.
-     */
-
     setActive(0);
 
-
     if (
-      banners.length <= 1
+      validBanners.length <=
+      1
     ) {
       return;
     }
 
-
     const timer =
-      window.setInterval(() => {
-        setActive(
-          (current) =>
-            (current + 1) %
-            banners.length
-        );
-      }, 3500);
-
+      window.setInterval(
+        () => {
+          setActive(
+            (current) =>
+              (current + 1) %
+              validBanners.length
+          );
+        },
+        4000
+      );
 
     return () => {
-      window.clearInterval(timer);
+      window.clearInterval(
+        timer
+      );
     };
-  }, [banners]);
+  }, [
+    validBanners.length,
+  ]);
 
-
-  if (!banners.length) {
+  if (
+    validBanners.length ===
+    0
+  ) {
     return null;
   }
 
-
   const previous = () => {
-    setActive((current) =>
-      current === 0
-        ? banners.length - 1
-        : current - 1
+    setActive(
+      (current) =>
+        current === 0
+          ? validBanners.length -
+            1
+          : current - 1
     );
   };
-
 
   const next = () => {
     setActive(
       (current) =>
         (current + 1) %
-        banners.length
+        validBanners.length
     );
   };
-
 
   return (
     <section
@@ -131,7 +131,7 @@ function WomenBannerSlider({
     >
       {/* BANNERS */}
 
-      {banners.map(
+      {validBanners.map(
         (
           banner,
           index
@@ -139,10 +139,12 @@ function WomenBannerSlider({
           <Link
             key={`${banner.image}-${index}`}
             href={
-              banner.redirect
+              banner.redirect ||
+              "#"
             }
             aria-label={
-              banner.alt
+              banner.alt ||
+              "Hivra Soft Banner"
             }
             className={`
               absolute
@@ -150,16 +152,16 @@ function WomenBannerSlider({
               block
               h-full
               w-full
-              transition-transform
+              transition-all
               duration-1000
               ease-[cubic-bezier(.22,1,.36,1)]
 
               ${
                 active === index
-                  ? "translate-x-0"
+                  ? "translate-x-0 opacity-100"
                   : index < active
-                    ? "-translate-x-full"
-                    : "translate-x-full"
+                    ? "-translate-x-full opacity-0"
+                    : "translate-x-full opacity-0"
               }
             `}
           >
@@ -168,7 +170,8 @@ function WomenBannerSlider({
                 banner.image
               }
               alt={
-                banner.alt
+                banner.alt ||
+                "Hivra Soft Banner"
               }
               className="
                 block
@@ -182,103 +185,105 @@ function WomenBannerSlider({
         )
       )}
 
+      {/* PREVIOUS BUTTON */}
 
-      {/* LEFT */}
-
-      {banners.length > 1 && (
+      {validBanners.length >
+        1 && (
         <button
           type="button"
           aria-label="Previous banner"
-          onClick={previous}
+          onClick={
+            previous
+          }
           className="
             absolute
-            left-3
+            left-4
             top-1/2
             z-30
             flex
-            h-9
-            w-9
+            h-10
+            w-10
             -translate-y-1/2
             items-center
             justify-center
             rounded-full
-            bg-white/85
-            text-[22px]
+            bg-white/90
+            text-[24px]
             text-[#211A18]
-            shadow-lg
-            backdrop-blur
+            shadow-md
             transition
+
             hover:scale-110
-            sm:left-5
-            sm:h-11
-            sm:w-11
-            sm:text-2xl
           "
         >
           ‹
         </button>
       )}
 
+      {/* NEXT BUTTON */}
 
-      {/* RIGHT */}
-
-      {banners.length > 1 && (
+      {validBanners.length >
+        1 && (
         <button
           type="button"
           aria-label="Next banner"
-          onClick={next}
+          onClick={
+            next
+          }
           className="
             absolute
-            right-3
+            right-4
             top-1/2
             z-30
             flex
-            h-9
-            w-9
+            h-10
+            w-10
             -translate-y-1/2
             items-center
             justify-center
             rounded-full
-            bg-white/85
-            text-[22px]
+            bg-white/90
+            text-[24px]
             text-[#211A18]
-            shadow-lg
-            backdrop-blur
+            shadow-md
             transition
+
             hover:scale-110
-            sm:right-5
-            sm:h-11
-            sm:w-11
-            sm:text-2xl
           "
         >
           ›
         </button>
       )}
 
-
       {/* DOTS */}
 
-      {banners.length > 1 && (
+      {validBanners.length >
+        1 && (
         <div
           className="
             absolute
-            bottom-3
+            bottom-4
             left-1/2
             z-30
             flex
             -translate-x-1/2
             items-center
             gap-2
-            sm:bottom-5
           "
         >
-          {banners.map(
-            (_, index) => (
+          {validBanners.map(
+            (
+              _,
+              index
+            ) => (
               <button
-                key={index}
+                key={
+                  index
+                }
                 type="button"
-                aria-label={`Banner ${index + 1}`}
+                aria-label={`Banner ${
+                  index + 1
+                }`}
                 onClick={() =>
                   setActive(
                     index
@@ -287,15 +292,14 @@ function WomenBannerSlider({
                 className={`
                   h-[6px]
                   rounded-full
-                  shadow-sm
                   transition-all
                   duration-300
 
                   ${
                     active ===
                     index
-                      ? "w-8 bg-[#8C1839]"
-                      : "w-[6px] bg-white/90"
+                      ? "w-8 bg-[#9D173E]"
+                      : "w-[6px] bg-white shadow"
                   }
                 `}
               />
@@ -307,6 +311,225 @@ function WomenBannerSlider({
   );
 }
 
+/* =========================================================
+   CATEGORY NAVIGATION
+========================================================= */
+
+function CategoryNavigation({
+  category,
+  subcategory,
+}: {
+  category?: string;
+  subcategory?: string;
+}) {
+  const activeParent =
+    getWomenMenuItem(
+      category
+    );
+
+  return (
+    <div
+      className="
+        w-full
+        overflow-hidden
+        rounded-[20px]
+        border
+        border-[#211A18]/8
+        bg-[#EFE5DB]
+        px-4
+        py-5
+
+        md:px-6
+      "
+    >
+      {/* ===================================================
+          MAIN CATEGORY ROW
+      =================================================== */}
+
+      <div
+        className="
+          flex
+          w-full
+          justify-start
+          overflow-x-auto
+
+          md:justify-center
+        "
+      >
+        <div
+          className="
+            flex
+            min-w-max
+            items-center
+            justify-center
+            gap-3
+          "
+        >
+          {/* ALL WOMEN */}
+
+          <Link
+            href="/women/"
+            className={`
+              shrink-0
+              rounded-full
+              px-6
+              py-3
+              text-[9px]
+              font-semibold
+              uppercase
+              tracking-[0.13em]
+              transition-all
+
+              ${
+                !category
+                  ? "bg-[#9D173E] text-white"
+                  : "bg-white text-[#211A18] hover:bg-[#9D173E] hover:text-white"
+              }
+            `}
+          >
+            All Women
+          </Link>
+
+          {/* MENU ITEMS */}
+
+          {womenMenu.map(
+            (item) => (
+              <Link
+                key={
+                  item.slug
+                }
+                href={
+                  item.href
+                }
+                className={`
+                  shrink-0
+                  rounded-full
+                  px-6
+                  py-3
+                  text-[9px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.13em]
+                  transition-all
+
+                  ${
+                    category ===
+                    item.slug
+                      ? "bg-[#9D173E] text-white"
+                      : "bg-white text-[#211A18] hover:bg-[#9D173E] hover:text-white"
+                  }
+                `}
+              >
+                {
+                  item.name
+                }
+              </Link>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* ===================================================
+          SUBCATEGORY ROW
+      =================================================== */}
+
+      {activeParent &&
+        activeParent.children
+          .length >
+          0 && (
+        <div
+          className="
+            mt-5
+            flex
+            w-full
+            justify-start
+            overflow-x-auto
+            border-t
+            border-[#211A18]/8
+            pt-4
+
+            md:justify-center
+          "
+        >
+          <div
+            className="
+              flex
+              min-w-max
+              items-center
+              justify-center
+              gap-8
+            "
+          >
+            {/* ALL CURRENT CATEGORY */}
+
+            <Link
+              href={
+                activeParent.href
+              }
+              className={`
+                shrink-0
+                border-b-2
+                pb-2
+                text-[8px]
+                font-semibold
+                uppercase
+                tracking-[0.12em]
+                transition
+
+                ${
+                  !subcategory
+                    ? "border-[#9D173E] text-[#9D173E]"
+                    : "border-transparent text-[#6F5A4C] hover:text-[#9D173E]"
+                }
+              `}
+            >
+              All{" "}
+              {
+                activeParent.name
+              }
+            </Link>
+
+            {/* CHILD CATEGORIES */}
+
+            {activeParent.children.map(
+              (child) => (
+                <Link
+                  key={
+                    child.slug
+                  }
+                  href={
+                    child.href
+                  }
+                  className={`
+                    shrink-0
+                    border-b-2
+                    pb-2
+                    text-[8px]
+                    font-semibold
+                    uppercase
+                    tracking-[0.12em]
+                    transition
+
+                    ${
+                      subcategory ===
+                      child.slug
+                        ? "border-[#9D173E] text-[#9D173E]"
+                        : "border-transparent text-[#6F5A4C] hover:text-[#9D173E]"
+                    }
+                  `}
+                >
+                  {
+                    child.name
+                  }
+                </Link>
+              )
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* =========================================================
    PRODUCT CARD
@@ -317,24 +540,8 @@ function ProductCard({
 }: {
   product: WomenProduct;
 }) {
-  const [
-    hovered,
-    setHovered,
-  ] = useState(false);
-
-  const [
-    clicked,
-    setClicked,
-  ] = useState(false);
-
-
-  const showSecond =
-    hovered || clicked;
-
-
   const productUrl =
-    `/product/${product.slug}/`;
-
+    `/product/${product.slug}`;
 
   const discount =
     product.actualPrice >
@@ -347,105 +554,103 @@ function ProductCard({
         )
       : 0;
 
-
   return (
     <article
       data-product-card
       className="
         group
-        overflow-hidden
-        rounded-[18px]
-        border
-        border-[#211A18]/10
-        bg-white
-        shadow-[0_10px_35px_rgba(33,26,24,0.04)]
-        transition-all
-        duration-500
-        hover:-translate-y-2
-        hover:shadow-[0_24px_60px_rgba(33,26,24,0.12)]
+        min-w-0
       "
     >
-      {/* IMAGE */}
+      {/* ===================================================
+          PRODUCT IMAGE
+      =================================================== */}
 
-      <div
-        role="button"
-        tabIndex={0}
+      <Link
+        href={
+          productUrl
+        }
         className="
           relative
+          block
           aspect-[4/5]
-          cursor-pointer
           overflow-hidden
-          bg-[#EFE6DC]
+          rounded-[14px]
+          bg-[#F2ECE7]
         "
-        onMouseEnter={() =>
-          setHovered(true)
-        }
-        onMouseLeave={() =>
-          setHovered(false)
-        }
-        onClick={() =>
-          setClicked(
-            (value) =>
-              !value
-          )
-        }
       >
-        {/* FIRST */}
+        {product.image1 ? (
+          <>
+            {/* NORMAL IMAGE */}
 
-        <img
-          src={
-            product.image1
-          }
-          alt={
-            product.name
-          }
-          className={`
-            absolute
-            inset-0
-            h-full
-            w-full
-            object-cover
-            transition-all
-            duration-700
+            <img
+              src={
+                product.image1
+              }
+              alt={
+                product.name
+              }
+              className="
+                absolute
+                inset-0
+                h-full
+                w-full
+                object-cover
+                object-center
+                opacity-100
+                transition-all
+                duration-500
 
-            ${
-              showSecond
-                ? "scale-105 opacity-0"
-                : "scale-100 opacity-100"
-            }
-          `}
-        />
+                group-hover:scale-[1.02]
+                group-hover:opacity-0
+              "
+            />
 
+            {/* HOVER IMAGE */}
 
-        {/* SECOND */}
+            <img
+              src={
+                product.image2 ||
+                product.image1
+              }
+              alt={`${product.name} alternate`}
+              className="
+                absolute
+                inset-0
+                h-full
+                w-full
+                scale-[1.02]
+                object-cover
+                object-center
+                opacity-0
+                transition-all
+                duration-500
 
-        <img
-          src={
-            product.image2 ||
-            product.image1
-          }
-          alt={`${product.name} alternate`}
-          className={`
-            absolute
-            inset-0
-            h-full
-            w-full
-            object-cover
-            transition-all
-            duration-700
-
-            ${
-              showSecond
-                ? "scale-100 opacity-100"
-                : "scale-105 opacity-0"
-            }
-          `}
-        />
-
+                group-hover:scale-100
+                group-hover:opacity-100
+              "
+            />
+          </>
+        ) : (
+          <div
+            className="
+              flex
+              h-full
+              w-full
+              items-center
+              justify-center
+              text-[10px]
+              text-black/30
+            "
+          >
+            No Image
+          </div>
+        )}
 
         {/* DISCOUNT */}
 
-        {discount > 0 && (
+        {discount >
+          0 && (
           <span
             className="
               absolute
@@ -453,9 +658,9 @@ function ProductCard({
               top-3
               z-20
               rounded-full
-              bg-[#8C1839]
+              bg-[#9D173E]
               px-3
-              py-[6px]
+              py-1.5
               text-[8px]
               font-semibold
               text-white
@@ -465,8 +670,7 @@ function ProductCard({
           </span>
         )}
 
-
-        {/* HEART */}
+        {/* WISHLIST */}
 
         <span
           className="
@@ -482,290 +686,90 @@ function ProductCard({
             rounded-full
             bg-white/90
             text-[18px]
-            text-[#8C1839]
+            text-[#9D173E]
+            shadow-sm
           "
         >
           ♡
         </span>
-      </div>
+      </Link>
 
+      {/* ===================================================
+          PRODUCT INFORMATION
+      =================================================== */}
 
-      {/* DETAILS */}
-
-      <div className="p-4">
-        <p
-          className="
-            mb-2
-            text-[8px]
-            uppercase
-            tracking-[0.22em]
-            text-[#9C765D]
-          "
-        >
-          Hivra Soft
-        </p>
-
+      <div
+        className="
+          px-1
+          pt-4
+        "
+      >
         <Link
-          href={productUrl}
+          href={
+            productUrl
+          }
           className="
             block
-            min-h-[44px]
-            text-[13px]
+            truncate
+            text-[12px]
             font-medium
-            leading-5
+            text-[#211A18]
             transition
-            hover:text-[#8C1839]
+
+            hover:text-[#9D173E]
           "
         >
           {product.name}
         </Link>
 
+        {/* PRICE */}
+
         <div
           className="
-            mt-3
+            mt-2
             flex
+            flex-wrap
             items-center
             gap-2
           "
         >
           <span
             className="
-              text-[15px]
-              font-bold
-              text-[#8C1839]
+              text-[13px]
+              font-semibold
+              text-[#211A18]
             "
           >
             ₹
-            {
+            {Number(
               product.discountedPrice
-            }
+            ).toLocaleString(
+              "en-IN"
+            )}
           </span>
 
-          <span
-            className="
-              text-[11px]
-              text-black/35
-              line-through
-            "
-          >
-            ₹
-            {
-              product.actualPrice
-            }
-          </span>
+          {product.actualPrice >
+            product.discountedPrice && (
+            <span
+              className="
+                text-[10px]
+                text-black/35
+                line-through
+              "
+            >
+              ₹
+              {Number(
+                product.actualPrice
+              ).toLocaleString(
+                "en-IN"
+              )}
+            </span>
+          )}
         </div>
-
-        <Link
-          href={productUrl}
-          className="
-            mt-4
-            flex
-            w-full
-            items-center
-            justify-center
-            rounded-full
-            bg-[#F2E9E2]
-            px-4
-            py-3
-            text-[8px]
-            font-semibold
-            uppercase
-            tracking-[0.17em]
-            transition
-            hover:bg-[#211A18]
-            hover:text-white
-          "
-        >
-          View Product
-        </Link>
       </div>
     </article>
   );
 }
-
-
-/* =========================================================
-   CATEGORY NAV
-========================================================= */
-
-function CategoryNavigation({
-  category,
-  subcategory,
-}: {
-  category?: string;
-  subcategory?: string;
-}) {
-  const activeParent =
-    getWomenMenuItem(
-      category
-    );
-
-
-  return (
-    <section
-      className="
-        border-y
-        border-[#211A18]/10
-        bg-[#EFE6DC]/95
-        backdrop-blur-xl
-      "
-    >
-      {/* MAIN */}
-
-      <div
-        className="
-          mx-auto
-          flex
-          max-w-[1450px]
-          gap-3
-          overflow-x-auto
-          px-4
-          py-4
-          md:px-8
-        "
-      >
-        <Link
-          href="/women/"
-          className={`
-            shrink-0
-            rounded-full
-            px-5
-            py-3
-            text-[9px]
-            font-semibold
-            uppercase
-            tracking-[0.14em]
-
-            ${
-              !category
-                ? "bg-[#211A18] text-white"
-                : "bg-white text-[#211A18]"
-            }
-          `}
-        >
-          All Women
-        </Link>
-
-
-        {womenMenu.map(
-          (item) => (
-            <Link
-              key={
-                item.slug
-              }
-              href={
-                item.href
-              }
-              className={`
-                shrink-0
-                rounded-full
-                px-5
-                py-3
-                text-[9px]
-                font-semibold
-                uppercase
-                tracking-[0.14em]
-                transition
-
-                ${
-                  category ===
-                  item.slug
-                    ? "bg-[#8C1839] text-white"
-                    : "bg-white text-[#211A18] hover:bg-[#8C1839] hover:text-white"
-                }
-              `}
-            >
-              {
-                item.name
-              }
-            </Link>
-          )
-        )}
-      </div>
-
-
-      {/* CHILDREN */}
-
-      {!!activeParent
-        ?.children
-        .length && (
-        <div
-          className="
-            mx-auto
-            flex
-            max-w-[1450px]
-            gap-7
-            overflow-x-auto
-            px-4
-            pb-5
-            md:px-8
-          "
-        >
-          <Link
-            href={
-              activeParent.href
-            }
-            className={`
-              shrink-0
-              border-b-2
-              pb-2
-              text-[9px]
-              font-semibold
-              uppercase
-              tracking-[0.13em]
-
-              ${
-                !subcategory
-                  ? "border-[#8C1839] text-[#8C1839]"
-                  : "border-transparent text-[#6F5A4C]"
-              }
-            `}
-          >
-            All{" "}
-            {
-              activeParent.name
-            }
-          </Link>
-
-
-          {activeParent.children.map(
-            (child) => (
-              <Link
-                key={
-                  child.slug
-                }
-                href={
-                  child.href
-                }
-                className={`
-                  shrink-0
-                  border-b-2
-                  pb-2
-                  text-[9px]
-                  font-semibold
-                  uppercase
-                  tracking-[0.13em]
-
-                  ${
-                    subcategory ===
-                    child.slug
-                      ? "border-[#8C1839] text-[#8C1839]"
-                      : "border-transparent text-[#6F5A4C] hover:text-[#8C1839]"
-                  }
-                `}
-              >
-                {
-                  child.name
-                }
-              </Link>
-            )
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
 
 /* =========================================================
    WOMEN CATALOG
@@ -774,8 +778,6 @@ function CategoryNavigation({
 export default function WomenCatalog({
   products,
   banners,
-  title,
-  description,
   category,
   subcategory,
 }: WomenCatalogProps) {
@@ -784,17 +786,13 @@ export default function WomenCatalog({
       null
     );
 
-
-  const [
-    sort,
-    setSort,
-  ] = useState(
-    "featured"
-  );
-
+  const [sort, setSort] =
+    useState(
+      "featured"
+    );
 
   /* =======================================================
-     SORT
+     SORT PRODUCTS
   ======================================================= */
 
   const sortedProducts =
@@ -803,35 +801,42 @@ export default function WomenCatalog({
         ...products,
       ];
 
-
       if (
-        sort === "low-high"
+        sort ===
+        "low-high"
       ) {
         return result.sort(
-          (a, b) =>
+          (
+            a,
+            b
+          ) =>
             a.discountedPrice -
             b.discountedPrice
         );
       }
 
-
       if (
-        sort === "high-low"
+        sort ===
+        "high-low"
       ) {
         return result.sort(
-          (a, b) =>
+          (
+            a,
+            b
+          ) =>
             b.discountedPrice -
             a.discountedPrice
         );
       }
 
-
       return result;
-    }, [products, sort]);
-
+    }, [
+      products,
+      sort,
+    ]);
 
   /* =======================================================
-     GSAP
+     PRODUCT ANIMATION
   ======================================================= */
 
   useEffect(() => {
@@ -839,77 +844,61 @@ export default function WomenCatalog({
       ScrollTrigger
     );
 
-
     const root =
       rootRef.current;
-
 
     if (!root) {
       return;
     }
 
+    const context =
+      gsap.context(
+        () => {
+          ScrollTrigger.batch(
+            "[data-product-card]",
+            {
+              start:
+                "top 92%",
 
-    const ctx =
-      gsap.context(() => {
-        gsap.fromTo(
-          "[data-women-hero]",
-          {
-            y: 35,
-            opacity: 0,
-          },
-          {
-            y: 0,
-            opacity: 1,
+              once: true,
 
-            duration: 0.8,
+              onEnter:
+                (
+                  elements
+                ) => {
+                  gsap.fromTo(
+                    elements,
+                    {
+                      y: 30,
+                      opacity: 0,
+                    },
+                    {
+                      y: 0,
+                      opacity: 1,
 
-            ease:
-              "power3.out",
-          }
-        );
+                      duration:
+                        0.6,
 
+                      stagger:
+                        0.06,
 
-        ScrollTrigger.batch(
-          "[data-product-card]",
-          {
-            start:
-              "top 92%",
-
-            once: true,
-
-            onEnter:
-              (elements) => {
-                gsap.fromTo(
-                  elements,
-                  {
-                    y: 40,
-                    opacity: 0,
-                  },
-                  {
-                    y: 0,
-                    opacity: 1,
-
-                    duration:
-                      0.7,
-
-                    stagger:
-                      0.07,
-
-                    ease:
-                      "power3.out",
-                  }
-                );
-              },
-          }
-        );
-      }, root);
-
+                      ease:
+                        "power3.out",
+                    }
+                  );
+                },
+            }
+          );
+        },
+        root
+      );
 
     return () => {
-      ctx.revert();
+      context.revert();
     };
-  }, [products]);
-
+  }, [
+    products,
+  ]);
 
   /* =======================================================
      RENDER
@@ -917,175 +906,51 @@ export default function WomenCatalog({
 
   return (
     <main
-      ref={rootRef}
+      ref={
+        rootRef
+      }
       className="
         min-h-screen
-        bg-[#F7F3EF]
+        bg-[#F8F5F2]
         text-[#211A18]
       "
     >
-      {/* =============================================
-          ROUTE SPECIFIC BANNER
-      ============================================= */}
+      {/* =================================================
+          TOP BANNER
+
+          Existing banner data
+          data/women.ts se aayega.
+      ================================================= */}
 
       <WomenBannerSlider
-        banners={banners}
-      />
-
-
-      {/* =============================================
-          HERO TEXT
-      ============================================= */}
-
-      <section
-        className="
-          border-b
-          border-[#211A18]/10
-          px-5
-          py-14
-          md:px-8
-          md:py-20
-        "
-      >
-        <div
-          data-women-hero
-          className="
-            mx-auto
-            max-w-[1450px]
-          "
-        >
-          {/* BREADCRUMB */}
-
-          <div
-            className="
-              mb-7
-              flex
-              flex-wrap
-              items-center
-              gap-2
-              text-[8px]
-              uppercase
-              tracking-[0.2em]
-              text-[#9C765D]
-            "
-          >
-            <Link href="/">
-              Home
-            </Link>
-
-            <span>/</span>
-
-            <Link href="/women/">
-              Women
-            </Link>
-
-
-            {category && (
-              <>
-                <span>
-                  /
-                </span>
-
-                <Link
-                  href={`/women/${category}/`}
-                >
-                  {
-                    getWomenPageTitle(
-                      category
-                    )
-                  }
-                </Link>
-              </>
-            )}
-
-
-            {subcategory && (
-              <>
-                <span>
-                  /
-                </span>
-
-                <span
-                  className="
-                    text-[#211A18]
-                  "
-                >
-                  {
-                    getWomenPageTitle(
-                      category,
-                      subcategory
-                    )
-                  }
-                </span>
-              </>
-            )}
-          </div>
-
-
-          <p
-            className="
-              mb-4
-              text-[8px]
-              uppercase
-              tracking-[0.5em]
-              text-[#9C765D]
-            "
-          >
-            Hivra Soft Women
-          </p>
-
-
-          <h1
-            className="
-              text-[48px]
-              font-medium
-              leading-[0.9]
-              tracking-[-0.055em]
-              md:text-[76px]
-              lg:text-[92px]
-            "
-          >
-            {title}
-          </h1>
-
-
-          <p
-            className="
-              mt-6
-              max-w-[620px]
-              text-[13px]
-              leading-7
-              text-[#6F5A4C]
-            "
-          >
-            {description}
-          </p>
-        </div>
-      </section>
-
-
-      {/* =============================================
-          CATEGORY
-      ============================================= */}
-
-      <CategoryNavigation
-        category={category}
-        subcategory={
-          subcategory
+        banners={
+          banners
         }
       />
 
+      {/* =================================================
+          IMPORTANT
 
-      {/* =============================================
-          PRODUCTS
-      ============================================= */}
+          Purana huge:
+          breadcrumb
+          HIVRA SOFT WOMEN
+          Sports Bra title
+          description
+
+          YAHAN NAHI HAI.
+      ================================================= */}
+
+      {/* =================================================
+          PRODUCT AREA
+      ================================================= */}
 
       <section
         className="
           px-4
-          py-14
+          py-10
+
           md:px-8
-          md:py-20
+          md:py-12
         "
       >
         <div
@@ -1094,7 +959,30 @@ export default function WomenCatalog({
             max-w-[1450px]
           "
         >
-          {/* TOOLBAR */}
+          {/* =============================================
+              CATEGORY NAVIGATION
+
+              Ab ye product section ke andar hai.
+          ============================================= */}
+
+          <div
+            className="
+              mb-9
+            "
+          >
+            <CategoryNavigation
+              category={
+                category
+              }
+              subcategory={
+                subcategory
+              }
+            />
+          </div>
+
+          {/* =============================================
+              TOOLBAR
+          ============================================= */}
 
           <div
             className="
@@ -1105,28 +993,38 @@ export default function WomenCatalog({
               border-b
               border-[#211A18]/10
               pb-5
+
               sm:flex-row
               sm:items-center
               sm:justify-between
             "
           >
+            {/* PRODUCT COUNT */}
+
             <p
               className="
                 text-[9px]
+                font-semibold
                 uppercase
-                tracking-[0.2em]
+                tracking-[0.18em]
                 text-[#8C6A52]
               "
             >
               {
                 sortedProducts.length
               }{" "}
-              Products
+              {sortedProducts.length ===
+              1
+                ? "Product"
+                : "Products"}
             </p>
 
+            {/* SORT */}
 
             <select
-              value={sort}
+              value={
+                sort
+              }
               onChange={(
                 event
               ) =>
@@ -1136,9 +1034,10 @@ export default function WomenCatalog({
                 )
               }
               className="
+                rounded-[8px]
                 border
                 border-[#211A18]/15
-                bg-[#F7F3EF]
+                bg-white
                 px-4
                 py-3
                 text-[9px]
@@ -1147,30 +1046,23 @@ export default function WomenCatalog({
                 outline-none
               "
             >
-              <option
-                value="featured"
-              >
+              <option value="featured">
                 Featured
               </option>
 
-              <option
-                value="low-high"
-              >
-                Price Low to
-                High
+              <option value="low-high">
+                Price Low to High
               </option>
 
-              <option
-                value="high-low"
-              >
-                Price High to
-                Low
+              <option value="high-low">
+                Price High to Low
               </option>
             </select>
           </div>
 
-
-          {/* GRID */}
+          {/* =============================================
+              PRODUCTS
+          ============================================= */}
 
           {sortedProducts.length >
           0 ? (
@@ -1178,13 +1070,21 @@ export default function WomenCatalog({
               className="
                 grid
                 grid-cols-2
-                gap-4
+                gap-x-4
+                gap-y-9
+
+                sm:gap-x-5
+
                 md:grid-cols-3
+                md:gap-x-6
+
                 lg:grid-cols-4
               "
             >
               {sortedProducts.map(
-                (product) => (
+                (
+                  product
+                ) => (
                   <ProductCard
                     key={
                       product.slug
@@ -1197,12 +1097,20 @@ export default function WomenCatalog({
               )}
             </div>
           ) : (
+            /* ===========================================
+               EMPTY STATE
+            =========================================== */
+
             <div
               className="
                 flex
-                min-h-[380px]
+                min-h-[330px]
                 items-center
                 justify-center
+                rounded-[18px]
+                border
+                border-[#211A18]/8
+                bg-white
                 text-center
               "
             >
@@ -1211,7 +1119,7 @@ export default function WomenCatalog({
                   className="
                     text-[8px]
                     uppercase
-                    tracking-[0.35em]
+                    tracking-[0.3em]
                     text-[#9C765D]
                   "
                 >
@@ -1221,26 +1129,26 @@ export default function WomenCatalog({
                 <h2
                   className="
                     mt-4
-                    text-[32px]
+                    text-[25px]
                     font-medium
                   "
                 >
-                  Products coming
-                  soon.
+                  No products found.
                 </h2>
 
                 <Link
                   href="/women/"
                   className="
-                    mt-7
+                    mt-6
                     inline-flex
                     rounded-full
                     bg-[#211A18]
                     px-7
                     py-3
                     text-[8px]
+                    font-semibold
                     uppercase
-                    tracking-[0.17em]
+                    tracking-[0.14em]
                     text-white
                   "
                 >
