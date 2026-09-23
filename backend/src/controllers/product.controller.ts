@@ -7,12 +7,23 @@ import {
   createProduct,
   getAllProducts,
   getActiveProducts,
+  getFeaturedProducts,
+  getNewLaunchProducts,
   getProductById,
   getProductBySlug,
+  getProductCatalog,
+  getCatalogProductBySlug,
   updateProduct,
   deleteProduct,
-  toStorefrontProduct,
-  toCatalogProduct,
+
+  uploadProductColorImages,
+  deleteProductColorImage,
+  setDefaultProductColorImage,
+  setDefaultProductColor,
+
+  addProductSize,
+  updateProductSize,
+  deleteProductSize,
 } from "../services/product.service";
 
 /* =========================================================
@@ -33,9 +44,7 @@ const getRouteParam = (
   }
 
   if (
-    Array.isArray(
-      value
-    )
+    Array.isArray(value)
   ) {
     if (!value[0]) {
       throw new Error(
@@ -50,7 +59,21 @@ const getRouteParam = (
 };
 
 /* =========================================================
+   ERROR MESSAGE
+========================================================= */
+
+const getErrorMessage = (
+  error: unknown,
+  fallback: string
+) => {
+  return error instanceof Error
+    ? error.message
+    : fallback;
+};
+
+/* =========================================================
    CREATE PRODUCT
+   ADMIN
 ========================================================= */
 
 export const createProductController =
@@ -60,86 +83,19 @@ export const createProductController =
   ) => {
     try {
       const {
-        name,
-        slug,
-        shortDescription,
-        description,
         categories,
-        price,
-        compareAtPrice,
-        costPrice,
-        stock,
-        mainImages,
         isColor,
         colors,
-        status,
         isActive,
         isFeatured,
         isNewLaunch,
-        tags,
-        seoTitle,
-        seoDescription,
-      } =
-        req.body;
-
-      if (
-        !name ||
-        !String(
-          name
-        ).trim()
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-
-            message:
-              "Product name is required.",
-          });
-      }
-
-      if (
-        price ===
-          undefined ||
-        price ===
-          null ||
-        price ===
-          ""
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-
-            message:
-              "Product price is required.",
-          });
-      }
-
-      if (
-        stock ===
-          undefined ||
-        stock ===
-          null ||
-        stock ===
-          ""
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-
-            message:
-              "Product stock is required.",
-          });
-      }
+      } = req.body;
 
       if (
         !Array.isArray(
           categories
         ) ||
-        categories.length ===
-          0
+        categories.length === 0
       ) {
         return res
           .status(400)
@@ -153,43 +109,17 @@ export const createProductController =
 
       const product =
         await createProduct({
-          name,
-
-          slug,
-
-          shortDescription,
-
-          description,
-
           categories,
-
-          price,
-
-          compareAtPrice,
-
-          costPrice,
-
-          stock,
-
-          mainImages,
 
           isColor,
 
           colors,
-
-          status,
 
           isActive,
 
           isFeatured,
 
           isNewLaunch,
-
-          tags,
-
-          seoTitle,
-
-          seoDescription,
         });
 
       return res
@@ -202,24 +132,24 @@ export const createProductController =
 
           product,
         });
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return res
         .status(400)
         .json({
           success: false,
 
           message:
-            error instanceof Error
-              ? error.message
-              : "Unable to create product.",
+            getErrorMessage(
+              error,
+              "Unable to create product."
+            ),
         });
     }
   };
 
 /* =========================================================
-   GET ALL PRODUCTS - ADMIN
+   GET ALL PRODUCTS
+   ADMIN
 ========================================================= */
 
 export const getAllProductsController =
@@ -240,27 +170,142 @@ export const getAllProductsController =
             products.length,
 
           products,
-
-          data: products,
         });
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return res
         .status(500)
         .json({
           success: false,
 
           message:
-            error instanceof Error
-              ? error.message
-              : "Unable to load products.",
+            getErrorMessage(
+              error,
+              "Unable to load products."
+            ),
         });
     }
   };
 
 /* =========================================================
-   GET CATALOG PRODUCTS - CLEAN COLOR-CENTRIC API
+   GET ACTIVE PRODUCTS
+   PUBLIC
+========================================================= */
+
+export const getActiveProductsController =
+  async (
+    _req: Request,
+    res: Response
+  ) => {
+    try {
+      const products =
+        await getActiveProducts();
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          count:
+            products.length,
+
+          products,
+        });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to load active products."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   FEATURED PRODUCTS
+   PUBLIC
+========================================================= */
+
+export const getFeaturedProductsController =
+  async (
+    _req: Request,
+    res: Response
+  ) => {
+    try {
+      const products =
+        await getFeaturedProducts();
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          count:
+            products.length,
+
+          products,
+        });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to load featured products."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   NEW LAUNCH PRODUCTS
+   PUBLIC
+========================================================= */
+
+export const getNewLaunchProductsController =
+  async (
+    _req: Request,
+    res: Response
+  ) => {
+    try {
+      const products =
+        await getNewLaunchProducts();
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          count:
+            products.length,
+
+          products,
+        });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to load new launch products."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   CLEAN PRODUCT CATALOG
+   PUBLIC / FRONTEND
 ========================================================= */
 
 export const getCatalogProductsController =
@@ -269,29 +314,38 @@ export const getCatalogProductsController =
     res: Response
   ) => {
     try {
-      const productDocuments =
-        await getActiveProducts();
-
       const products =
-        productDocuments.map(
-          toCatalogProduct
-        );
+        await getProductCatalog();
 
-      return res.status(200).json({
-        success: true,
-        count: products.length,
-        products,
-      });
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          count:
+            products.length,
+
+          products,
+        });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to load catalog products.",
-      });
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to load product catalog."
+            ),
+        });
     }
   };
+
+/* =========================================================
+   CATALOG PRODUCT BY SLUG
+   PUBLIC / FRONTEND
+========================================================= */
 
 export const getCatalogProductBySlugController =
   async (
@@ -306,47 +360,8 @@ export const getCatalogProductBySlugController =
         );
 
       const product =
-        await getProductBySlug(slug);
-
-      const catalogProduct =
-        toCatalogProduct(
-          product
-        );
-
-      return res.status(200).json({
-        success: true,
-        count: 1,
-        products: [
-          catalogProduct,
-        ],
-      });
-    } catch (error) {
-      return res.status(404).json({
-        success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Product not found.",
-      });
-    }
-  };
-
-/* =========================================================
-   GET ACTIVE PRODUCTS - STOREFRONT
-========================================================= */
-
-export const getActiveProductsController =
-  async (
-    _req: Request,
-    res: Response
-  ) => {
-    try {
-      const productDocuments =
-        await getActiveProducts();
-
-      const products =
-        productDocuments.map(
-          toStorefrontProduct
+        await getCatalogProductBySlug(
+          slug
         );
 
       return res
@@ -354,31 +369,26 @@ export const getActiveProductsController =
         .json({
           success: true,
 
-          count:
-            products.length,
-
-          products,
-
-          data: products,
+          product,
         });
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return res
-        .status(500)
+        .status(404)
         .json({
           success: false,
 
           message:
-            error instanceof Error
-              ? error.message
-              : "Unable to load products.",
+            getErrorMessage(
+              error,
+              "Product not found."
+            ),
         });
     }
   };
 
 /* =========================================================
    GET PRODUCT BY ID
+   ADMIN
 ========================================================= */
 
 export const getProductByIdController =
@@ -402,26 +412,27 @@ export const getProductByIdController =
         .status(200)
         .json({
           success: true,
+
           product,
         });
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return res
         .status(404)
         .json({
           success: false,
 
           message:
-            error instanceof Error
-              ? error.message
-              : "Product not found.",
+            getErrorMessage(
+              error,
+              "Product not found."
+            ),
         });
     }
   };
 
 /* =========================================================
    GET PRODUCT BY SLUG
+   PUBLIC
 ========================================================= */
 
 export const getProductBySlugController =
@@ -436,40 +447,36 @@ export const getProductBySlugController =
           "Product slug"
         );
 
-      const productDocument =
+      const product =
         await getProductBySlug(
           slug
-        );
-
-      const product =
-        toStorefrontProduct(
-          productDocument
         );
 
       return res
         .status(200)
         .json({
           success: true,
+
           product,
         });
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return res
         .status(404)
         .json({
           success: false,
 
           message:
-            error instanceof Error
-              ? error.message
-              : "Product not found.",
+            getErrorMessage(
+              error,
+              "Product not found."
+            ),
         });
     }
   };
 
 /* =========================================================
    UPDATE PRODUCT
+   ADMIN
 ========================================================= */
 
 export const updateProductController =
@@ -488,74 +495,23 @@ export const updateProductController =
         await updateProduct(
           id,
           {
-            name:
-              req.body.name,
-
-            slug:
-              req.body.slug,
-
-            shortDescription:
-              req.body
-                .shortDescription,
-
-            description:
-              req.body
-                .description,
-
             categories:
-              req.body
-                .categories,
-
-            price:
-              req.body.price,
-
-            compareAtPrice:
-              req.body
-                .compareAtPrice,
-
-            costPrice:
-              req.body
-                .costPrice,
-
-            stock:
-              req.body.stock,
-
-            mainImages:
-              req.body
-                .mainImages,
+              req.body.categories,
 
             isColor:
-              req.body
-                .isColor,
+              req.body.isColor,
 
             colors:
               req.body.colors,
 
-            status:
-              req.body.status,
-
             isActive:
-              req.body
-                .isActive,
+              req.body.isActive,
 
             isFeatured:
-              req.body
-                .isFeatured,
+              req.body.isFeatured,
 
             isNewLaunch:
-              req.body
-                .isNewLaunch,
-
-            tags:
-              req.body.tags,
-
-            seoTitle:
-              req.body
-                .seoTitle,
-
-            seoDescription:
-              req.body
-                .seoDescription,
+              req.body.isNewLaunch,
           }
         );
 
@@ -569,24 +525,511 @@ export const updateProductController =
 
           product,
         });
-    } catch (
-      error
-    ) {
+    } catch (error) {
       return res
         .status(400)
         .json({
           success: false,
 
           message:
-            error instanceof Error
-              ? error.message
-              : "Unable to update product.",
+            getErrorMessage(
+              error,
+              "Unable to update product."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   UPLOAD COLOR IMAGES
+   ADMIN
+========================================================= */
+
+export const uploadProductColorImagesController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const id =
+        getRouteParam(
+          req.params.id,
+          "Product ID"
+        );
+
+      const colorSlug =
+        getRouteParam(
+          req.params.colorSlug,
+          "Color slug"
+        );
+
+      const files =
+        req.files as
+          | Express.Multer.File[]
+          | undefined;
+
+      if (
+        !files ||
+        files.length === 0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "At least one image is required.",
+          });
+      }
+
+      const result =
+        await uploadProductColorImages(
+          id,
+          colorSlug,
+          files.map(
+            (file) => ({
+              buffer:
+                file.buffer,
+
+              originalname:
+                file.originalname,
+            })
+          )
+        );
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Product images uploaded successfully.",
+
+          ...result,
+        });
+    } catch (error) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to upload product images."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   DELETE COLOR IMAGE
+   ADMIN
+
+   BODY:
+   {
+     "publicId": "hivrasoft/products/.../image-01"
+   }
+========================================================= */
+
+export const deleteProductColorImageController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const id =
+        getRouteParam(
+          req.params.id,
+          "Product ID"
+        );
+
+      const colorSlug =
+        getRouteParam(
+          req.params.colorSlug,
+          "Color slug"
+        );
+
+      const publicId =
+        String(
+          req.body.publicId ||
+            ""
+        ).trim();
+
+      if (!publicId) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Image publicId is required.",
+          });
+      }
+
+      const product =
+        await deleteProductColorImage(
+          id,
+          colorSlug,
+          publicId
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Product image deleted successfully.",
+
+          product,
+        });
+    } catch (error) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to delete product image."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   SET DEFAULT IMAGE
+   ADMIN
+
+   BODY:
+   {
+     "publicId": "..."
+   }
+========================================================= */
+
+export const setDefaultProductColorImageController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const id =
+        getRouteParam(
+          req.params.id,
+          "Product ID"
+        );
+
+      const colorSlug =
+        getRouteParam(
+          req.params.colorSlug,
+          "Color slug"
+        );
+
+      const publicId =
+        String(
+          req.body.publicId ||
+            ""
+        ).trim();
+
+      if (!publicId) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Image publicId is required.",
+          });
+      }
+
+      const product =
+        await setDefaultProductColorImage(
+          id,
+          colorSlug,
+          publicId
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Default image updated successfully.",
+
+          product,
+        });
+    } catch (error) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to update default image."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   SET DEFAULT COLOR
+   ADMIN
+========================================================= */
+
+export const setDefaultProductColorController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const id =
+        getRouteParam(
+          req.params.id,
+          "Product ID"
+        );
+
+      const colorSlug =
+        getRouteParam(
+          req.params.colorSlug,
+          "Color slug"
+        );
+
+      const product =
+        await setDefaultProductColor(
+          id,
+          colorSlug
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Default color updated successfully.",
+
+          product,
+        });
+    } catch (error) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to update default color."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   ADD SIZE
+   ADMIN
+========================================================= */
+
+export const addProductSizeController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const id =
+        getRouteParam(
+          req.params.id,
+          "Product ID"
+        );
+
+      const colorSlug =
+        getRouteParam(
+          req.params.colorSlug,
+          "Color slug"
+        );
+
+      const {
+        size,
+        stock,
+        isActive,
+      } = req.body;
+
+      const product =
+        await addProductSize(
+          id,
+          colorSlug,
+          {
+            size,
+            stock,
+            isActive,
+          }
+        );
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Product size added successfully.",
+
+          product,
+        });
+    } catch (error) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to add product size."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   UPDATE SIZE
+   ADMIN
+========================================================= */
+
+export const updateProductSizeController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const id =
+        getRouteParam(
+          req.params.id,
+          "Product ID"
+        );
+
+      const colorSlug =
+        getRouteParam(
+          req.params.colorSlug,
+          "Color slug"
+        );
+
+      const sizeId =
+        getRouteParam(
+          req.params.sizeId,
+          "Size ID"
+        );
+
+      const product =
+        await updateProductSize(
+          id,
+          colorSlug,
+          sizeId,
+          {
+            size:
+              req.body.size,
+
+            stock:
+              req.body.stock,
+
+            isActive:
+              req.body.isActive,
+          }
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Product size updated successfully.",
+
+          product,
+        });
+    } catch (error) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to update product size."
+            ),
+        });
+    }
+  };
+
+/* =========================================================
+   DELETE SIZE
+   ADMIN
+========================================================= */
+
+export const deleteProductSizeController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const id =
+        getRouteParam(
+          req.params.id,
+          "Product ID"
+        );
+
+      const colorSlug =
+        getRouteParam(
+          req.params.colorSlug,
+          "Color slug"
+        );
+
+      const sizeId =
+        getRouteParam(
+          req.params.sizeId,
+          "Size ID"
+        );
+
+      const product =
+        await deleteProductSize(
+          id,
+          colorSlug,
+          sizeId
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Product size deleted successfully.",
+
+          product,
+        });
+    } catch (error) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            getErrorMessage(
+              error,
+              "Unable to delete product size."
+            ),
         });
     }
   };
 
 /* =========================================================
    DELETE PRODUCT
+   ADMIN
 ========================================================= */
 
 export const deleteProductController =
@@ -608,22 +1051,18 @@ export const deleteProductController =
 
       return res
         .status(200)
-        .json({
-          success: true,
-          ...result,
-        });
-    } catch (
-      error
-    ) {
+        .json(result);
+    } catch (error) {
       return res
         .status(400)
         .json({
           success: false,
 
           message:
-            error instanceof Error
-              ? error.message
-              : "Unable to delete product.",
+            getErrorMessage(
+              error,
+              "Unable to delete product."
+            ),
         });
     }
   };

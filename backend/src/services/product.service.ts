@@ -5,7 +5,7 @@ import {
 import Product, {
   IProductColor,
   IProductImage,
-  ProductStatus,
+  IProductSize,
 } from "../models/Product.model";
 
 import Category from "../models/Category.model";
@@ -19,6 +19,8 @@ import {
 } from "../utils/productHtml";
 
 import {
+  uploadImageBuffer,
+  deleteCloudinaryImage,
   deleteCloudinaryImages,
   deleteCloudinaryFolderIfEmpty,
   getCloudinaryFolderFromPublicId,
@@ -31,254 +33,147 @@ import {
 export type ProductImageInput = {
   url: string;
   publicId: string;
-  name?: string;
-  alt?: string;
   isDefault?: boolean;
 };
 
 export type ProductSizeInput = {
   size: string;
-  sku: string;
   stock: number;
   isActive?: boolean;
 };
 
 export type ProductColorInput = {
-  /* name/slug stay supported for current cart/admin code. */
-  name: string;
-  slug?: string;
-
-  nameProduct?: string;
+  nameProduct: string;
   slugProduct?: string;
-  nameColor?: string;
+
+  nameColor: string;
   slugColor?: string;
+
   hex?: string;
+
   isDefault?: boolean;
+
   shortDescription?: string;
+
   description?: string;
+
   tags?: string[];
+
   seoTitle?: string;
+
   seoDescription?: string;
 
   images?: ProductImageInput[];
 
   sizes?: ProductSizeInput[];
-
-  isActive?: boolean;
-
-  sortOrder?: number;
 };
 
 export type CreateProductInput = {
-  name: string;
-
-  /*
-    Optional manual slug from admin.
-    Example input: "Coral Red Bra 2026"
-    Saved slug:   "coral-red-bra-2026"
-
-    If empty, backend generates a unique slug from product name.
-  */
-  slug?: string;
-
-  shortDescription?: string;
-
-  description?: string;
-
   categories: string[];
-
-  price: number;
-
-  compareAtPrice?: number;
-
-  costPrice?: number;
-
-  /*
-    Single overall stock value for the product.
-  */
-  stock: number;
-
-  mainImages?: ProductImageInput[];
 
   isColor?: boolean;
 
   colors?: ProductColorInput[];
-
-  status?: ProductStatus;
 
   isActive?: boolean;
 
   isFeatured?: boolean;
 
   isNewLaunch?: boolean;
-
-  tags?: string[];
-
-  seoTitle?: string;
-
-  seoDescription?: string;
 };
 
 export type UpdateProductInput =
   Partial<CreateProductInput>;
 
+export type ProductUploadFile = {
+  buffer: Buffer;
+  originalname: string;
+};
+
 /* =========================================================
-   PRODUCT SLUG
-
-   Admin can manually enter any readable value.
-   Backend converts it to a safe URL slug.
-
-   Examples:
-   "Coral Red Bra 2026" -> "coral-red-bra-2026"
-   "Sports Bra / Pink"  -> "sports-bra-pink"
-
-   Manual slug:
-   - exact normalized slug must be unique
-   - duplicate -> error
-
-   Empty slug:
-   - auto generated from product name
-   - duplicate auto slug gets -2, -3, ...
+   CLOUDINARY PRODUCT ROOT
 ========================================================= */
 
-const normalizeProductSlug = (
+const PRODUCT_ROOT_FOLDER =
+  "hivrasoft/products";
+
+/* =========================================================
+   NORMALIZE SLUG
+========================================================= */
+
+const normalizeSlug = (
   value: string
 ): string => {
-  /*
-    Product slug supports letters/numbers from multiple languages.
-    Spaces and symbols become hyphens.
-  */
-  const slug =
+  const cleaned =
     String(
-      value ||
-      ""
-    )
-      .normalize("NFKC")
-      .toLowerCase()
-      .trim()
-      .replace(/&/g, " and ")
-      .replace(
-        /[^\p{L}\p{N}]+/gu,
-        "-"
-      )
-      .replace(
-        /^-+|-+$/g,
-        ""
-      );
+      value || ""
+    ).trim();
+
+  if (!cleaned) {
+    throw new Error(
+      "Slug value is required."
+    );
+  }
+
+  const slug =
+    createSlug(
+      cleaned
+    );
 
   if (!slug) {
     throw new Error(
-      "Product slug must contain at least one letter or number."
+      "Unable to generate slug."
     );
   }
 
   return slug;
 };
 
-const isProductSlugTaken =
-  async (
-    slug: string,
-    excludeId?: string
-  ): Promise<boolean> => {
-    const query: Record<
-      string,
-      unknown
-    > = {
-      $or: [
-        { slug },
-        {
-          "colors.slugProduct":
-            slug,
-        },
-      ],
-    };
+/* =========================================================
+   IMAGE NAME FROM ORIGINAL FILE
+========================================================= */
 
-    if (excludeId) {
-      query._id = {
-        $ne:
-          excludeId,
-      };
-    }
-
-    const existing =
-      await Product.findOne(
-        query
+const imageNameFromFile = (
+  originalname: string
+): string => {
+  const withoutExtension =
+    originalname
+      .replace(
+        /\.[^/.]+$/,
+        ""
       )
-        .select("_id")
-        .lean();
+      .trim();
 
-    return Boolean(
-      existing
-    );
-  };
+  if (!withoutExtension) {
+    return "image";
+  }
 
-const generateUniqueProductSlug =
-  async (
-    name: string,
-    excludeId?: string
-  ): Promise<string> => {
-    const baseSlug =
-      normalizeProductSlug(
-        name
-      );
+  return (
+    createSlug(
+      withoutExtension
+    ) || "image"
+  );
+};
 
-    let slug =
-      baseSlug;
+/* =========================================================
+   PRODUCT IMAGE CLOUDINARY FOLDER
+========================================================= */
 
-    let counter =
-      2;
-
-    while (
-      await isProductSlugTaken(
-        slug,
-        excludeId
-      )
-    ) {
-      slug =
-        `${baseSlug}-${counter}`;
-
-      counter += 1;
-    }
-
-    return slug;
-  };
-
-const resolveProductSlug =
-  async (
-    name: string,
-    requestedSlug?: string,
-    excludeId?: string
-  ): Promise<string> => {
-    const rawSlug =
-      requestedSlug
-        ?.trim();
-
-    if (!rawSlug) {
-      return generateUniqueProductSlug(
-        name,
-        excludeId
-      );
-    }
-
-    const slug =
-      normalizeProductSlug(
-        rawSlug
-      );
-
-    const duplicate =
-      await isProductSlugTaken(
-        slug,
-        excludeId
-      );
-
-    if (duplicate) {
-      throw new Error(
-        `Product slug already exists: ${slug}`
-      );
-    }
-
-    return slug;
-  };
+const getProductColorFolder = (
+  slugProduct: string,
+  slugColor: string
+): string => {
+  return [
+    PRODUCT_ROOT_FOLDER,
+    normalizeSlug(
+      slugProduct
+    ),
+    "colors",
+    normalizeSlug(
+      slugColor
+    ),
+  ].join("/");
+};
 
 /* =========================================================
    VALIDATE CATEGORIES
@@ -306,10 +201,13 @@ const validateCategories =
       [
         ...new Set(
           categoryIds.map(
-            String
+            (value) =>
+              String(
+                value
+              ).trim()
           )
         ),
-      ];
+      ].filter(Boolean);
 
     for (
       const categoryId
@@ -328,24 +226,21 @@ const validateCategories =
 
     const objectIds =
       uniqueIds.map(
-        (
-          categoryId
-        ) =>
+        (categoryId) =>
           new Types.ObjectId(
             categoryId
           )
       );
 
-    const count =
+    const totalCategories =
       await Category.countDocuments({
         _id: {
-          $in:
-            objectIds,
+          $in: objectIds,
         },
       });
 
     if (
-      count !==
+      totalCategories !==
       objectIds.length
     ) {
       throw new Error(
@@ -357,73 +252,111 @@ const validateCategories =
   };
 
 /* =========================================================
-   NORMALIZE IMAGES
-
-   No hard application-level image count limit.
-   This is used for mainImages[] and colors[].images[].
+   NORMALIZE TAGS
 ========================================================= */
 
-const imageNameFromPublicId =
-  (publicId: string): string =>
-    publicId
-      .split("/")
-      .pop()
-      ?.trim() ||
-    "image";
+const normalizeTags = (
+  tags:
+    | string[]
+    | undefined
+): string[] => {
+  if (!tags) {
+    return [];
+  }
 
-const normalizeImages =
-  (
-    images:
-      | ProductImageInput[]
-      | undefined,
-    fieldName: string
-  ): IProductImage[] => {
-    if (!images) {
-      return [];
-    }
+  if (
+    !Array.isArray(
+      tags
+    )
+  ) {
+    throw new Error(
+      "Tags must be an array."
+    );
+  }
 
-    if (!Array.isArray(images)) {
-      throw new Error(
-        `${fieldName} must be an array.`
-      );
-    }
+  return [
+    ...new Set(
+      tags
+        .map(
+          (tag) =>
+            String(
+              tag
+            )
+              .trim()
+              .toLowerCase()
+        )
+        .filter(Boolean)
+    ),
+  ];
+};
 
-    const usedPublicIds =
-      new Set<string>();
+/* =========================================================
+   NORMALIZE IMAGES
+========================================================= */
 
-    const normalized = images.map(
-      (image, index) => {
+const normalizeImages = (
+  images:
+    | ProductImageInput[]
+    | undefined
+): IProductImage[] => {
+  if (!images) {
+    return [];
+  }
+
+  if (
+    !Array.isArray(
+      images
+    )
+  ) {
+    throw new Error(
+      "Product images must be an array."
+    );
+  }
+
+  const publicIds =
+    new Set<string>();
+
+  const normalized =
+    images.map(
+      (
+        image,
+        index
+      ) => {
         const url =
-          image.url?.trim();
+          image.url
+            ?.trim();
 
         const publicId =
-          image.publicId?.trim();
+          image.publicId
+            ?.trim();
 
-        if (!url || !publicId) {
+        if (
+          !url ||
+          !publicId
+        ) {
           throw new Error(
-            `${fieldName} image ${index + 1} requires url and publicId.`
+            `Image ${index + 1} requires url and publicId.`
           );
         }
 
-        if (usedPublicIds.has(publicId)) {
+        if (
+          publicIds.has(
+            publicId
+          )
+        ) {
           throw new Error(
-            `Duplicate image publicId in ${fieldName}: ${publicId}`
+            `Duplicate image publicId: ${publicId}`
           );
         }
 
-        usedPublicIds.add(publicId);
-
-        const name =
-          image.name?.trim() ||
-          imageNameFromPublicId(publicId);
+        publicIds.add(
+          publicId
+        );
 
         return {
           url,
           publicId,
-          name,
-          alt:
-            image.alt?.trim() ||
-            name,
+
           isDefault:
             image.isDefault ??
             index === 0,
@@ -431,100 +364,179 @@ const normalizeImages =
       }
     );
 
-    if (normalized.length > 0) {
-      const requestedDefault =
-        normalized.findIndex(
-          image =>
-            image.isDefault
-        );
+  /*
+   * Sirf ek image default rahegi.
+   */
 
-      const defaultIndex =
-        requestedDefault >= 0
-          ? requestedDefault
-          : 0;
-
-      normalized.forEach(
-        (image, index) => {
-          image.isDefault =
-            index === defaultIndex;
-        }
+  if (
+    normalized.length >
+    0
+  ) {
+    const selectedDefault =
+      normalized.findIndex(
+        (image) =>
+          image.isDefault
       );
-    }
 
-    return normalized;
-  };
+    const defaultIndex =
+      selectedDefault >= 0
+        ? selectedDefault
+        : 0;
+
+    normalized.forEach(
+      (
+        image,
+        index
+      ) => {
+        image.isDefault =
+          index ===
+          defaultIndex;
+      }
+    );
+  }
+
+  return normalized;
+};
 
 /* =========================================================
-   NORMALIZE COLORS + SIZES
+   NORMALIZE SIZES
+
+   NO SKU
 ========================================================= */
 
-const normalizeColors =
-  (
-    colors:
-      | ProductColorInput[]
-      | undefined
-  ): IProductColor[] => {
-    if (!colors) {
-      return [];
-    }
+const normalizeSizes = (
+  sizes:
+    | ProductSizeInput[]
+    | undefined,
+  colorName: string
+): ProductSizeInput[] => {
+  if (!sizes) {
+    return [];
+  }
 
-    if (!Array.isArray(colors)) {
-      throw new Error(
-        "Colors must be an array."
+  if (
+    !Array.isArray(
+      sizes
+    )
+  ) {
+    throw new Error(
+      `Sizes for ${colorName} must be an array.`
+    );
+  }
+
+  const usedSizes =
+    new Set<string>();
+
+  return sizes.map(
+    (
+      size,
+      index
+    ) => {
+      const sizeName =
+        size.size
+          ?.trim()
+          .toUpperCase();
+
+      if (!sizeName) {
+        throw new Error(
+          `${colorName} size ${index + 1} is required.`
+        );
+      }
+
+      if (
+        usedSizes.has(
+          sizeName
+        )
+      ) {
+        throw new Error(
+          `Duplicate size ${sizeName} in ${colorName}.`
+        );
+      }
+
+      usedSizes.add(
+        sizeName
       );
+
+      const stock =
+        Number(
+          size.stock
+        );
+
+      if (
+        !Number.isInteger(
+          stock
+        ) ||
+        stock < 0
+      ) {
+        throw new Error(
+          `Stock for ${colorName} / ${sizeName} must be a whole number 0 or greater.`
+        );
+      }
+
+      return {
+        size: sizeName,
+
+        stock,
+
+        isActive:
+          size.isActive ??
+          true,
+      };
     }
+  );
+};
 
-    const usedColorSlugs =
-      new Set<string>();
+/* =========================================================
+   NORMALIZE COLORS
+========================================================= */
 
-    const usedProductSlugs =
-      new Set<string>();
+const normalizeColors = (
+  colors:
+    | ProductColorInput[]
+    | undefined
+): IProductColor[] => {
+  if (!colors) {
+    return [];
+  }
 
-    const usedSkus =
-      new Set<string>();
+  if (
+    !Array.isArray(
+      colors
+    )
+  ) {
+    throw new Error(
+      "Colors must be an array."
+    );
+  }
 
-    const normalized = colors.map(
-      (color, colorIndex) => {
-        const name =
-          (
-            color.nameColor ||
-            color.name
-          )?.trim();
+  const usedColorSlugs =
+    new Set<string>();
 
-        if (!name) {
-          throw new Error(
-            `Color ${colorIndex + 1} name is required.`
-          );
-        }
+  const usedProductSlugs =
+    new Set<string>();
 
-        const slug =
-          createSlug(
-            color.slugColor?.trim() ||
-            color.slug?.trim() ||
-            name
-          );
-
-        if (usedColorSlugs.has(slug)) {
-          throw new Error(
-            `Duplicate color: ${name}`
-          );
-        }
-
-        usedColorSlugs.add(slug);
-
+  const normalized =
+    colors.map(
+      (
+        color,
+        colorIndex
+      ) => {
         const nameProduct =
-          color.nameProduct?.trim();
+          color.nameProduct
+            ?.trim();
 
-        if (!nameProduct) {
+        if (
+          !nameProduct
+        ) {
           throw new Error(
-            `${name} color product name is required.`
+            `Color ${colorIndex + 1}: product name is required.`
           );
         }
 
         const slugProduct =
-          normalizeProductSlug(
-            color.slugProduct?.trim() ||
-            nameProduct
+          normalizeSlug(
+            color.slugProduct ||
+              nameProduct
           );
 
         if (
@@ -533,7 +545,7 @@ const normalizeColors =
           )
         ) {
           throw new Error(
-            `Duplicate color product slug: ${slugProduct}`
+            `Duplicate product slug: ${slugProduct}`
           );
         }
 
@@ -541,534 +553,264 @@ const normalizeColors =
           slugProduct
         );
 
-        const images =
-          normalizeImages(
-            color.images,
-            `${name} color images`
+        const nameColor =
+          color.nameColor
+            ?.trim();
+
+        if (!nameColor) {
+          throw new Error(
+            `Color ${colorIndex + 1}: color name is required.`
+          );
+        }
+
+        const slugColor =
+          normalizeSlug(
+            color.slugColor ||
+              nameColor
           );
 
-        const usedSizes =
-          new Set<string>();
+        if (
+          usedColorSlugs.has(
+            slugColor
+          )
+        ) {
+          throw new Error(
+            `Duplicate color: ${nameColor}`
+          );
+        }
+
+        usedColorSlugs.add(
+          slugColor
+        );
 
         const sizes =
-          (color.sizes || []).map(
-            (size, sizeIndex) => {
-              const sizeName =
-                size.size
-                  ?.trim()
-                  .toUpperCase();
-
-              const sku =
-                size.sku
-                  ?.trim()
-                  .toUpperCase();
-
-              if (!sizeName) {
-                throw new Error(
-                  `${name} size ${sizeIndex + 1} requires size name.`
-                );
-              }
-
-              if (usedSizes.has(sizeName)) {
-                throw new Error(
-                  `Duplicate size ${sizeName} in color ${name}.`
-                );
-              }
-
-              usedSizes.add(sizeName);
-
-              if (!sku) {
-                throw new Error(
-                  `${name} / ${sizeName} requires SKU.`
-                );
-              }
-
-              if (usedSkus.has(sku)) {
-                throw new Error(
-                  `Duplicate SKU inside product: ${sku}`
-                );
-              }
-
-              usedSkus.add(sku);
-
-              const stock =
-                Number(size.stock);
-
-              if (
-                !Number.isInteger(stock) ||
-                stock < 0
-              ) {
-                throw new Error(
-                  `Stock for ${name} / ${sizeName} must be a whole number 0 or greater.`
-                );
-              }
-
-              return {
-                size: sizeName,
-                sku,
-                stock,
-                isActive:
-                  size.isActive ??
-                  true,
-              };
-            }
+          normalizeSizes(
+            color.sizes,
+            nameColor
           );
 
-        const tags =
-          Array.isArray(color.tags)
-            ? [
-                ...new Set(
-                  color.tags
-                    .map(tag =>
-                      String(tag)
-                        .trim()
-                        .toLowerCase()
-                    )
-                    .filter(Boolean)
-                ),
-              ]
-            : [];
+        const images =
+          normalizeImages(
+            color.images
+          );
 
         return {
-          name,
-          slug,
           nameProduct,
+
           slugProduct,
-          nameColor: name,
-          slugColor: slug,
+
+          nameColor,
+
+          slugColor,
+
           hex:
-            color.hex?.trim() ||
+            color.hex
+              ?.trim() ||
             "",
+
           isDefault:
             color.isDefault ??
             colorIndex === 0,
+
           shortDescription:
-            color.shortDescription?.trim() ||
+            color
+              .shortDescription
+              ?.trim() ||
             "",
+
           description:
             sanitizeProductDescriptionHtml(
               color.description
             ),
-          tags,
+
+          tags:
+            normalizeTags(
+              color.tags
+            ),
+
           seoTitle:
-            color.seoTitle?.trim() ||
+            color.seoTitle
+              ?.trim() ||
             "",
+
           seoDescription:
-            color.seoDescription?.trim() ||
+            color
+              .seoDescription
+              ?.trim() ||
             "",
+
           images,
+
           sizes,
-          isActive:
-            color.isActive ??
-            true,
-          sortOrder:
-            Number.isFinite(
-              Number(color.sortOrder)
-            )
-              ? Number(color.sortOrder)
-              : colorIndex,
         };
       }
-    ) as IProductColor[];
+    );
 
-    if (normalized.length > 0) {
-      const requestedDefault =
-        normalized.findIndex(
-          color =>
-            color.isDefault
-        );
+  /*
+   * Sirf ek color default.
+   */
 
-      const defaultIndex =
-        requestedDefault >= 0
-          ? requestedDefault
-          : 0;
-
-      normalized.forEach(
-        (color, index) => {
-          color.isDefault =
-            index === defaultIndex;
-        }
+  if (
+    normalized.length >
+    0
+  ) {
+    const selectedDefault =
+      normalized.findIndex(
+        (color) =>
+          color.isDefault
       );
-    }
 
-    return normalized;
-  };
+    const defaultIndex =
+      selectedDefault >= 0
+        ? selectedDefault
+        : 0;
 
-const validateColorMode =
-  (
-    isColor: boolean,
-    colorsInput:
-      | ProductColorInput[]
-      | undefined
-  ) => {
-    const hasSubmittedColors =
-      Array.isArray(colorsInput) &&
-      colorsInput.length > 0;
+    normalized.forEach(
+      (
+        color,
+        index
+      ) => {
+        color.isDefault =
+          index ===
+          defaultIndex;
+      }
+    );
+  }
 
-    if (
-      !isColor &&
-      hasSubmittedColors
-    ) {
-      throw new Error(
-        "Colors are not allowed when isColor is false."
-      );
-    }
+  return normalized;
+};
 
-    if (
-      isColor &&
-      !hasSubmittedColors
-    ) {
-      throw new Error(
-        "At least one color variant is required when isColor is true."
-      );
-    }
-  };
+/* =========================================================
+   VALIDATE COLOR MODE
+========================================================= */
 
-const validateUniqueColorProductSlugs =
+const validateColorMode = (
+  isColor: boolean,
+  colors:
+    | ProductColorInput[]
+    | undefined
+) => {
+  const hasColors =
+    Array.isArray(
+      colors
+    ) &&
+    colors.length >
+      0;
+
+  if (
+    isColor &&
+    !hasColors
+  ) {
+    throw new Error(
+      "At least one color is required when isColor is true."
+    );
+  }
+
+  if (
+    !isColor &&
+    hasColors
+  ) {
+    throw new Error(
+      "Colors are not allowed when isColor is false."
+    );
+  }
+};
+
+/* =========================================================
+   UNIQUE PRODUCT SLUG ACROSS DATABASE
+========================================================= */
+
+const validateUniqueProductSlugs =
   async (
     colors: IProductColor[],
     excludeProductId?: string
   ) => {
-    for (const color of colors) {
-      const duplicate =
-        await isProductSlugTaken(
-          color.slugProduct,
-          excludeProductId
-        );
-
-      if (duplicate) {
-        throw new Error(
-          `Color product slug already exists: ${color.slugProduct}`
-        );
-      }
-    }
-  };
-
-/* =========================================================
-   GET SKUS
-========================================================= */
-
-const getSkusFromColors =
-  (
-    colors:
-      | IProductColor[]
-      | ProductColorInput[]
-  ): string[] => {
-    const skus:
-      string[] =
-      [];
-
     for (
       const color
       of colors
     ) {
-      for (
-        const size
-        of color.sizes ||
-        []
-      ) {
-        const sku =
-          size.sku
-            ?.trim()
-            .toUpperCase();
-
-        if (sku) {
-          skus.push(
-            sku
-          );
-        }
-      }
-    }
-
-    return skus;
-  };
-
-/* =========================================================
-   UNIQUE SKU ACROSS PRODUCTS
-========================================================= */
-
-const validateUniqueSkus =
-  async (
-    colors: IProductColor[],
-    excludeProductId?: string
-  ) => {
-    const skus =
-      getSkusFromColors(
-        colors
-      );
-
-    if (
-      skus.length === 0
-    ) {
-      return;
-    }
-
-    const query: Record<
-      string,
-      unknown
-    > = {
-      "colors.sizes.sku": {
-        $in:
-          skus,
-      },
-    };
-
-    if (
-      excludeProductId
-    ) {
-      query._id = {
-        $ne:
-          excludeProductId,
+      const query:
+        Record<
+          string,
+          unknown
+        > = {
+        "colors.slugProduct":
+          color.slugProduct,
       };
-    }
 
-    const products =
-      await Product.find(
-        query
-      )
-        .select(
-          "colors"
+      if (
+        excludeProductId
+      ) {
+        query._id = {
+          $ne:
+            excludeProductId,
+        };
+      }
+
+      const existing =
+        await Product.findOne(
+          query
         )
-        .lean();
+          .select("_id")
+          .lean();
 
-    const requestedSkus =
-      new Set(
-        skus
-      );
-
-    for (
-      const existing
-      of products
-    ) {
-      const existingSkus =
-        getSkusFromColors(
-          existing.colors as IProductColor[]
-        );
-
-      const duplicate =
-        existingSkus.find(
-          (
-            sku
-          ) =>
-            requestedSkus.has(
-              sku
-            )
-        );
-
-      if (duplicate) {
+      if (existing) {
         throw new Error(
-          `SKU already exists in another product: ${duplicate}`
+          `Product slug already exists: ${color.slugProduct}`
         );
       }
     }
   };
 
 /* =========================================================
-   VALIDATE PRICES
+   GET IMAGE IDS FROM PRODUCT
 ========================================================= */
 
-const validatePrices =
-  ({
-    price,
-    compareAtPrice,
-    costPrice,
-  }: {
-    price: number;
-    compareAtPrice?: number;
-    costPrice?: number;
-  }) => {
-    if (
-      !Number.isFinite(
-        price
-      ) ||
-      price < 0
-    ) {
-      throw new Error(
-        "Product price must be 0 or greater."
-      );
-    }
-
-    if (
-      compareAtPrice !==
-        undefined &&
-      (
-        !Number.isFinite(
-          compareAtPrice
-        ) ||
-        compareAtPrice < 0
-      )
-    ) {
-      throw new Error(
-        "Compare at price must be 0 or greater."
-      );
-    }
-
-    if (
-      compareAtPrice !==
-        undefined &&
-      compareAtPrice > 0 &&
-      compareAtPrice <
-        price
-    ) {
-      throw new Error(
-        "Compare at price cannot be lower than selling price."
-      );
-    }
-
-    if (
-      costPrice !==
-        undefined &&
-      (
-        !Number.isFinite(
-          costPrice
-        ) ||
-        costPrice < 0
-      )
-    ) {
-      throw new Error(
-        "Cost price must be 0 or greater."
-      );
-    }
-  };
-
-/* =========================================================
-   VALIDATE PRODUCT STOCK
-========================================================= */
-
-const validateProductStock =
-  (
-    stock: number
-  ): number => {
-    if (
-      !Number.isInteger(
-        stock
-      ) ||
-      stock < 0
-    ) {
-      throw new Error(
-        "Product stock must be a whole number 0 or greater."
-      );
-    }
-
-    return stock;
-  };
-
-/* =========================================================
-   NORMALIZE TAGS
-========================================================= */
-
-const normalizeTags =
-  (
-    tags:
-      | string[]
-      | undefined
-  ) => {
-    if (!tags) {
-      return [];
-    }
-
-    if (
-      !Array.isArray(
-        tags
-      )
-    ) {
-      throw new Error(
-        "Tags must be an array."
-      );
-    }
-
-    return [
-      ...new Set(
-        tags
-          .map(
-            (
-              tag
-            ) =>
-              String(
-                tag
-              )
-                .trim()
-                .toLowerCase()
-          )
-          .filter(
-            Boolean
-          )
-      ),
-    ];
-  };
-
-/* =========================================================
-   GET ALL PRODUCT IMAGE PUBLIC IDS
-
-   mainImages[]
-   +
-   colors[].images[]
-========================================================= */
-
-const getProductImagePublicIds =
-  (
-    product: {
-      mainImages?: {
+const getProductImagePublicIds = (
+  product: {
+    colors?: Array<{
+      images?: Array<{
         publicId?: string;
-      }[];
+      }>;
+    }>;
+  }
+): string[] => {
+  const publicIds:
+    string[] =
+    [];
 
-      colors?: {
-        images?: {
-          publicId?: string;
-        }[];
-      }[];
-    }
-  ): string[] => {
-    const ids:
-      string[] =
-      [];
-
+  for (
+    const color
+    of product.colors ||
+    []
+  ) {
     for (
       const image
-      of product.mainImages ||
+      of color.images ||
       []
     ) {
       if (
         image.publicId
       ) {
-        ids.push(
+        publicIds.push(
           image.publicId
         );
       }
     }
+  }
 
-    for (
-      const color
-      of product.colors ||
-      []
-    ) {
-      for (
-        const image
-        of color.images ||
-        []
-      ) {
-        if (
-          image.publicId
-        ) {
-          ids.push(
-            image.publicId
-          );
-        }
-      }
-    }
-
-    return [
-      ...new Set(
-        ids
-      ),
-    ];
-  };
+  return [
+    ...new Set(
+      publicIds
+    ),
+  ];
+};
 
 /* =========================================================
-   CLEAN EMPTY CLOUDINARY FOLDERS
+   CLEAN CLOUDINARY FOLDERS
 ========================================================= */
 
-const cleanupCloudinaryFolders =
+const cleanupFolders =
   async (
     publicIds: string[]
   ) => {
@@ -1077,19 +819,20 @@ const cleanupCloudinaryFolders =
         ...new Set(
           publicIds
             .map(
-              getCloudinaryFolderFromPublicId
+              (
+                publicId
+              ) =>
+                getCloudinaryFolderFromPublicId(
+                  publicId
+                )
             )
-            .filter(
-              Boolean
-            )
+            .filter(Boolean)
         ),
       ];
 
     await Promise.allSettled(
       folders.map(
-        (
-          folder
-        ) =>
+        (folder) =>
           deleteCloudinaryFolderIfEmpty(
             folder
           )
@@ -1106,76 +849,19 @@ export const createProduct =
     input:
       CreateProductInput
   ) => {
-    const name =
-      input.name
-        ?.trim();
-
-    if (!name) {
-      throw new Error(
-        "Product name is required."
-      );
-    }
-
-    const price =
-      Number(
-        input.price
-      );
-
-    const compareAtPrice =
-      input.compareAtPrice !==
-      undefined
-        ? Number(
-            input.compareAtPrice
-          )
-        : 0;
-
-    const costPrice =
-      input.costPrice !==
-      undefined
-        ? Number(
-            input.costPrice
-          )
-        : 0;
-
-    const stock =
-      validateProductStock(
-        Number(
-          input.stock
-        )
-      );
-
-    validatePrices({
-      price,
-      compareAtPrice,
-      costPrice,
-    });
-
     const categories =
       await validateCategories(
         input.categories
       );
 
-    const slug =
-      await resolveProductSlug(
-        name,
-        input.slug
-      );
-
     const isColor =
-      input.isColor === true;
+      input.isColor ??
+      true;
 
     validateColorMode(
       isColor,
       input.colors
     );
-
-    const mainImages =
-      isColor
-        ? []
-        : normalizeImages(
-            input.mainImages,
-            "Product main images"
-          );
 
     const colors =
       isColor
@@ -1184,371 +870,41 @@ export const createProduct =
           )
         : [];
 
-    await validateUniqueSkus(
+    await validateUniqueProductSlugs(
       colors
     );
-
-    await validateUniqueColorProductSlugs(
-      colors
-    );
-
-    const status: ProductStatus =
-      input.status ||
-      (input.isActive
-        ? "active"
-        : "draft");
 
     const product =
       await Product.create({
-        name,
-        slug,
-        shortDescription:
-          input.shortDescription
-            ?.trim() ||
-          "",
-        description:
-          sanitizeProductDescriptionHtml(
-            input.description
-          ),
-        categories,
-        price,
-        compareAtPrice,
-        costPrice,
-        stock,
-        mainImages,
-        isColor,
-        colors,
         ratings: {
           average: 0,
           count: 0,
         },
-        status,
+
+        categories,
+
+        isColor,
+
+        colors,
+
         isActive:
-          status ===
-          "active",
+          input.isActive ??
+          true,
+
         isFeatured:
           input.isFeatured ??
           false,
+
         isNewLaunch:
           input.isNewLaunch ??
           false,
-        tags:
-          normalizeTags(
-            input.tags
-          ),
-        seoTitle:
-          input.seoTitle
-            ?.trim() ||
-          "",
-        seoDescription:
-          input.seoDescription
-            ?.trim() ||
-          "",
       });
 
     return product;
   };
 
 /* =========================================================
-   STOREFRONT PRODUCT DTO
-
-   Adds the color-centric API requested by the storefront while
-   retaining legacy commerce fields so existing cart/listing code
-   continues to work.
-========================================================= */
-
-export const toStorefrontProduct =
-  (productInput: unknown) => {
-    const product =
-      typeof (productInput as {
-        toObject?: () => unknown;
-      })?.toObject ===
-      "function"
-        ? (productInput as {
-            toObject: () => Record<string, any>;
-          }).toObject()
-        : (productInput as Record<string, any>);
-
-    const mainImages =
-      Array.isArray(product.mainImages)
-        ? product.mainImages.map(
-            (image: Record<string, any>, index: number) => ({
-              url: image.url,
-              publicId: image.publicId,
-              name:
-                image.name ||
-                imageNameFromPublicId(
-                  image.publicId ||
-                  "image"
-                ),
-              alt:
-                image.alt ||
-                image.name ||
-                product.name ||
-                "Product image",
-              isDefault:
-                image.isDefault ??
-                index === 0,
-            })
-          )
-        : [];
-
-    const colors =
-      Array.isArray(product.colors)
-        ? product.colors.map(
-            (color: Record<string, any>, index: number) => {
-              const nameColor =
-                color.nameColor ||
-                color.name ||
-                "";
-
-              const slugColor =
-                color.slugColor ||
-                color.slug ||
-                createSlug(nameColor);
-
-              const isDefault =
-                color.isDefault ??
-                index === 0;
-
-              const colorImages =
-                Array.isArray(color.images) &&
-                color.images.length > 0
-                  ? color.images
-                  : isDefault
-                    ? mainImages
-                    : [];
-
-              return {
-                _id: color._id,
-                nameProduct:
-                  color.nameProduct ||
-                  product.name ||
-                  "",
-                slugProduct:
-                  color.slugProduct ||
-                  (isDefault
-                    ? product.slug
-                    : `${product.slug}-${slugColor}`),
-                nameColor,
-                slugColor,
-                hex: color.hex || "",
-                isDefault,
-                shortDescription:
-                  color.shortDescription ||
-                  product.shortDescription ||
-                  "",
-                description:
-                  color.description ||
-                  product.description ||
-                  "",
-                tags:
-                  Array.isArray(color.tags) &&
-                  color.tags.length > 0
-                    ? color.tags
-                    : product.tags || [],
-                seoTitle:
-                  color.seoTitle ||
-                  product.seoTitle ||
-                  "",
-                seoDescription:
-                  color.seoDescription ||
-                  product.seoDescription ||
-                  "",
-                images: colorImages.map(
-                  (image: Record<string, any>, imageIndex: number) => ({
-                    url: image.url,
-                    publicId: image.publicId,
-                    name:
-                      image.name ||
-                      imageNameFromPublicId(
-                        image.publicId ||
-                        "image"
-                      ),
-                    alt:
-                      image.alt ||
-                      image.name ||
-                      color.nameProduct ||
-                      product.name ||
-                      "Product image",
-                    isDefault:
-                      image.isDefault ??
-                      imageIndex === 0,
-                  })
-                ),
-                sizes:
-                  Array.isArray(color.sizes)
-                    ? color.sizes.map(
-                        (size: Record<string, any>) => ({
-                          _id: size._id,
-                          size: size.size,
-                          stock: size.stock,
-                          isActive:
-                            size.isActive !==
-                            false,
-                          /* Kept for cart compatibility; UI may ignore it. */
-                          sku: size.sku,
-                        })
-                      )
-                    : [],
-                isActive:
-                  color.isActive !==
-                  false,
-
-                /* Legacy aliases used by current components. */
-                name: nameColor,
-                slug: slugColor,
-                sortOrder:
-                  color.sortOrder ??
-                  index,
-              };
-            }
-          )
-        : [];
-
-    const isColor =
-      product.isColor === true ||
-      colors.length > 0;
-
-    return {
-      _id: product._id,
-      ratings: product.ratings || { average: 0, count: 0 },
-      categories: product.categories || [],
-      isColor,
-      colors:
-        isColor
-          ? colors
-          : [],
-      isActive:
-        product.status ===
-          "active" ||
-        product.isActive ===
-          true,
-      isFeatured: Boolean(product.isFeatured),
-      isNewLaunch: Boolean(product.isNewLaunch),
-      createdAt: product.createdAt,
-      updatedAt: product.updatedAt,
-
-      /* Legacy commerce fields intentionally retained. */
-      name: product.name,
-      slug: product.slug,
-      shortDescription: product.shortDescription,
-      description: product.description,
-      price: product.price,
-      compareAtPrice: product.compareAtPrice,
-      costPrice: product.costPrice,
-      stock: product.stock,
-      mainImages:
-        isColor
-          ? []
-          : mainImages,
-      status: product.status,
-      tags: product.tags || [],
-      seoTitle: product.seoTitle,
-      seoDescription: product.seoDescription,
-    };
-  };
-
-export const toCatalogProduct =
-  (productInput: unknown) => {
-    const product =
-      toStorefrontProduct(
-        productInput
-      );
-
-    const colors =
-      product.isColor
-        ? product.colors
-            .filter(
-              (
-                color: Record<string, any>
-              ) =>
-                color.isActive !==
-                false
-            )
-            .map(
-              (
-                color: Record<string, any>
-              ) => ({
-                nameProduct:
-                  color.nameProduct,
-                slugProduct:
-                  color.slugProduct,
-                nameColor:
-                  color.nameColor,
-                slugColor:
-                  color.slugColor,
-                hex:
-                  color.hex,
-                isDefault:
-                  color.isDefault,
-                shortDescription:
-                  color.shortDescription,
-                description:
-                  color.description,
-                tags:
-                  color.tags,
-                seoTitle:
-                  color.seoTitle,
-                seoDescription:
-                  color.seoDescription,
-                images:
-                  color.images.map(
-                    (
-                      image: Record<string, any>
-                    ) => ({
-                      url:
-                        image.url,
-                      publicId:
-                        image.publicId,
-                      isDefault:
-                        image.isDefault,
-                    })
-                  ),
-                sizes:
-                  color.sizes.map(
-                    (
-                      size: Record<string, any>
-                    ) => ({
-                      _id:
-                        size._id,
-                      size:
-                        size.size,
-                      stock:
-                        size.stock,
-                      isActive:
-                        size.isActive,
-                    })
-                  ),
-              })
-            )
-        : [];
-
-    return {
-      _id:
-        product._id,
-      ratings:
-        product.ratings,
-      categories:
-        product.categories,
-      isColor:
-        product.isColor,
-      colors,
-      isActive:
-        product.isActive,
-      isFeatured:
-        product.isFeatured,
-      isNewLaunch:
-        product.isNewLaunch,
-      createdAt:
-        product.createdAt,
-      updatedAt:
-        product.updatedAt,
-    };
-  };
-
-/* =========================================================
-   GET ALL PRODUCTS - ADMIN
+   GET ALL PRODUCTS
 ========================================================= */
 
 export const getAllProducts =
@@ -1556,7 +912,7 @@ export const getAllProducts =
     return Product.find()
       .populate(
         "categories",
-        "name slug level"
+        "_id name slug level"
       )
       .sort({
         createdAt: -1,
@@ -1564,20 +920,57 @@ export const getAllProducts =
   };
 
 /* =========================================================
-   GET ACTIVE PRODUCTS - STOREFRONT
+   GET ACTIVE PRODUCTS
 ========================================================= */
 
 export const getActiveProducts =
   async () => {
     return Product.find({
-      $or: [
-        { status: "active" },
-        { isActive: true },
-      ],
+      isActive: true,
     })
       .populate(
         "categories",
-        "name slug level"
+        "_id name slug level"
+      )
+      .sort({
+        createdAt: -1,
+      });
+  };
+
+/* =========================================================
+   GET FEATURED PRODUCTS
+========================================================= */
+
+export const getFeaturedProducts =
+  async () => {
+    return Product.find({
+      isActive: true,
+
+      isFeatured: true,
+    })
+      .populate(
+        "categories",
+        "_id name slug level"
+      )
+      .sort({
+        createdAt: -1,
+      });
+  };
+
+/* =========================================================
+   GET NEW LAUNCH PRODUCTS
+========================================================= */
+
+export const getNewLaunchProducts =
+  async () => {
+    return Product.find({
+      isActive: true,
+
+      isNewLaunch: true,
+    })
+      .populate(
+        "categories",
+        "_id name slug level"
       )
       .sort({
         createdAt: -1,
@@ -1607,7 +1000,7 @@ export const getProductById =
         productId
       ).populate(
         "categories",
-        "name slug level"
+        "_id name slug level"
       );
 
     if (!product) {
@@ -1620,7 +1013,7 @@ export const getProductById =
   };
 
 /* =========================================================
-   GET PRODUCT BY SLUG
+   GET PRODUCT BY PRODUCT SLUG
 ========================================================= */
 
 export const getProductBySlug =
@@ -1628,22 +1021,17 @@ export const getProductBySlug =
     slug: string
   ) => {
     const normalizedSlug =
-      slug
-        .trim()
-        .toLowerCase();
+      normalizeSlug(
+        slug
+      );
 
     const product =
       await Product.findOne({
-        $or: [
-          { slug: normalizedSlug },
-          {
-            "colors.slugProduct":
-              normalizedSlug,
-          },
-        ],
+        "colors.slugProduct":
+          normalizedSlug,
       }).populate(
         "categories",
-        "name slug level"
+        "_id name slug level"
       );
 
     if (!product) {
@@ -1657,9 +1045,6 @@ export const getProductBySlug =
 
 /* =========================================================
    UPDATE PRODUCT
-
-   Removed image cleanup:
-   DB save first -> then removed Cloudinary images delete.
 ========================================================= */
 
 export const updateProduct =
@@ -1694,67 +1079,9 @@ export const updateProduct =
         product
       );
 
-    /* NAME + SLUG */
-
-    if (
-      input.name !==
-      undefined
-    ) {
-      const name =
-        input.name.trim();
-
-      if (!name) {
-        throw new Error(
-          "Product name cannot be empty."
-        );
-      }
-
-      product.name =
-        name;
-    }
-
-    /* SLUG
-
-       If slug field is supplied by admin:
-       - non-empty -> use manual normalized unique slug
-       - empty     -> auto generate from current product name
-
-       If slug field is omitted entirely, existing slug is preserved.
-    */
-
-    if (
-      input.slug !==
-      undefined
-    ) {
-      product.slug =
-        await resolveProductSlug(
-          product.name,
-          input.slug,
-          productId
-        );
-    }
-
-    /* DESCRIPTIONS */
-
-    if (
-      input.shortDescription !==
-      undefined
-    ) {
-      product.shortDescription =
-        input.shortDescription.trim();
-    }
-
-    if (
-      input.description !==
-      undefined
-    ) {
-      product.description =
-        sanitizeProductDescriptionHtml(
-          input.description
-        );
-    }
-
-    /* CATEGORIES */
+    /* =====================================================
+       CATEGORIES
+    ===================================================== */
 
     if (
       input.categories !==
@@ -1766,168 +1093,70 @@ export const updateProduct =
         );
     }
 
-    /* PRICES */
-
-    const nextPrice =
-      input.price !==
-      undefined
-        ? Number(
-            input.price
-          )
-        : product.price;
-
-    const nextCompareAtPrice =
-      input.compareAtPrice !==
-      undefined
-        ? Number(
-            input.compareAtPrice
-          )
-        : product.compareAtPrice;
-
-    const nextCostPrice =
-      input.costPrice !==
-      undefined
-        ? Number(
-            input.costPrice
-          )
-        : product.costPrice;
-
-    const nextStock =
-      input.stock !==
-      undefined
-        ? validateProductStock(
-            Number(
-              input.stock
-            )
-          )
-        : product.stock;
-
-    validatePrices({
-      price:
-        nextPrice,
-
-      compareAtPrice:
-        nextCompareAtPrice,
-
-      costPrice:
-        nextCostPrice,
-    });
-
-    product.price =
-      nextPrice;
-
-    product.compareAtPrice =
-      nextCompareAtPrice;
-
-    product.costPrice =
-      nextCostPrice;
-
-    product.stock =
-      nextStock;
-
-    /* COLOR MODE + IMAGES */
+    /* =====================================================
+       COLOR MODE
+    ===================================================== */
 
     const nextIsColor =
       input.isColor !==
       undefined
-        ? input.isColor === true
-        : product.isColor === true;
+        ? input.isColor
+        : product.isColor;
 
-    if (!nextIsColor) {
+    if (
+      input.colors !==
+      undefined
+    ) {
       validateColorMode(
-        false,
+        nextIsColor,
         input.colors
       );
 
-      product.isColor =
-        false;
+      const colors =
+        nextIsColor
+          ? normalizeColors(
+              input.colors
+            )
+          : [];
 
-      /*
-        When color mode is OFF no color data is allowed.
-        Clearing it also lets the image-cleanup block remove old
-        color images from Cloudinary after a successful save.
-      */
+      await validateUniqueProductSlugs(
+        colors,
+        productId
+      );
+
+      product.colors =
+        colors;
+    } else if (
+      !nextIsColor
+    ) {
       product.colors =
         [];
-
-      if (
-        input.mainImages !==
-        undefined
-      ) {
-        product.mainImages =
-          normalizeImages(
-            input.mainImages,
-            "Product main images"
-          );
-      }
-    } else {
-      product.isColor =
-        true;
-
-      /*
-        Color products keep their gallery inside colors[].images[].
-        Product-level main images are removed in color mode.
-      */
-      product.mainImages =
-        [];
-
-      if (
-        input.colors !==
-        undefined
-      ) {
-        validateColorMode(
-          true,
-          input.colors
-        );
-
-        const colors =
-          normalizeColors(
-            input.colors
-          );
-
-        await validateUniqueSkus(
-          colors,
-          productId
-        );
-
-        await validateUniqueColorProductSlugs(
-          colors,
-          productId
-        );
-
-        product.colors =
-          colors;
-      } else if (
-        product.colors.length ===
-        0
-      ) {
-        throw new Error(
-          "At least one color variant is required when isColor is true."
-        );
-      }
     }
 
-    /* STATUS */
+    product.isColor =
+      nextIsColor;
 
     if (
-      input.status !==
-      undefined
+      product.isColor &&
+      product.colors.length ===
+        0
     ) {
-      product.status =
-        input.status;
-    } else if (
+      throw new Error(
+        "At least one color is required when isColor is true."
+      );
+    }
+
+    /* =====================================================
+       STATUS
+    ===================================================== */
+
+    if (
       input.isActive !==
       undefined
     ) {
-      product.status =
-        input.isActive
-          ? "active"
-          : "inactive";
+      product.isActive =
+        input.isActive;
     }
-
-    product.isActive =
-      product.status ===
-      "active";
 
     if (
       input.isFeatured !==
@@ -1945,42 +1174,11 @@ export const updateProduct =
         input.isNewLaunch;
     }
 
-    /* TAGS */
-
-    if (
-      input.tags !==
-      undefined
-    ) {
-      product.tags =
-        normalizeTags(
-          input.tags
-        );
-    }
-
-    /* SEO */
-
-    if (
-      input.seoTitle !==
-      undefined
-    ) {
-      product.seoTitle =
-        input.seoTitle.trim();
-    }
-
-    if (
-      input.seoDescription !==
-      undefined
-    ) {
-      product.seoDescription =
-        input.seoDescription.trim();
-    }
-
-    /*
-      ratings ko normal admin product update se touch nahi karna.
-      Review service se hi update hoga.
-    */
-
     await product.save();
+
+    /* =====================================================
+       DELETE REMOVED CLOUDINARY IMAGES
+    ===================================================== */
 
     const newImageIds =
       new Set(
@@ -1989,26 +1187,24 @@ export const updateProduct =
         )
       );
 
-    const removedImageIds =
+    const removedImages =
       oldImageIds.filter(
-        (
-          publicId
-        ) =>
+        (publicId) =>
           !newImageIds.has(
             publicId
           )
       );
 
     if (
-      removedImageIds.length >
+      removedImages.length >
       0
     ) {
       await deleteCloudinaryImages(
-        removedImageIds
+        removedImages
       );
 
-      await cleanupCloudinaryFolders(
-        removedImageIds
+      await cleanupFolders(
+        removedImages
       );
     }
 
@@ -2016,12 +1212,744 @@ export const updateProduct =
   };
 
 /* =========================================================
-   UPDATE RATING SUMMARY
+   UPLOAD PRODUCT COLOR IMAGES
 
-   Future Review service can call this after:
-   - review create
-   - review update
-   - review delete
+   Cloudinary:
+   hivrasoft/products/
+      product-slug/
+        colors/
+          black/
+            front-image-01
+========================================================= */
+
+export const uploadProductColorImages =
+  async (
+    productId: string,
+    colorSlug: string,
+    files:
+      ProductUploadFile[]
+  ) => {
+    if (
+      !Types.ObjectId.isValid(
+        productId
+      )
+    ) {
+      throw new Error(
+        "Invalid product ID."
+      );
+    }
+
+    if (
+      !Array.isArray(
+        files
+      ) ||
+      files.length ===
+        0
+    ) {
+      throw new Error(
+        "At least one image is required."
+      );
+    }
+
+    const product =
+      await Product.findById(
+        productId
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    const normalizedColorSlug =
+      normalizeSlug(
+        colorSlug
+      );
+
+    const color =
+      product.colors.find(
+        (item) =>
+          item.slugColor ===
+          normalizedColorSlug
+      );
+
+    if (!color) {
+      throw new Error(
+        "Product color not found."
+      );
+    }
+
+    const folder =
+      getProductColorFolder(
+        color.slugProduct,
+        color.slugColor
+      );
+
+    const uploadedImages:
+      IProductImage[] =
+      [];
+
+    const uploadedPublicIds:
+      string[] =
+      [];
+
+    try {
+      for (
+        let index = 0;
+        index <
+        files.length;
+        index++
+      ) {
+        const file =
+          files[index];
+
+        const imageName =
+          imageNameFromFile(
+            file.originalname
+          );
+
+        /*
+         * Example:
+         * front-image-01
+         * back-image-02
+         */
+
+        const imageNumber =
+          color.images.length +
+          index +
+          1;
+
+        const publicId =
+          `${imageName}-${String(
+            imageNumber
+          ).padStart(
+            2,
+            "0"
+          )}`;
+
+        const result =
+          await uploadImageBuffer(
+            file.buffer,
+            folder,
+            publicId
+          );
+
+        uploadedPublicIds.push(
+          result.public_id
+        );
+
+        uploadedImages.push({
+          url:
+            result.secure_url,
+
+          publicId:
+            result.public_id,
+
+          /*
+           * Agar color me pehle koi image nahi,
+           * to first uploaded image default.
+           */
+          isDefault:
+            color.images
+              .length ===
+              0 &&
+            index === 0,
+        });
+      }
+
+      /*
+       * Agar existing default hai,
+       * new images default nahi honge.
+       */
+
+      const existingDefault =
+        color.images.some(
+          (image) =>
+            image.isDefault
+        );
+
+      if (
+        existingDefault
+      ) {
+        uploadedImages.forEach(
+          (image) => {
+            image.isDefault =
+              false;
+          }
+        );
+      }
+
+      color.images.push(
+        ...uploadedImages
+      );
+
+      product.markModified(
+        "colors"
+      );
+
+      await product.save();
+
+      return {
+        productId:
+          product._id,
+
+        slugProduct:
+          color.slugProduct,
+
+        slugColor:
+          color.slugColor,
+
+        folder,
+
+        images:
+          uploadedImages,
+      };
+    } catch (error) {
+      /*
+       * DB save fail hua to uploaded images
+       * Cloudinary se clean.
+       */
+
+      if (
+        uploadedPublicIds.length >
+        0
+      ) {
+        await deleteCloudinaryImages(
+          uploadedPublicIds
+        );
+
+        await deleteCloudinaryFolderIfEmpty(
+          folder
+        );
+      }
+
+      throw error;
+    }
+  };
+
+/* =========================================================
+   DELETE ONE PRODUCT COLOR IMAGE
+========================================================= */
+
+export const deleteProductColorImage =
+  async (
+    productId: string,
+    colorSlug: string,
+    publicId: string
+  ) => {
+    if (
+      !Types.ObjectId.isValid(
+        productId
+      )
+    ) {
+      throw new Error(
+        "Invalid product ID."
+      );
+    }
+
+    const product =
+      await Product.findById(
+        productId
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    const normalizedColorSlug =
+      normalizeSlug(
+        colorSlug
+      );
+
+    const color =
+      product.colors.find(
+        (item) =>
+          item.slugColor ===
+          normalizedColorSlug
+      );
+
+    if (!color) {
+      throw new Error(
+        "Product color not found."
+      );
+    }
+
+    const imageIndex =
+      color.images.findIndex(
+        (image) =>
+          image.publicId ===
+          publicId
+      );
+
+    if (
+      imageIndex === -1
+    ) {
+      throw new Error(
+        "Product image not found."
+      );
+    }
+
+    const removedImage =
+      color.images[
+        imageIndex
+      ];
+
+    const wasDefault =
+      removedImage
+        .isDefault;
+
+    color.images.splice(
+      imageIndex,
+      1
+    );
+
+    /*
+     * Default image delete hui to
+     * first remaining image default.
+     */
+
+    if (
+      wasDefault &&
+      color.images.length >
+        0
+    ) {
+      color.images.forEach(
+        (
+          image,
+          index
+        ) => {
+          image.isDefault =
+            index === 0;
+        }
+      );
+    }
+
+    product.markModified(
+      "colors"
+    );
+
+    await product.save();
+
+    await deleteCloudinaryImage(
+      publicId
+    );
+
+    const folder =
+      getCloudinaryFolderFromPublicId(
+        publicId
+      );
+
+    await deleteCloudinaryFolderIfEmpty(
+      folder
+    );
+
+    return product;
+  };
+
+/* =========================================================
+   SET DEFAULT PRODUCT IMAGE
+========================================================= */
+
+export const setDefaultProductColorImage =
+  async (
+    productId: string,
+    colorSlug: string,
+    publicId: string
+  ) => {
+    const product =
+      await Product.findById(
+        productId
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    const normalizedColorSlug =
+      normalizeSlug(
+        colorSlug
+      );
+
+    const color =
+      product.colors.find(
+        (item) =>
+          item.slugColor ===
+          normalizedColorSlug
+      );
+
+    if (!color) {
+      throw new Error(
+        "Product color not found."
+      );
+    }
+
+    const selectedImage =
+      color.images.find(
+        (image) =>
+          image.publicId ===
+          publicId
+      );
+
+    if (!selectedImage) {
+      throw new Error(
+        "Product image not found."
+      );
+    }
+
+    color.images.forEach(
+      (image) => {
+        image.isDefault =
+          image.publicId ===
+          publicId;
+      }
+    );
+
+    product.markModified(
+      "colors"
+    );
+
+    await product.save();
+
+    return product;
+  };
+
+/* =========================================================
+   SET DEFAULT COLOR
+========================================================= */
+
+export const setDefaultProductColor =
+  async (
+    productId: string,
+    colorSlug: string
+  ) => {
+    const product =
+      await Product.findById(
+        productId
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    const normalizedColorSlug =
+      normalizeSlug(
+        colorSlug
+      );
+
+    const exists =
+      product.colors.some(
+        (color) =>
+          color.slugColor ===
+          normalizedColorSlug
+      );
+
+    if (!exists) {
+      throw new Error(
+        "Product color not found."
+      );
+    }
+
+    product.colors.forEach(
+      (color) => {
+        color.isDefault =
+          color.slugColor ===
+          normalizedColorSlug;
+      }
+    );
+
+    product.markModified(
+      "colors"
+    );
+
+    await product.save();
+
+    return product;
+  };
+
+/* =========================================================
+   ADD SIZE
+========================================================= */
+
+export const addProductSize =
+  async (
+    productId: string,
+    colorSlug: string,
+    input:
+      ProductSizeInput
+  ) => {
+    const product =
+      await Product.findById(
+        productId
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    const normalizedColorSlug =
+      normalizeSlug(
+        colorSlug
+      );
+
+    const color =
+      product.colors.find(
+        (item) =>
+          item.slugColor ===
+          normalizedColorSlug
+      );
+
+    if (!color) {
+      throw new Error(
+        "Product color not found."
+      );
+    }
+
+    const normalized =
+      normalizeSizes(
+        [input],
+        color.nameColor
+      )[0];
+
+    const duplicate =
+      color.sizes.some(
+        (size) =>
+          size.size ===
+          normalized.size
+      );
+
+    if (duplicate) {
+      throw new Error(
+        `Size ${normalized.size} already exists in ${color.nameColor}.`
+      );
+    }
+
+    color.sizes.push(
+      normalized as IProductSize
+    );
+
+    product.markModified(
+      "colors"
+    );
+
+    await product.save();
+
+    return product;
+  };
+
+/* =========================================================
+   UPDATE SIZE
+========================================================= */
+
+export const updateProductSize =
+  async (
+    productId: string,
+    colorSlug: string,
+    sizeId: string,
+    input:
+      Partial<ProductSizeInput>
+  ) => {
+    if (
+      !Types.ObjectId.isValid(
+        sizeId
+      )
+    ) {
+      throw new Error(
+        "Invalid size ID."
+      );
+    }
+
+    const product =
+      await Product.findById(
+        productId
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    const color =
+      product.colors.find(
+        (item) =>
+          item.slugColor ===
+          normalizeSlug(
+            colorSlug
+          )
+      );
+
+    if (!color) {
+      throw new Error(
+        "Product color not found."
+      );
+    }
+
+    const size =
+      color.sizes.find(
+        (item) =>
+          item._id?.toString() ===
+          sizeId
+      );
+
+    if (!size) {
+      throw new Error(
+        "Product size not found."
+      );
+    }
+
+    if (
+      input.size !==
+      undefined
+    ) {
+      const nextSize =
+        input.size
+          .trim()
+          .toUpperCase();
+
+      if (!nextSize) {
+        throw new Error(
+          "Size cannot be empty."
+        );
+      }
+
+      const duplicate =
+        color.sizes.some(
+          (item) =>
+            item._id?.toString() !==
+              sizeId &&
+            item.size ===
+              nextSize
+        );
+
+      if (duplicate) {
+        throw new Error(
+          `Size ${nextSize} already exists.`
+        );
+      }
+
+      size.size =
+        nextSize;
+    }
+
+    if (
+      input.stock !==
+      undefined
+    ) {
+      const stock =
+        Number(
+          input.stock
+        );
+
+      if (
+        !Number.isInteger(
+          stock
+        ) ||
+        stock < 0
+      ) {
+        throw new Error(
+          "Stock must be a whole number 0 or greater."
+        );
+      }
+
+      size.stock =
+        stock;
+    }
+
+    if (
+      input.isActive !==
+      undefined
+    ) {
+      size.isActive =
+        input.isActive;
+    }
+
+    product.markModified(
+      "colors"
+    );
+
+    await product.save();
+
+    return product;
+  };
+
+/* =========================================================
+   DELETE SIZE
+========================================================= */
+
+export const deleteProductSize =
+  async (
+    productId: string,
+    colorSlug: string,
+    sizeId: string
+  ) => {
+    const product =
+      await Product.findById(
+        productId
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    const color =
+      product.colors.find(
+        (item) =>
+          item.slugColor ===
+          normalizeSlug(
+            colorSlug
+          )
+      );
+
+    if (!color) {
+      throw new Error(
+        "Product color not found."
+      );
+    }
+
+    const sizeIndex =
+      color.sizes.findIndex(
+        (size) =>
+          size._id?.toString() ===
+          sizeId
+      );
+
+    if (
+      sizeIndex === -1
+    ) {
+      throw new Error(
+        "Product size not found."
+      );
+    }
+
+    color.sizes.splice(
+      sizeIndex,
+      1
+    );
+
+    product.markModified(
+      "colors"
+    );
+
+    await product.save();
+
+    return product;
+  };
+
+/* =========================================================
+   UPDATE PRODUCT RATING
+
+   Review service se call karna.
 ========================================================= */
 
 export const updateProductRatingSummary =
@@ -2047,8 +1975,7 @@ export const updateProductRatingSummary =
           5,
           Number(
             average
-          ) ||
-            0
+          ) || 0
         )
       );
 
@@ -2058,8 +1985,7 @@ export const updateProductRatingSummary =
         Math.floor(
           Number(
             count
-          ) ||
-            0
+          ) || 0
         )
       );
 
@@ -2081,7 +2007,9 @@ export const updateProductRatingSummary =
         },
         {
           new: true,
-          runValidators: true,
+
+          runValidators:
+            true,
         }
       );
 
@@ -2095,13 +2023,224 @@ export const updateProductRatingSummary =
   };
 
 /* =========================================================
+   CATALOG RESPONSE
+
+   EXACT REQUIRED JSON STRUCTURE
+========================================================= */
+
+export const toCatalogProduct = (
+  input: any
+) => {
+  const product =
+    typeof input?.toObject ===
+    "function"
+      ? input.toObject()
+      : input;
+
+  return {
+    _id:
+      product._id,
+
+    ratings: {
+      average:
+        product.ratings
+          ?.average ??
+        0,
+
+      count:
+        product.ratings
+          ?.count ??
+        0,
+    },
+
+    categories:
+      product.categories ||
+      [],
+
+    isColor:
+      product.isColor ===
+      true,
+
+    colors:
+      Array.isArray(
+        product.colors
+      )
+        ? product.colors.map(
+            (
+              color: any
+            ) => ({
+              nameProduct:
+                color.nameProduct,
+
+              slugProduct:
+                color.slugProduct,
+
+              nameColor:
+                color.nameColor,
+
+              slugColor:
+                color.slugColor,
+
+              hex:
+                color.hex ||
+                "",
+
+              isDefault:
+                Boolean(
+                  color.isDefault
+                ),
+
+              shortDescription:
+                color.shortDescription ||
+                "",
+
+              description:
+                color.description ||
+                "",
+
+              tags:
+                color.tags ||
+                [],
+
+              seoTitle:
+                color.seoTitle ||
+                "",
+
+              seoDescription:
+                color.seoDescription ||
+                "",
+
+              images:
+                Array.isArray(
+                  color.images
+                )
+                  ? color.images.map(
+                      (
+                        image: any
+                      ) => ({
+                        url:
+                          image.url,
+
+                        publicId:
+                          image.publicId,
+
+                        isDefault:
+                          Boolean(
+                            image.isDefault
+                          ),
+                      })
+                    )
+                  : [],
+
+              sizes:
+                Array.isArray(
+                  color.sizes
+                )
+                  ? color.sizes.map(
+                      (
+                        size: any
+                      ) => ({
+                        _id:
+                          size._id,
+
+                        size:
+                          size.size,
+
+                        stock:
+                          size.stock,
+
+                        isActive:
+                          size.isActive !==
+                          false,
+                      })
+                    )
+                  : [],
+            })
+          )
+        : [],
+
+    isActive:
+      product.isActive ===
+      true,
+
+    isFeatured:
+      product.isFeatured ===
+      true,
+
+    isNewLaunch:
+      product.isNewLaunch ===
+      true,
+
+    createdAt:
+      product.createdAt,
+
+    updatedAt:
+      product.updatedAt,
+  };
+};
+
+/* =========================================================
+   GET CATALOG
+========================================================= */
+
+export const getProductCatalog =
+  async () => {
+    const products =
+      await Product.find({
+        isActive: true,
+      })
+        .populate(
+          "categories",
+          "_id name slug level"
+        )
+        .sort({
+          createdAt: -1,
+        });
+
+    return products.map(
+      toCatalogProduct
+    );
+  };
+
+/* =========================================================
+   GET CATALOG PRODUCT BY SLUG
+========================================================= */
+
+export const getCatalogProductBySlug =
+  async (
+    slug: string
+  ) => {
+    const product =
+      await Product.findOne({
+        isActive: true,
+
+        "colors.slugProduct":
+          normalizeSlug(
+            slug
+          ),
+      }).populate(
+        "categories",
+        "_id name slug level"
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    return toCatalogProduct(
+      product
+    );
+  };
+
+/* =========================================================
    DELETE PRODUCT
 
-   Deletes:
-   - mainImages[]
-   - colors[].images[]
-   from Cloudinary first,
-   then MongoDB product.
+   1. Get all Cloudinary images
+   2. Delete images
+   3. Delete MongoDB product
+   4. Delete empty folders
 ========================================================= */
 
 export const deleteProduct =
@@ -2148,13 +2287,15 @@ export const deleteProduct =
         product._id,
     });
 
-    await cleanupCloudinaryFolders(
+    await cleanupFolders(
       publicIds
     );
 
     return {
+      success: true,
+
       message:
-        "Product and product images deleted successfully.",
+        "Product deleted successfully.",
 
       deletedImages:
         publicIds.length,
