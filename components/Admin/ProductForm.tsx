@@ -258,19 +258,14 @@ export default function ProductForm({
     isColor,
     setIsColor,
   ] =
-    useState(true);
+    useState(false);
 
   const [
     colors,
     setColors,
   ] =
     useState<ColorInput[]>(
-      [
-        {
-          ...emptyColor(),
-          isDefault: true,
-        },
-      ]
+      []
     );
 
   const [
@@ -685,16 +680,28 @@ export default function ProductForm({
               )
             );
 
+            const productHasColors =
+              product.isColor ===
+                true ||
+              (
+                Array.isArray(
+                  product.colors
+                ) &&
+                product.colors.length >
+                  0
+              );
+
             setIsColor(
-              product.isColor !==
-                false
+              productHasColors
             );
 
             setColors(
-              normalizeColors(
-                product.colors ||
-                  []
-              )
+              productHasColors
+                ? normalizeColors(
+                    product.colors ||
+                      []
+                  )
+                : []
             );
 
             setRatingAverage(
@@ -976,8 +983,75 @@ export default function ProductForm({
       );
     };
 
+  const handleColorModeChange =
+    async (
+      enabled: boolean
+    ) => {
+      if (enabled) {
+        /*
+          In color mode images live only in colors[].images[].
+          Remove unsaved main-gallery uploads now; existing saved
+          main images are deleted by backend after the product save.
+        */
+        for (const image of mainImages) {
+          if (
+            newUploadIdsRef.current.has(
+              image.publicId
+            )
+          ) {
+            await removeUnsavedImage(
+              image
+            );
+          }
+        }
+
+        setMainImages([]);
+        setIsColor(true);
+
+        setColors(
+          current =>
+            current.length > 0
+              ? current
+              : [
+                  {
+                    ...emptyColor(),
+                    isDefault: true,
+                  },
+                ]
+        );
+
+        return;
+      }
+
+      /*
+        Newly uploaded unsaved color images are not known to MongoDB,
+        so delete them immediately before color mode is switched off.
+        Existing saved images are deleted by the backend after PATCH.
+      */
+      for (const color of colors) {
+        for (const image of color.images) {
+          if (
+            newUploadIdsRef.current.has(
+              image.publicId
+            )
+          ) {
+            await removeUnsavedImage(
+              image
+            );
+          }
+        }
+      }
+
+      setColors([]);
+      setIsColor(false);
+    };
+
   const addColor =
     () => {
+      if (!isColor) {
+        return;
+      }
+
       setColors(
         (
           current
@@ -1436,6 +1510,37 @@ export default function ProductForm({
         return;
       }
 
+      if (isColor) {
+        const submittedColors =
+          colors.filter(
+            color =>
+              color.name.trim()
+          );
+
+        if (
+          submittedColors.length ===
+          0
+        ) {
+          setError(
+            "At least one color variant is required when Color Variants is enabled."
+          );
+          return;
+        }
+
+        const missingProductName =
+          submittedColors.find(
+            color =>
+              !color.nameProduct.trim()
+          );
+
+        if (missingProductName) {
+          setError(
+            `Color product name is required for ${missingProductName.name || "every color"}.`
+          );
+          return;
+        }
+      }
+
       try {
         setSaving(true);
 
@@ -1482,7 +1587,9 @@ export default function ProductForm({
           isColor,
 
           mainImages:
-            mainImages
+            isColor
+              ? []
+              : mainImages
               .filter(
                 image =>
                   image.url &&
@@ -1503,7 +1610,8 @@ export default function ProductForm({
               })),
 
           colors:
-            colors
+            isColor
+              ? colors
               .filter(
                 (
                   color
@@ -1626,7 +1734,8 @@ export default function ProductForm({
                         })
                       ),
                 })
-              ),
+              )
+              : [],
 
           status,
 
@@ -1976,24 +2085,26 @@ export default function ProductForm({
             </div>
           </Card>
 
-          <Card title="Main Product Images">
-            <p className="mb-4 text-[9px] leading-5 text-[#211A18]/40">
-              No fixed image limit. Ek baar me multiple photos select kar sakte ho.
-              First image main product image hogi; kisi bhi image ko "Make Main" kar sakte ho.
-            </p>
+          {!isColor && (
+            <Card title="Main Product Images">
+              <p className="mb-4 text-[9px] leading-5 text-[#211A18]/40">
+                No fixed image limit. These images are used only when Color Variants is OFF.
+              </p>
 
-            <ProductImagesUploader
-              label="Product Gallery"
-              value={mainImages}
-              folder={`products/${productFolderName}/main`}
-              disabled={saving}
-              onUploaded={onMainImagesUploaded}
-              onRemove={removeMainImage}
-              onMakeMain={makeMainImage}
-              onUpdate={updateMainImage}
-            />
-          </Card>
+              <ProductImagesUploader
+                label="Product Gallery"
+                value={mainImages}
+                folder={`products/${productFolderName}/main`}
+                disabled={saving}
+                onUploaded={onMainImagesUploaded}
+                onRemove={removeMainImage}
+                onMakeMain={makeMainImage}
+                onUpdate={updateMainImage}
+              />
+            </Card>
+          )}
 
+          {isColor && (
           <Card
             title="Color Variants"
             action={
@@ -2418,6 +2529,7 @@ export default function ProductForm({
               )}
             </div>
           </Card>
+          )}
 
           <Card title="SEO">
             <div className="space-y-4">
@@ -2468,7 +2580,11 @@ export default function ProductForm({
               </div>
               <Toggle
                 checked={isColor}
-                onChange={setIsColor}
+                onChange={(value) =>
+                  void handleColorModeChange(
+                    value
+                  )
+                }
               />
             </div>
 
@@ -2615,12 +2731,14 @@ export default function ProductForm({
               <SummaryRow
                 label="Colors"
                 value={String(
-                  colors.filter(
+                  isColor
+                    ? colors.filter(
                     (
                       color
                     ) =>
                       color.name.trim()
                   ).length
+                    : 0
                 )}
               />
 
@@ -2634,9 +2752,14 @@ export default function ProductForm({
               <SummaryRow
                 label="Total Stock"
                 value={String(
-                  calculateTotalStock(
-                    colors
-                  )
+                  isColor
+                    ? calculateTotalStock(
+                        colors
+                      )
+                    : Math.max(
+                        0,
+                        Number(stock) || 0
+                      )
                 )}
               />
             </div>

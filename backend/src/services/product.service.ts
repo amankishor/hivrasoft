@@ -184,7 +184,13 @@ const isProductSlugTaken =
       string,
       unknown
     > = {
-      slug,
+      $or: [
+        { slug },
+        {
+          "colors.slugProduct":
+            slug,
+        },
+      ],
     };
 
     if (excludeId) {
@@ -506,25 +512,34 @@ const normalizeColors =
 
         usedColorSlugs.add(slug);
 
+        const nameProduct =
+          color.nameProduct?.trim();
+
+        if (!nameProduct) {
+          throw new Error(
+            `${name} color product name is required.`
+          );
+        }
+
         const slugProduct =
-          color.slugProduct?.trim()
-            ? normalizeProductSlug(
-                color.slugProduct
-              )
-            : "";
+          normalizeProductSlug(
+            color.slugProduct?.trim() ||
+            nameProduct
+          );
 
         if (
-          slugProduct &&
-          usedProductSlugs.has(slugProduct)
+          usedProductSlugs.has(
+            slugProduct
+          )
         ) {
           throw new Error(
             `Duplicate color product slug: ${slugProduct}`
           );
         }
 
-        if (slugProduct) {
-          usedProductSlugs.add(slugProduct);
-        }
+        usedProductSlugs.add(
+          slugProduct
+        );
 
         const images =
           normalizeImages(
@@ -617,9 +632,7 @@ const normalizeColors =
         return {
           name,
           slug,
-          nameProduct:
-            color.nameProduct?.trim() ||
-            "",
+          nameProduct,
           slugProduct,
           nameColor: name,
           slugColor: slug,
@@ -679,6 +692,56 @@ const normalizeColors =
     }
 
     return normalized;
+  };
+
+const validateColorMode =
+  (
+    isColor: boolean,
+    colorsInput:
+      | ProductColorInput[]
+      | undefined
+  ) => {
+    const hasSubmittedColors =
+      Array.isArray(colorsInput) &&
+      colorsInput.length > 0;
+
+    if (
+      !isColor &&
+      hasSubmittedColors
+    ) {
+      throw new Error(
+        "Colors are not allowed when isColor is false."
+      );
+    }
+
+    if (
+      isColor &&
+      !hasSubmittedColors
+    ) {
+      throw new Error(
+        "At least one color variant is required when isColor is true."
+      );
+    }
+  };
+
+const validateUniqueColorProductSlugs =
+  async (
+    colors: IProductColor[],
+    excludeProductId?: string
+  ) => {
+    for (const color of colors) {
+      const duplicate =
+        await isProductSlugTaken(
+          color.slugProduct,
+          excludeProductId
+        );
+
+      if (duplicate) {
+        throw new Error(
+          `Color product slug already exists: ${color.slugProduct}`
+        );
+      }
+    }
   };
 
 /* =========================================================
@@ -1098,18 +1161,34 @@ export const createProduct =
         input.slug
       );
 
+    const isColor =
+      input.isColor === true;
+
+    validateColorMode(
+      isColor,
+      input.colors
+    );
+
     const mainImages =
-      normalizeImages(
-        input.mainImages,
-        "Product main images"
-      );
+      isColor
+        ? []
+        : normalizeImages(
+            input.mainImages,
+            "Product main images"
+          );
 
     const colors =
-      normalizeColors(
-        input.colors
-      );
+      isColor
+        ? normalizeColors(
+            input.colors
+          )
+        : [];
 
     await validateUniqueSkus(
+      colors
+    );
+
+    await validateUniqueColorProductSlugs(
       colors
     );
 
@@ -1122,70 +1201,45 @@ export const createProduct =
     const product =
       await Product.create({
         name,
-
         slug,
-
         shortDescription:
           input.shortDescription
             ?.trim() ||
           "",
-
         description:
           sanitizeProductDescriptionHtml(
             input.description
           ),
-
         categories,
-
         price,
-
         compareAtPrice,
-
         costPrice,
-
         stock,
-
         mainImages,
-
-        isColor:
-          input.isColor ??
-          colors.length > 0,
-
+        isColor,
         colors,
-
-        /*
-          Admin create API se rating set nahi karni.
-          Reviews aane par Review service is summary ko update kare.
-        */
         ratings: {
           average: 0,
           count: 0,
         },
-
         status,
-
         isActive:
           status ===
           "active",
-
         isFeatured:
           input.isFeatured ??
           false,
-
         isNewLaunch:
           input.isNewLaunch ??
           false,
-
         tags:
           normalizeTags(
             input.tags
           ),
-
         seoTitle:
           input.seoTitle
             ?.trim() ||
           "",
-
         seoDescription:
           input.seoDescription
             ?.trim() ||
@@ -1352,18 +1406,24 @@ export const toStorefrontProduct =
           )
         : [];
 
+    const isColor =
+      product.isColor === true ||
+      colors.length > 0;
+
     return {
       _id: product._id,
       ratings: product.ratings || { average: 0, count: 0 },
       categories: product.categories || [],
-      isColor:
-        product.isColor ??
-        colors.length > 0,
-      colors,
+      isColor,
+      colors:
+        isColor
+          ? colors
+          : [],
       isActive:
-        product.isActive ??
         product.status ===
-          "active",
+          "active" ||
+        product.isActive ===
+          true,
       isFeatured: Boolean(product.isFeatured),
       isNewLaunch: Boolean(product.isNewLaunch),
       createdAt: product.createdAt,
@@ -1378,7 +1438,10 @@ export const toStorefrontProduct =
       compareAtPrice: product.compareAtPrice,
       costPrice: product.costPrice,
       stock: product.stock,
-      mainImages,
+      mainImages:
+        isColor
+          ? []
+          : mainImages,
       status: product.status,
       tags: product.tags || [],
       seoTitle: product.seoTitle,
@@ -1393,51 +1456,94 @@ export const toCatalogProduct =
         productInput
       );
 
+    const colors =
+      product.isColor
+        ? product.colors
+            .filter(
+              (
+                color: Record<string, any>
+              ) =>
+                color.isActive !==
+                false
+            )
+            .map(
+              (
+                color: Record<string, any>
+              ) => ({
+                nameProduct:
+                  color.nameProduct,
+                slugProduct:
+                  color.slugProduct,
+                nameColor:
+                  color.nameColor,
+                slugColor:
+                  color.slugColor,
+                hex:
+                  color.hex,
+                isDefault:
+                  color.isDefault,
+                shortDescription:
+                  color.shortDescription,
+                description:
+                  color.description,
+                tags:
+                  color.tags,
+                seoTitle:
+                  color.seoTitle,
+                seoDescription:
+                  color.seoDescription,
+                images:
+                  color.images.map(
+                    (
+                      image: Record<string, any>
+                    ) => ({
+                      url:
+                        image.url,
+                      publicId:
+                        image.publicId,
+                      isDefault:
+                        image.isDefault,
+                    })
+                  ),
+                sizes:
+                  color.sizes.map(
+                    (
+                      size: Record<string, any>
+                    ) => ({
+                      _id:
+                        size._id,
+                      size:
+                        size.size,
+                      stock:
+                        size.stock,
+                      isActive:
+                        size.isActive,
+                    })
+                  ),
+              })
+            )
+        : [];
+
     return {
-      _id: product._id,
-      ratings: product.ratings,
-      categories: product.categories,
-      isColor: product.isColor,
-      colors: product.colors.map(
-        (color: Record<string, any>) => ({
-          nameProduct: color.nameProduct,
-          slugProduct: color.slugProduct,
-          nameColor: color.nameColor,
-          slugColor: color.slugColor,
-          hex: color.hex,
-          isDefault: color.isDefault,
-          shortDescription:
-            color.shortDescription,
-          description:
-            color.description,
-          tags: color.tags,
-          seoTitle: color.seoTitle,
-          seoDescription:
-            color.seoDescription,
-          images: color.images.map(
-            (image: Record<string, any>) => ({
-              url: image.url,
-              publicId: image.publicId,
-              name: image.name,
-              alt: image.alt,
-              isDefault: image.isDefault,
-            })
-          ),
-          sizes: color.sizes.map(
-            (size: Record<string, any>) => ({
-              _id: size._id,
-              size: size.size,
-              stock: size.stock,
-              isActive: size.isActive,
-            })
-          ),
-        })
-      ),
-      isActive: product.isActive,
-      isFeatured: product.isFeatured,
-      isNewLaunch: product.isNewLaunch,
-      createdAt: product.createdAt,
-      updatedAt: product.updatedAt,
+      _id:
+        product._id,
+      ratings:
+        product.ratings,
+      categories:
+        product.categories,
+      isColor:
+        product.isColor,
+      colors,
+      isActive:
+        product.isActive,
+      isFeatured:
+        product.isFeatured,
+      isNewLaunch:
+        product.isNewLaunch,
+      createdAt:
+        product.createdAt,
+      updatedAt:
+        product.updatedAt,
     };
   };
 
@@ -1719,48 +1825,89 @@ export const updateProduct =
     product.stock =
       nextStock;
 
-    /* MAIN IMAGES */
+    /* COLOR MODE + IMAGES */
 
-    if (
-      input.mainImages !==
+    const nextIsColor =
+      input.isColor !==
       undefined
-    ) {
+        ? input.isColor === true
+        : product.isColor === true;
+
+    if (!nextIsColor) {
+      validateColorMode(
+        false,
+        input.colors
+      );
+
+      product.isColor =
+        false;
+
+      /*
+        When color mode is OFF no color data is allowed.
+        Clearing it also lets the image-cleanup block remove old
+        color images from Cloudinary after a successful save.
+      */
+      product.colors =
+        [];
+
+      if (
+        input.mainImages !==
+        undefined
+      ) {
+        product.mainImages =
+          normalizeImages(
+            input.mainImages,
+            "Product main images"
+          );
+      }
+    } else {
+      product.isColor =
+        true;
+
+      /*
+        Color products keep their gallery inside colors[].images[].
+        Product-level main images are removed in color mode.
+      */
       product.mainImages =
-        normalizeImages(
-          input.mainImages,
-          "Product main images"
-        );
-    }
+        [];
 
-    /* COLORS */
-
-    if (
-      input.colors !==
-      undefined
-    ) {
-      const colors =
-        normalizeColors(
+      if (
+        input.colors !==
+        undefined
+      ) {
+        validateColorMode(
+          true,
           input.colors
         );
 
-      await validateUniqueSkus(
-        colors,
-        productId
-      );
+        const colors =
+          normalizeColors(
+            input.colors
+          );
 
-      product.colors =
-        colors;
+        await validateUniqueSkus(
+          colors,
+          productId
+        );
+
+        await validateUniqueColorProductSlugs(
+          colors,
+          productId
+        );
+
+        product.colors =
+          colors;
+      } else if (
+        product.colors.length ===
+        0
+      ) {
+        throw new Error(
+          "At least one color variant is required when isColor is true."
+        );
+      }
     }
 
-    /* COLOR / STATUS */
-
-    if (
-      input.isColor !==
-      undefined
-    ) {
-      product.isColor =
-        input.isColor;
-    }
+    /* STATUS */
 
     if (
       input.status !==

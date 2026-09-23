@@ -308,12 +308,17 @@ export const getCatalogProductBySlugController =
       const product =
         await getProductBySlug(slug);
 
+      const catalogProduct =
+        toCatalogProduct(
+          product
+        );
+
       return res.status(200).json({
         success: true,
-        product:
-          toCatalogProduct(
-            product
-          ),
+        count: 1,
+        products: [
+          catalogProduct,
+        ],
       });
     } catch (error) {
       return res.status(404).json({
