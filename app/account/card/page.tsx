@@ -20,6 +20,7 @@ import {
 
 import Header from "@/components/Header/Header";
 import AccountSidebar from "@/app/account/components/AccountSidebar";
+import { catalogProductsFromResponse } from "@/lib/product-catalog";
 
 /* =========================================================
    API
@@ -174,23 +175,11 @@ async function addWishlistApi(productId) {
 }
 
 async function getActiveProductsApi() {
-  const data = await apiRequest("/api/products/active", {
+  const data = await apiRequest("/api/products/catalog", {
     method: "GET",
   });
 
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (Array.isArray(data?.products)) {
-    return data.products;
-  }
-
-  if (Array.isArray(data?.data)) {
-    return data.data;
-  }
-
-  return [];
+  return catalogProductsFromResponse(data);
 }
 
 /* =========================================================

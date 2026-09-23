@@ -1,763 +1,154 @@
 "use client";
 
-import {
-  useRef,
-  useState,
-  type ChangeEvent,
-} from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-export type ImageValue = {
-  url: string;
-  publicId: string;
-  name?: string;
-  alt?: string;
-  isDefault?: boolean;
-};
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-type ProductImagesUploaderProps = {
-  label: string;
-
-  value: ImageValue[];
-
-  folder: string;
-
-  disabled?: boolean;
-
-  onUploaded: (
-    images: ImageValue[]
-  ) =>
-    void |
-    Promise<void>;
-
-  onRemove: (
-    index: number
-  ) =>
-    void |
-    Promise<void>;
-
-  onMakeMain?: (
-    index: number
-  ) =>
-    void;
-
-  onUpdate?: (
-    index: number,
-    patch: Partial<Pick<ImageValue, "name" | "alt">>
-  ) => void;
-};
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
-
-const ALLOWED_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/avif",
-];
-
-const MAX_FILE_SIZE =
-  10 *
-  1024 *
-  1024;
-
-/* =========================================================
-   MULTI PRODUCT IMAGE UPLOADER
-
-   - No fixed image-count limit in UI.
-   - File picker supports MULTIPLE selection.
-   - Selected files upload to existing admin upload API.
-   - First image is main image.
-========================================================= */
-
-export default function ProductImagesUploader({
-  label,
-  value,
-  folder,
-  disabled = false,
-  onUploaded,
-  onRemove,
-  onMakeMain,
-  onUpdate,
-}: ProductImagesUploaderProps) {
-  const inputRef =
-    useRef<HTMLInputElement | null>(
-      null
-    );
-
-  const [
-    uploading,
-    setUploading,
-  ] =
-    useState(false);
-
-  const [
-    progress,
-    setProgress,
-  ] =
-    useState({
-      current: 0,
-      total: 0,
-    });
-
-  const [
-    error,
-    setError,
-  ] =
-    useState("");
-
-  /* =========================================================
-     UPLOAD ONE FILE
-  ========================================================= */
-
-  const uploadFile =
-    async (
-      file: File
-    ): Promise<ImageValue> => {
-      const formData =
-        new FormData();
-
-      formData.append(
-        "image",
-        file
-      );
-
-      formData.append(
-        "folder",
-        folder
-      );
-
-      /*
-        Cloudinary public_id uses the uploaded file name.
-        Backend also falls back to file.originalname for older callers.
-      */
-      formData.append(
-        "imageName",
-        file.name
-      );
-
-      const response =
-        await fetch(
-          `${API_URL}/api/uploads/image`,
-          {
-            method:
-              "POST",
-
-            credentials:
-              "include",
-
-            body:
-              formData,
-          }
-        );
-
-      const data =
-        await response
-          .json()
-          .catch(
-            () => ({})
-          );
-
-      if (
-        !response.ok
-      ) {
-        throw new Error(
-          data.message ||
-            `Unable to upload ${file.name}.`
-        );
-      }
-
-      if (
-        !data.image?.url ||
-        !data.image?.publicId
-      ) {
-        throw new Error(
-          `Invalid upload response for ${file.name}.`
-        );
-      }
-
-      const originalName =
-        file.name.replace(
-          /\.[^.]+$/,
-          ""
-        );
-
-      return {
-        url:
-          data.image.url,
-
-        publicId:
-          data.image.publicId,
-
-        name:
-          data.image.name ||
-          originalName,
-
-        alt:
-          data.image.alt ||
-          data.image.name ||
-          originalName,
-
-        isDefault: false,
-      };
-    };
-
-  /* =========================================================
-     SELECT MANY + UPLOAD
-  ========================================================= */
-
-  const handleFiles =
-    async (
-      event:
-        ChangeEvent<HTMLInputElement>
-    ) => {
-      const files =
-        Array.from(
-          event.target.files ||
-          []
-        );
-
-      event.target.value =
-        "";
-
-      if (
-        files.length ===
-        0
-      ) {
-        return;
-      }
-
-      setError("");
-
-      const invalidType =
-        files.find(
-          (
-            file
-          ) =>
-            !ALLOWED_TYPES.includes(
-              file.type
-            )
-        );
-
-      if (
-        invalidType
-      ) {
-        setError(
-          `${invalidType.name}: only JPG, PNG, WEBP or AVIF images are allowed.`
-        );
-
-        return;
-      }
-
-      const tooLarge =
-        files.find(
-          (
-            file
-          ) =>
-            file.size >
-            MAX_FILE_SIZE
-        );
-
-      if (
-        tooLarge
-      ) {
-        setError(
-          `${tooLarge.name}: image must be smaller than 10MB.`
-        );
-
-        return;
-      }
-
-      const uploaded:
-        ImageValue[] =
-        [];
-
-      try {
-        setUploading(true);
-
-        setProgress({
-          current: 0,
-          total:
-            files.length,
-        });
-
-        /*
-          Sequential upload keeps backend / Cloudinary load controlled,
-          even when admin selects many photos at once.
-        */
-        for (
-          let index = 0;
-          index < files.length;
-          index += 1
-        ) {
-          const image =
-            await uploadFile(
-              files[index]
-            );
-
-          uploaded.push(
-            image
-          );
-
-          setProgress({
-            current:
-              index + 1,
-            total:
-              files.length,
-          });
-        }
-
-        await onUploaded(
-          uploaded
-        );
-      } catch (
-        uploadError
-      ) {
-        /*
-          Successfully uploaded files are still sent to parent state,
-          so they are tracked and can be removed/cancel-cleaned safely.
-        */
-        if (
-          uploaded.length >
-          0
-        ) {
-          await onUploaded(
-            uploaded
-          );
-        }
-
-        setError(
-          uploadError instanceof Error
-            ? uploadError.message
-            : "Image upload failed."
-        );
-      } finally {
-        setUploading(false);
-
-        setProgress({
-          current: 0,
-          total: 0,
-        });
-      }
-    };
-
-  return (
-    <div
-      className="
-        rounded-[16px]
-        border
-        border-[#211A18]/10
-        bg-[#FAF8F6]
-        p-4
-      "
-    >
-      <div
-        className="
-          flex
-          flex-col
-          gap-3
-          sm:flex-row
-          sm:items-center
-          sm:justify-between
-        "
-      >
-        <div>
-          <p
-            className="
-              text-[11px]
-              font-semibold
-              text-[#211A18]
-            "
-          >
-            {label}
-          </p>
-
-          <p
-            className="
-              mt-1
-              text-[8px]
-              leading-4
-              text-[#211A18]/40
-            "
-          >
-            {value.length} image
-            {value.length ===
-            1
-              ? ""
-              : "s"}
-            {" • "}
-            Multiple files can be selected together.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          disabled={
-            disabled ||
-            uploading
-          }
-          onClick={() =>
-            inputRef.current?.click()
-          }
-          className="
-            inline-flex
-            h-[40px]
-            items-center
-            justify-center
-            rounded-[10px]
-            bg-[#8C1839]
-            px-4
-            text-[8px]
-            font-semibold
-            uppercase
-            tracking-[0.1em]
-            text-white
-            transition
-            hover:bg-[#211A18]
-            disabled:cursor-not-allowed
-            disabled:opacity-50
-          "
-        >
-          {uploading
-            ? `Uploading ${progress.current}/${progress.total}`
-            : value.length > 0
-              ? "+ Add More Photos"
-              : "+ Select Photos"}
-        </button>
-      </div>
-
-      <input
-        ref={
-          inputRef
-        }
-        type="file"
-        multiple
-        accept="image/jpeg,image/png,image/webp,image/avif"
-        disabled={
-          disabled ||
-          uploading
-        }
-        onChange={
-          handleFiles
-        }
-        className="hidden"
-      />
-
-      {uploading && (
-        <div
-          className="
-            mt-4
-            h-1.5
-            overflow-hidden
-            rounded-full
-            bg-[#211A18]/10
-          "
-        >
-          <div
-            className="
-              h-full
-              rounded-full
-              bg-[#8C1839]
-              transition-all
-            "
-            style={{
-              width:
-                progress.total > 0
-                  ? `${(
-                      progress.current /
-                      progress.total
-                    ) * 100}%`
-                  : "0%",
-            }}
-          />
-        </div>
-      )}
-
-      {error && (
-        <p
-          className="
-            mt-3
-            rounded-[10px]
-            border
-            border-red-200
-            bg-red-50
-            px-3
-            py-2
-            text-[9px]
-            leading-4
-            text-red-600
-          "
-        >
-          {error}
-        </p>
-      )}
-
-      {value.length ===
-      0 ? (
-        <button
-          type="button"
-          disabled={
-            disabled ||
-            uploading
-          }
-          onClick={() =>
-            inputRef.current?.click()
-          }
-          className="
-            mt-4
-            flex
-            min-h-[190px]
-            w-full
-            flex-col
-            items-center
-            justify-center
-            rounded-[14px]
-            border
-            border-dashed
-            border-[#211A18]/20
-            bg-white
-            text-center
-            transition
-            hover:border-[#8C1839]
-            hover:bg-[#FFF9F9]
-            disabled:opacity-50
-          "
-        >
-          <UploadIcon />
-
-          <span
-            className="
-              mt-3
-              text-[10px]
-              font-semibold
-              text-[#211A18]
-            "
-          >
-            Select one or many photos
-          </span>
-
-          <span
-            className="
-              mt-1
-              text-[8px]
-              text-[#211A18]/40
-            "
-          >
-            JPG, PNG, WEBP, AVIF • max 10MB per file
-          </span>
-        </button>
-      ) : (
-        <div
-          className="
-            mt-4
-            grid
-            grid-cols-2
-            gap-3
-            md:grid-cols-3
-            xl:grid-cols-4
-          "
-        >
-          {value.map(
-            (
-              image,
-              index
-            ) => (
-              <div
-                key={
-                  image.publicId ||
-                  `${image.url}-${index}`
-                }
-                className="
-                  overflow-hidden
-                  rounded-[13px]
-                  border
-                  border-[#211A18]/10
-                  bg-white
-                "
-              >
-                <div
-                  className="
-                    relative
-                    aspect-[4/5]
-                    overflow-hidden
-                    bg-[#F3EEE8]
-                  "
-                >
-                  <img
-                    src={
-                      image.url
-                    }
-                    alt={
-                      image.alt ||
-                      image.name ||
-                      `${label} ${index + 1}`
-                    }
-                    className="
-                      h-full
-                      w-full
-                      object-cover
-                    "
-                  />
-
-                  {index ===
-                    0 && (
-                    <span
-                      className="
-                        absolute
-                        left-2
-                        top-2
-                        rounded-full
-                        bg-[#8C1839]
-                        px-2.5
-                        py-1.5
-                        text-[7px]
-                        font-semibold
-                        uppercase
-                        tracking-[0.08em]
-                        text-white
-                      "
-                    >
-                      Main
-                    </span>
-                  )}
-
-                  <span
-                    className="
-                      absolute
-                      right-2
-                      top-2
-                      rounded-full
-                      bg-black/65
-                      px-2
-                      py-1
-                      text-[7px]
-                      text-white
-                    "
-                  >
-                    #{index + 1}
-                  </span>
-                </div>
-
-                <div className="space-y-2 p-2.5">
-                  <div>
-                    <label className="mb-1 block text-[7px] font-semibold uppercase tracking-[0.08em] text-[#211A18]/45">
-                      Image name
-                    </label>
-                    <input
-                      value={image.name || ""}
-                      disabled={disabled || uploading}
-                      onChange={(event) =>
-                        onUpdate?.(index, {
-                          name: event.target.value,
-                        })
-                      }
-                      placeholder="black-bikini-front"
-                      className="h-8 w-full rounded-[8px] border border-[#211A18]/10 bg-[#FAF8F6] px-2 text-[8px] outline-none focus:border-[#8C1839] disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-[7px] font-semibold uppercase tracking-[0.08em] text-[#211A18]/45">
-                      Alt text
-                    </label>
-                    <input
-                      value={image.alt || image.name || ""}
-                      disabled={disabled || uploading}
-                      onChange={(event) =>
-                        onUpdate?.(index, {
-                          alt: event.target.value,
-                        })
-                      }
-                      placeholder="Black Bikini Panty front view"
-                      className="h-8 w-full rounded-[8px] border border-[#211A18]/10 bg-[#FAF8F6] px-2 text-[8px] outline-none focus:border-[#8C1839] disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                  {index > 0 &&
-                    onMakeMain && (
-                    <button
-                      type="button"
-                      disabled={
-                        disabled ||
-                        uploading
-                      }
-                      onClick={() =>
-                        onMakeMain(
-                          index
-                        )
-                      }
-                      className="
-                        flex-1
-                        rounded-[8px]
-                        bg-[#F8E5E8]
-                        px-2
-                        py-2
-                        text-[7px]
-                        font-semibold
-                        uppercase
-                        text-[#8C1839]
-                        disabled:opacity-40
-                      "
-                    >
-                      Make Main
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    disabled={
-                      disabled ||
-                      uploading
-                    }
-                    onClick={() =>
-                      void onRemove(
-                        index
-                      )
-                    }
-                    className="
-                      flex-1
-                      rounded-[8px]
-                      bg-red-50
-                      px-2
-                      py-2
-                      text-[7px]
-                      font-semibold
-                      uppercase
-                      text-red-600
-                      disabled:opacity-40
-                    "
-                  >
-                    Remove
-                  </button>
-                  </div>
-                </div>
-              </div>
-            )
-          )}
-        </div>
-      )}
-    </div>
-  );
+async function readJson(response) {
+  try { return await response.json(); } catch { return {}; }
 }
 
-function UploadIcon() {
+function normalizeProduct(product) {
+  const colors = Array.isArray(product?.colors) ? product.colors : [];
+  const defaultColor = colors.find((color) => color?.isDefault) || colors[0] || {};
+  const images = Array.isArray(defaultColor.images) ? defaultColor.images : [];
+  const totalStock = colors.reduce(
+    (total, color) => total + (Array.isArray(color?.sizes) ? color.sizes : []).reduce(
+      (sum, size) => sum + (size?.isActive === false ? 0 : Math.max(0, Number(size?.stock || 0))), 0
+    ), 0
+  );
+  return {
+    id: String(product?._id || ""),
+    name: defaultColor.nameProduct || "Product",
+    slug: defaultColor.slugProduct || "",
+    color: defaultColor.nameColor || "",
+    image: images.find((image) => image?.isDefault)?.url || images[0]?.url || "",
+    stock: totalStock,
+    colors: colors.length,
+    isActive: product?.isActive === true,
+    isFeatured: product?.isFeatured === true,
+    isNewLaunch: product?.isNewLaunch === true,
+    updatedAt: product?.updatedAt || product?.createdAt || "",
+  };
+}
+
+export default function ProductsManager() {
+  const [products, setProducts] = useState([]);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [actionId, setActionId] = useState(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const loadProducts = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const response = await fetch(`${API_URL}/api/products`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(data?.message || "Unable to load products.");
+      setProducts((Array.isArray(data?.products) ? data.products : []).map(normalizeProduct).filter((item) => item.id));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to load products.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadProducts(); }, [loadProducts]);
+
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return products.filter((product) => {
+      const matchesSearch = !q || product.name.toLowerCase().includes(q) || product.slug.toLowerCase().includes(q) || product.id.toLowerCase().includes(q);
+      const matchesFilter = filter === "all" || (filter === "active" ? product.isActive : !product.isActive);
+      return matchesSearch && matchesFilter;
+    });
+  }, [products, search, filter]);
+
+  const updateActive = async (id, isActive) => {
+    if (actionId) return;
+    try {
+      setActionId(id); setError(""); setSuccess("");
+      const response = await fetch(`${API_URL}/api/products/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ isActive }),
+      });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(data?.message || "Unable to update product.");
+      setProducts((current) => current.map((product) => product.id === id ? { ...product, isActive } : product));
+      setSuccess(isActive ? "Product activated successfully." : "Product deactivated successfully.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to update product.");
+    } finally { setActionId(null); }
+  };
+
+  const deleteProduct = async (id, name) => {
+    if (actionId || !window.confirm(`Delete "${name}"?\n\nProduct and its Cloudinary images will be deleted.`)) return;
+    try {
+      setActionId(id); setError(""); setSuccess("");
+      const response = await fetch(`${API_URL}/api/products/${id}`, {
+        method: "DELETE", credentials: "include", headers: { Accept: "application/json" },
+      });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(data?.message || "Unable to delete product.");
+      setProducts((current) => current.filter((product) => product.id !== id));
+      setSuccess(data?.message || "Product deleted successfully.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to delete product.");
+    } finally { setActionId(null); }
+  };
+
   return (
-    <svg
-      width="30"
-      height="30"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="text-[#8C1839]"
-    >
-      <path d="M12 16V4" />
-      <path d="m7 9 5-5 5 5" />
-      <path d="M5 20h14" />
-    </svg>
+    <div className="mx-auto w-full max-w-[1500px] px-4 py-8 md:px-8">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8C1839]">Admin Catalog</p>
+          <h1 className="mt-2 text-3xl font-semibold text-[#211A18]">Products</h1>
+          <p className="mt-1 text-sm text-[#211A18]/50">Manage color products, images, sizes and stock.</p>
+        </div>
+        <Link href="/admin/products/new" className="inline-flex h-11 items-center justify-center rounded-xl bg-[#8C1839] px-5 text-xs font-semibold text-white">+ Add Product</Link>
+      </div>
+
+      {(error || success) && <div className={`mt-5 rounded-xl border px-4 py-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"}`}>{error || success}</div>}
+
+      <div className="mt-6 grid gap-3 rounded-2xl border border-black/10 bg-white p-4 md:grid-cols-[1fr_180px_auto]">
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, slug or ID" className="h-11 rounded-xl border border-black/10 px-4 text-sm outline-none" />
+        <select value={filter} onChange={(event) => setFilter(event.target.value)} className="h-11 rounded-xl border border-black/10 px-3 text-sm outline-none">
+          <option value="all">All products</option><option value="active">Active</option><option value="inactive">Inactive</option>
+        </select>
+        <button type="button" onClick={() => void loadProducts()} className="h-11 rounded-xl border border-black/10 px-4 text-sm">Refresh</button>
+      </div>
+
+      <div className="mt-6 overflow-hidden rounded-2xl border border-black/10 bg-white">
+        {loading ? <div className="p-10 text-center text-sm text-black/45">Loading products...</div> : filteredProducts.length === 0 ? <div className="p-10 text-center text-sm text-black/45">No products found.</div> : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-[#F8F5F2] text-[10px] uppercase tracking-wider text-black/50"><tr><th className="px-4 py-3">Product</th><th className="px-4 py-3">Stock</th><th className="px-4 py-3">Colors</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr></thead>
+              <tbody>
+                {filteredProducts.map((product) => (
+                  <tr key={product.id} className="border-t border-black/5">
+                    <td className="px-4 py-4"><div className="flex min-w-[280px] items-center gap-3">{product.image ? <img src={product.image} alt={product.name} className="h-14 w-12 rounded-lg object-cover" /> : <div className="h-14 w-12 rounded-lg bg-[#F3EEE8]" />}<div><div className="font-semibold text-[#211A18]">{product.name}</div><div className="mt-1 text-[11px] text-black/45">{product.slug}</div>{product.color && <div className="mt-1 text-[10px] text-black/40">Default: {product.color}</div>}</div></div></td>
+                    <td className="px-4 py-4"><span className={product.stock > 0 ? "text-green-700" : "text-red-600"}>{product.stock}</span></td>
+                    <td className="px-4 py-4">{product.colors}</td>
+                    <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${product.isActive ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>{product.isActive ? "Active" : "Inactive"}</span></td>
+                    <td className="px-4 py-4"><div className="flex justify-end gap-2"><Link href={`/admin/products/${product.id}/edit`} className="rounded-lg border border-black/10 px-3 py-2 text-xs">Edit</Link><button type="button" disabled={actionId === product.id} onClick={() => void updateActive(product.id, !product.isActive)} className="rounded-lg border border-black/10 px-3 py-2 text-xs">{product.isActive ? "Disable" : "Activate"}</button><button type="button" disabled={actionId === product.id} onClick={() => void deleteProduct(product.id, product.name)} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600">Delete</button></div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

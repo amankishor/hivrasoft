@@ -18,10 +18,12 @@ const API_URL =
   "http://localhost:5000";
 
 /* =========================================================
-   SAFE JSON RESPONSE
+   SAFE JSON
 ========================================================= */
 
-async function readJson(response) {
+async function readJson(
+  response
+) {
   try {
     return await response.json();
   } catch {
@@ -69,10 +71,11 @@ export default function ProductsManager() {
     setSuccess,
   ] = useState("");
 
-  /* =========================================================
+  /* =======================================================
      LOAD PRODUCTS
+     ADMIN API:
      GET /api/products
-  ========================================================= */
+  ======================================================= */
 
   const loadProducts =
     useCallback(
@@ -110,17 +113,21 @@ export default function ProductsManager() {
             !response.ok
           ) {
             throw new Error(
-              data.message ||
+              data?.message ||
                 "Unable to load products."
             );
           }
 
           const productList =
             Array.isArray(
-              data.products
+              data?.products
             )
               ? data.products
-              : [];
+              : Array.isArray(
+                    data?.data
+                  )
+                ? data.data
+                : [];
 
           setProducts(
             productList
@@ -137,11 +144,12 @@ export default function ProductsManager() {
               )
           );
         } catch (
-          error
+          loadError
         ) {
           setError(
-            error instanceof Error
-              ? error.message
+            loadError instanceof
+              Error
+              ? loadError.message
               : "Unable to load products."
           );
         } finally {
@@ -160,9 +168,9 @@ export default function ProductsManager() {
     ]
   );
 
-  /* =========================================================
+  /* =======================================================
      SEARCH + FILTER
-  ========================================================= */
+  ======================================================= */
 
   const filteredProducts =
     useMemo(
@@ -192,6 +200,16 @@ export default function ProductsManager() {
                 .toLowerCase()
                 .includes(
                   text
+                ) ||
+              product.defaultColorName
+                .toLowerCase()
+                .includes(
+                  text
+                ) ||
+              product.categoriesText
+                .toLowerCase()
+                .includes(
+                  text
                 );
 
             const statusMatch =
@@ -214,15 +232,17 @@ export default function ProductsManager() {
       ]
     );
 
-  /* =========================================================
-     UPDATE STATUS
-     PATCH /api/products/:id
-  ========================================================= */
+  /* =======================================================
+     PUBLISH / UNPUBLISH
 
-  const updateStatus =
+     NEW MODEL:
+     isActive boolean
+  ======================================================= */
+
+  const updateActiveStatus =
     async (
       id,
-      nextStatus
+      nextActive
     ) => {
       if (
         actionId
@@ -231,7 +251,10 @@ export default function ProductsManager() {
       }
 
       try {
-        setActionId(id);
+        setActionId(
+          id
+        );
+
         setError("");
         setSuccess("");
 
@@ -255,8 +278,8 @@ export default function ProductsManager() {
 
               body:
                 JSON.stringify({
-                  status:
-                    nextStatus,
+                  isActive:
+                    nextActive,
                 }),
             }
           );
@@ -270,7 +293,7 @@ export default function ProductsManager() {
           !response.ok
         ) {
           throw new Error(
-            data.message ||
+            data?.message ||
               "Unable to update product status."
           );
         }
@@ -287,39 +310,43 @@ export default function ProductsManager() {
                 id
                   ? {
                       ...product,
+
+                      isActive:
+                        nextActive,
+
                       status:
-                        nextStatus,
+                        nextActive
+                          ? "active"
+                          : "inactive",
                     }
                   : product
             )
         );
 
         setSuccess(
-          nextStatus ===
-            "active"
+          nextActive
             ? "Product published successfully."
-            : nextStatus ===
-                "draft"
-              ? "Product moved to draft."
-              : "Product marked inactive."
+            : "Product unpublished successfully."
         );
       } catch (
-        error
+        updateError
       ) {
         setError(
-          error instanceof Error
-            ? error.message
+          updateError instanceof
+            Error
+            ? updateError.message
             : "Unable to update product status."
         );
       } finally {
-        setActionId(null);
+        setActionId(
+          null
+        );
       }
     };
 
-  /* =========================================================
+  /* =======================================================
      DELETE PRODUCT
-     DELETE /api/products/:id
-  ========================================================= */
+  ======================================================= */
 
   const deleteProduct =
     async (
@@ -344,7 +371,10 @@ export default function ProductsManager() {
       }
 
       try {
-        setActionId(id);
+        setActionId(
+          id
+        );
+
         setError("");
         setSuccess("");
 
@@ -374,7 +404,7 @@ export default function ProductsManager() {
           !response.ok
         ) {
           throw new Error(
-            data.message ||
+            data?.message ||
               "Unable to delete product."
           );
         }
@@ -393,13 +423,16 @@ export default function ProductsManager() {
         );
 
         const deletedImages =
-          typeof data.deletedImages ===
+          typeof data?.deletedImages ===
           "number"
             ? data.deletedImages
             : null;
 
         setSuccess(
-          `${data.message || "Product deleted successfully."}${
+          `${
+            data?.message ||
+            "Product deleted successfully."
+          }${
             deletedImages !==
             null
               ? ` Deleted images: ${deletedImages}.`
@@ -407,99 +440,49 @@ export default function ProductsManager() {
           }`
         );
       } catch (
-        error
+        deleteError
       ) {
         setError(
-          error instanceof Error
-            ? error.message
+          deleteError instanceof
+            Error
+            ? deleteError.message
             : "Unable to delete product."
         );
       } finally {
-        setActionId(null);
+        setActionId(
+          null
+        );
       }
     };
 
-  /* =========================================================
+  /* =======================================================
      UI
-  ========================================================= */
+  ======================================================= */
 
   return (
-    <div
-      className="
-        mx-auto
-        w-full
-        max-w-[1500px]
-      "
-    >
+    <div className="mx-auto w-full max-w-[1500px]">
       {/* HEADER */}
 
-      <div
-        className="
-          flex
-          flex-col
-          gap-5
-          lg:flex-row
-          lg:items-end
-          lg:justify-between
-        "
-      >
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p
-            className="
-              text-[9px]
-              font-semibold
-              uppercase
-              tracking-[0.24em]
-              text-[#8C1839]
-            "
-          >
+          <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#8C1839]">
             Catalog Management
           </p>
 
-          <h1
-            className="
-              mt-2
-              text-[30px]
-              font-semibold
-              tracking-tight
-              text-[#211A18]
-            "
-          >
+          <h1 className="mt-2 text-[30px] font-semibold tracking-tight text-[#211A18]">
             All Products
           </h1>
 
-          <p
-            className="
-              mt-1
-              text-[11px]
-              leading-5
-              text-[#211A18]/45
-            "
-          >
-            Products, stock, ratings,
-            publishing status and
-            product images.
+          <p className="mt-1 text-[11px] leading-5 text-[#211A18]/45">
+            Default product name, image,
+            stock, ratings and publishing
+            status.
           </p>
         </div>
 
         <Link
           href="/admin/products/new"
-          className="
-            inline-flex
-            h-12
-            items-center
-            justify-center
-            rounded-xl
-            bg-[#8C1839]
-            px-6
-            text-[9px]
-            font-semibold
-            uppercase
-            tracking-[0.1em]
-            text-white
-            transition
-            hover:bg-[#211A18]
-          "
+          className="inline-flex h-12 items-center justify-center rounded-xl bg-[#8C1839] px-6 text-[9px] font-semibold uppercase tracking-[0.1em] text-white transition hover:bg-[#211A18]"
         >
           + Add Product
         </Link>
@@ -508,47 +491,29 @@ export default function ProductsManager() {
       {/* MESSAGES */}
 
       {error && (
-        <Message tone="error">
-          {error}
+        <Message
+          tone="error"
+        >
+          {
+            error
+          }
         </Message>
       )}
 
       {success && (
-        <Message tone="success">
-          {success}
+        <Message
+          tone="success"
+        >
+          {
+            success
+          }
         </Message>
       )}
 
       {/* FILTERS */}
 
-      <section
-        className="
-          mt-6
-          grid
-          grid-cols-1
-          gap-3
-          rounded-2xl
-          border
-          border-[#211A18]/10
-          bg-white
-          p-4
-          md:grid-cols-[minmax(0,1fr)_220px_auto]
-        "
-      >
-        <div
-          className="
-            flex
-            h-12
-            items-center
-            gap-3
-            rounded-xl
-            border
-            border-[#211A18]/10
-            bg-[#FAF8F6]
-            px-4
-            focus-within:border-[#8C1839]
-          "
-        >
+      <section className="mt-6 grid grid-cols-1 gap-3 rounded-2xl border border-[#211A18]/10 bg-white p-4 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+        <div className="flex h-12 items-center gap-3 rounded-xl border border-[#211A18]/10 bg-[#FAF8F6] px-4 focus-within:border-[#8C1839]">
           <SearchIcon />
 
           <input
@@ -563,15 +528,8 @@ export default function ProductsManager() {
                 event.target.value
               )
             }
-            placeholder="Search by name, ID or slug..."
-            className="
-              min-w-0
-              flex-1
-              bg-transparent
-              text-[11px]
-              outline-none
-              placeholder:text-[#211A18]/30
-            "
+            placeholder="Search by name, ID, slug, color or category..."
+            className="min-w-0 flex-1 bg-transparent text-[11px] outline-none placeholder:text-[#211A18]/30"
           />
 
           {search && (
@@ -580,18 +538,7 @@ export default function ProductsManager() {
               onClick={() =>
                 setSearch("")
               }
-              className="
-                flex
-                h-7
-                w-7
-                items-center
-                justify-center
-                rounded-full
-                text-[17px]
-                text-[#211A18]/35
-                hover:bg-[#211A18]/5
-                hover:text-[#8C1839]
-              "
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[17px] text-[#211A18]/35 hover:bg-[#211A18]/5 hover:text-[#8C1839]"
               aria-label="Clear search"
             >
               ×
@@ -610,17 +557,7 @@ export default function ProductsManager() {
               event.target.value
             )
           }
-          className="
-            h-12
-            rounded-xl
-            border
-            border-[#211A18]/10
-            bg-[#FAF8F6]
-            px-4
-            text-[11px]
-            outline-none
-            focus:border-[#8C1839]
-          "
+          className="h-12 rounded-xl border border-[#211A18]/10 bg-[#FAF8F6] px-4 text-[11px] outline-none focus:border-[#8C1839]"
         >
           <option value="all">
             All Status
@@ -630,12 +567,8 @@ export default function ProductsManager() {
             Published
           </option>
 
-          <option value="draft">
-            Draft
-          </option>
-
           <option value="inactive">
-            Inactive
+            Unpublished
           </option>
         </select>
 
@@ -647,23 +580,7 @@ export default function ProductsManager() {
           onClick={() =>
             void loadProducts()
           }
-          className="
-            h-12
-            rounded-xl
-            border
-            border-[#211A18]/10
-            bg-white
-            px-4
-            text-[8px]
-            font-semibold
-            uppercase
-            tracking-[0.1em]
-            text-[#211A18]/65
-            transition
-            hover:border-[#8C1839]/20
-            hover:text-[#8C1839]
-            disabled:opacity-50
-          "
+          className="h-12 rounded-xl border border-[#211A18]/10 bg-white px-4 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#211A18]/65 transition hover:border-[#8C1839]/20 hover:text-[#8C1839] disabled:opacity-50"
         >
           Refresh
         </button>
@@ -671,38 +588,16 @@ export default function ProductsManager() {
 
       {/* COUNT */}
 
-      <div
-        className="
-          mt-4
-          flex
-          flex-wrap
-          items-center
-          justify-between
-          gap-3
-        "
-      >
-        <p
-          className="
-            text-[9px]
-            text-[#211A18]/40
-          "
-        >
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[9px] text-[#211A18]/40">
           Showing{" "}
-          <strong
-            className="
-              text-[#211A18]
-            "
-          >
+          <strong className="text-[#211A18]">
             {
               filteredProducts.length
             }
           </strong>{" "}
           of{" "}
-          <strong
-            className="
-              text-[#211A18]
-            "
-          >
+          <strong className="text-[#211A18]">
             {
               products.length
             }
@@ -721,14 +616,7 @@ export default function ProductsManager() {
                 "all"
               );
             }}
-            className="
-              text-[8px]
-              font-semibold
-              uppercase
-              tracking-[0.08em]
-              text-[#8C1839]
-              hover:underline
-            "
+            className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[#8C1839] hover:underline"
           >
             Clear Filters
           </button>
@@ -737,37 +625,16 @@ export default function ProductsManager() {
 
       {/* TABLE */}
 
-      <section
-        className="
-          mt-3
-          overflow-hidden
-          rounded-2xl
-          border
-          border-[#211A18]/10
-          bg-white
-        "
-      >
+      <section className="mt-3 overflow-hidden rounded-2xl border border-[#211A18]/10 bg-white">
         {/* TABLE HEADER */}
 
-        <div
-          className="
-            hidden
-            grid-cols-[minmax(280px,1.5fr)_120px_90px_110px_110px_300px]
-            gap-4
-            border-b
-            border-[#211A18]/10
-            bg-[#FAF8F6]
-            px-5
-            py-4
-            xl:grid
-          "
-        >
+        <div className="hidden grid-cols-[minmax(330px,1.8fr)_120px_100px_110px_120px_360px] gap-4 border-b border-[#211A18]/10 bg-[#FAF8F6] px-5 py-4 xl:grid">
           <ColumnTitle>
             Product
           </ColumnTitle>
 
           <ColumnTitle>
-            Price
+            Type
           </ColumnTitle>
 
           <ColumnTitle>
@@ -790,102 +657,32 @@ export default function ProductsManager() {
         {/* LOADING */}
 
         {loading ? (
-          <div
-            className="
-              flex
-              min-h-[300px]
-              items-center
-              justify-center
-            "
-          >
-            <div
-              className="
-                text-center
-              "
-            >
-              <span
-                className="
-                  mx-auto
-                  block
-                  h-7
-                  w-7
-                  animate-spin
-                  rounded-full
-                  border-2
-                  border-[#211A18]/10
-                  border-t-[#8C1839]
-                "
-              />
+          <div className="flex min-h-[300px] items-center justify-center">
+            <div className="text-center">
+              <span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-[#211A18]/10 border-t-[#8C1839]" />
 
-              <p
-                className="
-                  mt-3
-                  text-[8px]
-                  font-semibold
-                  uppercase
-                  tracking-[0.1em]
-                  text-[#211A18]/35
-                "
-              >
+              <p className="mt-3 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#211A18]/35">
                 Loading products...
               </p>
             </div>
           </div>
         ) : filteredProducts.length ===
           0 ? (
-          /* EMPTY */
-
-          <div
-            className="
-              flex
-              min-h-[300px]
-              flex-col
-              items-center
-              justify-center
-              px-6
-              text-center
-            "
-          >
-            <div
-              className="
-                flex
-                h-14
-                w-14
-                items-center
-                justify-center
-                rounded-full
-                bg-[#F8E5E8]
-                text-[#8C1839]
-              "
-            >
+          <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#F8E5E8] text-[#8C1839]">
               <BoxIcon />
             </div>
 
-            <p
-              className="
-                mt-4
-                text-[12px]
-                font-semibold
-                text-[#211A18]
-              "
-            >
+            <p className="mt-4 text-[12px] font-semibold text-[#211A18]">
               No products found.
             </p>
 
-            <p
-              className="
-                mt-1
-                text-[9px]
-                text-[#211A18]/40
-              "
-            >
+            <p className="mt-1 text-[9px] text-[#211A18]/40">
               Add a product or change
               the current filters.
             </p>
           </div>
         ) : (
-          /* PRODUCT ROWS */
-
           filteredProducts.map(
             (
               product
@@ -901,8 +698,8 @@ export default function ProductsManager() {
                   actionId ===
                   product.id
                 }
-                updateStatus={
-                  updateStatus
+                updateActiveStatus={
+                  updateActiveStatus
                 }
                 deleteProduct={
                   deleteProduct
@@ -923,52 +720,18 @@ export default function ProductsManager() {
 function ProductRow({
   product,
   busy,
-  updateStatus,
+  updateActiveStatus,
   deleteProduct,
 }) {
   const stock =
     product.totalStock;
 
   return (
-    <div
-      className="
-        grid
-        grid-cols-1
-        gap-5
-        border-b
-        border-[#211A18]/8
-        px-5
-        py-5
-        transition
-        last:border-0
-        hover:bg-[#FFFCFB]
-        xl:grid-cols-[minmax(280px,1.5fr)_120px_90px_110px_110px_300px]
-        xl:items-center
-        xl:gap-4
-      "
-    >
+    <div className="grid grid-cols-1 gap-5 border-b border-[#211A18]/8 px-5 py-5 transition last:border-0 hover:bg-[#FFFCFB] xl:grid-cols-[minmax(330px,1.8fr)_120px_100px_110px_120px_360px] xl:items-center xl:gap-4">
       {/* PRODUCT */}
 
-      <div
-        className="
-          flex
-          min-w-0
-          items-center
-          gap-4
-        "
-      >
-        <div
-          className="
-            h-20
-            w-16
-            shrink-0
-            overflow-hidden
-            rounded-xl
-            border
-            border-[#211A18]/8
-            bg-[#F3EEE8]
-          "
-        >
+      <div className="flex min-w-0 items-center gap-4">
+        <div className="h-20 w-16 shrink-0 overflow-hidden rounded-xl border border-[#211A18]/8 bg-[#F3EEE8]">
           {product.image ? (
             <img
               src={
@@ -977,173 +740,113 @@ function ProductRow({
               alt={
                 product.name
               }
-              className="
-                h-full
-                w-full
-                object-cover
-              "
+              className="h-full w-full object-cover"
             />
           ) : (
-            <div
-              className="
-                flex
-                h-full
-                items-center
-                justify-center
-                text-[7px]
-                font-semibold
-                uppercase
-                text-[#211A18]/25
-              "
-            >
+            <div className="flex h-full items-center justify-center px-2 text-center text-[7px] font-semibold uppercase text-[#211A18]/25">
               No Image
             </div>
           )}
         </div>
 
-        <div
-          className="
-            min-w-0
-          "
-        >
-          <p
-            className="
-              truncate
-              text-[12px]
-              font-semibold
-              text-[#211A18]
-            "
-          >
-            {
-              product.name
-            }
-          </p>
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="max-w-full truncate text-[12px] font-semibold text-[#211A18]">
+              {
+                product.name
+              }
+            </p>
 
-          <p
-            className="
-              mt-1
-              line-clamp-2
-              text-[9px]
-              leading-4
-              text-[#211A18]/40
-            "
-          >
+            {product.isColor &&
+              product.defaultColorName && (
+                <span className="shrink-0 rounded-full bg-[#F8E5E8] px-2 py-1 text-[7px] font-semibold uppercase text-[#8C1839]">
+                  {
+                    product.defaultColorName
+                  }
+                </span>
+              )}
+          </div>
+
+          <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-[#211A18]/40">
             {
               product.shortDescription ||
               "No description"
             }
           </p>
 
-          <p
-            className="
-              mt-2
-              truncate
-              text-[7px]
-              text-[#211A18]/30
-            "
-          >
-            {
-              product.id
-            }
-          </p>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+            <p className="truncate text-[7px] text-[#211A18]/30">
+              {
+                product.id
+              }
+            </p>
+
+            {product.categoryName && (
+              <p className="text-[7px] text-[#8C1839]/60">
+                {
+                  product.categoryName
+                }
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* PRICE */}
+      {/* TYPE */}
 
-      <Cell label="Price">
-        <p
-          className="
-            text-[12px]
-            font-semibold
-            text-[#211A18]
-          "
+      <Cell
+        label="Type"
+      >
+        <span
+          className={`inline-flex rounded-full px-3 py-2 text-[7px] font-semibold uppercase ${
+            product.isColor
+              ? "bg-[#F8E5E8] text-[#8C1839]"
+              : "bg-[#F4F0ED] text-[#211A18]/60"
+          }`}
         >
-          ₹
-          {
-            product.price.toLocaleString(
-              "en-IN"
-            )
-          }
-        </p>
-
-        {product.compareAtPrice >
-          product.price && (
-          <p
-            className="
-              mt-1
-              text-[8px]
-              text-[#211A18]/30
-              line-through
-            "
-          >
-            ₹
-            {
-              product.compareAtPrice.toLocaleString(
-                "en-IN"
-              )
-            }
-          </p>
-        )}
+          {product.isColor
+            ? "Color"
+            : "No Color"}
+        </span>
       </Cell>
 
       {/* STOCK */}
 
-      <Cell label="Stock">
-        <p
-          className="
-            text-[12px]
-            font-semibold
-            text-[#211A18]
-          "
-        >
+      <Cell
+        label="Stock"
+      >
+        <p className="text-[12px] font-semibold text-[#211A18]">
           {
             stock
           }
         </p>
 
         <p
-          className={`
-            mt-1
-            text-[7px]
-            font-medium
-
-            ${
-              stock <= 0
-                ? "text-red-500"
-                : stock <=
-                    5
-                  ? "text-orange-500"
-                  : "text-green-600"
-            }
-          `}
-        >
-          {
+          className={`mt-1 text-[7px] font-medium ${
             stock <= 0
-              ? "Out of stock"
+              ? "text-red-500"
               : stock <=
                   5
-                ? "Low stock"
-                : "In stock"
-          }
+                ? "text-orange-500"
+                : "text-green-600"
+          }`}
+        >
+          {stock <= 0
+            ? "Out of stock"
+            : stock <=
+                5
+              ? "Low stock"
+              : "In stock"}
         </p>
       </Cell>
 
       {/* RATING */}
 
-      <Cell label="Rating">
-        <p
-          className="
-            text-[10px]
-            font-semibold
-            text-[#211A18]
-          "
-        >
-          <span
-            className="
-              text-[#8C1839]
-            "
-          >
+      <Cell
+        label="Rating"
+      >
+        <p className="text-[10px] font-semibold text-[#211A18]">
+          <span className="text-[#8C1839]">
             ★
           </span>{" "}
           {
@@ -1153,13 +856,7 @@ function ProductRow({
           }
         </p>
 
-        <p
-          className="
-            mt-1
-            text-[7px]
-            text-[#211A18]/30
-          "
-        >
+        <p className="mt-1 text-[7px] text-[#211A18]/30">
           {
             product.ratings.count
           }{" "}
@@ -1175,7 +872,9 @@ function ProductRow({
 
       {/* STATUS */}
 
-      <Cell label="Status">
+      <Cell
+        label="Status"
+      >
         <StatusBadge
           status={
             product.status
@@ -1185,107 +884,68 @@ function ProductRow({
 
       {/* ACTIONS */}
 
-      <Cell label="Actions">
-        <div
-          className="
-            flex
-            flex-wrap
-            gap-2
-          "
-        >
+      <Cell
+        label="Actions"
+      >
+        <div className="flex flex-wrap gap-2">
           <Link
             href={`/admin/products/${product.id}/edit`}
-            className="
-              inline-flex
-              h-9
-              items-center
-              justify-center
-              rounded-lg
-              border
-              border-[#211A18]/10
-              px-3
-              text-[8px]
-              font-semibold
-              uppercase
-              tracking-[0.06em]
-              text-[#211A18]
-              transition
-              hover:border-[#8C1839]/20
-              hover:bg-[#FFF7F8]
-              hover:text-[#8C1839]
-            "
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-[#211A18]/10 px-3 text-[8px] font-semibold uppercase tracking-[0.06em] text-[#211A18] transition hover:border-[#8C1839]/20 hover:bg-[#FFF7F8] hover:text-[#8C1839]"
           >
             Edit
           </Link>
 
-          {product.status !==
-            "active" && (
+          {/* PUBLIC WEBSITE BY SLUG */}
+
+          {product.slug && (
+            <Link
+              href={`/product/${product.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-[#8C1839]/15 bg-[#FFF7F8] px-3 text-[8px] font-semibold uppercase tracking-[0.06em] text-[#8C1839] transition hover:bg-[#8C1839] hover:text-white"
+            >
+              View Site
+            </Link>
+          )}
+
+          {product.isActive ? (
             <button
               type="button"
               disabled={
                 busy
               }
               onClick={() =>
-                void updateStatus(
+                void updateActiveStatus(
                   product.id,
-                  "active"
+                  false
                 )
               }
-              className="
-                h-9
-                rounded-lg
-                bg-green-50
-                px-3
-                text-[8px]
-                font-semibold
-                uppercase
-                text-green-700
-                transition
-                hover:bg-green-600
-                hover:text-white
-                disabled:opacity-50
-              "
+              className="h-9 rounded-lg bg-[#F5F1EE] px-3 text-[8px] font-semibold uppercase text-[#211A18]/65 transition hover:bg-[#211A18] hover:text-white disabled:opacity-50"
+            >
+              {
+                busy
+                  ? "..."
+                  : "Unpublish"
+              }
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={
+                busy
+              }
+              onClick={() =>
+                void updateActiveStatus(
+                  product.id,
+                  true
+                )
+              }
+              className="h-9 rounded-lg bg-green-50 px-3 text-[8px] font-semibold uppercase text-green-700 transition hover:bg-green-600 hover:text-white disabled:opacity-50"
             >
               {
                 busy
                   ? "..."
                   : "Publish"
-              }
-            </button>
-          )}
-
-          {product.status !==
-            "draft" && (
-            <button
-              type="button"
-              disabled={
-                busy
-              }
-              onClick={() =>
-                void updateStatus(
-                  product.id,
-                  "draft"
-                )
-              }
-              className="
-                h-9
-                rounded-lg
-                bg-[#F5F1EE]
-                px-3
-                text-[8px]
-                font-semibold
-                uppercase
-                text-[#211A18]/65
-                transition
-                hover:bg-[#211A18]
-                hover:text-white
-                disabled:opacity-50
-              "
-            >
-              {
-                busy
-                  ? "..."
-                  : "Draft"
               }
             </button>
           )}
@@ -1301,20 +961,7 @@ function ProductRow({
                 product.name
               )
             }
-            className="
-              h-9
-              rounded-lg
-              bg-red-50
-              px-3
-              text-[8px]
-              font-semibold
-              uppercase
-              text-red-600
-              transition
-              hover:bg-red-600
-              hover:text-white
-              disabled:opacity-50
-            "
+            className="h-9 rounded-lg bg-red-50 px-3 text-[8px] font-semibold uppercase text-red-600 transition hover:bg-red-600 hover:text-white disabled:opacity-50"
           >
             {
               busy
@@ -1330,6 +977,19 @@ function ProductRow({
 
 /* =========================================================
    NORMALIZE PRODUCT
+
+   IMPORTANT:
+   Product data comes from colors[].
+
+   Rule:
+   1. Find color where isDefault === true
+   2. If not found, fallback to colors[0]
+   3. Use THAT COLOR for:
+      - nameProduct
+      - slugProduct
+      - shortDescription
+      - nameColor
+      - image
 ========================================================= */
 
 function normalizeProduct(
@@ -1337,117 +997,155 @@ function normalizeProduct(
 ) {
   const id =
     String(
-      product?.id ||
-        product?._id ||
+      product?._id ||
+        product?.id ||
         ""
     );
 
-  const mainImage =
-    Array.isArray(
-      product?.mainImages
-    )
-      ? product.mainImages.find(
-          (
-            image
-          ) =>
-            Boolean(
-              image?.url
-            )
-        )?.url
-      : "";
-
-  const allColorImages =
+  const colors =
     Array.isArray(
       product?.colors
     )
-      ? product.colors.flatMap(
-          (
-            color
-          ) =>
-            Array.isArray(
-              color?.images
-            )
-              ? color.images
-              : []
-        )
+      ? product.colors
       : [];
 
-  const colorImage =
-    allColorImages.find(
+  /* =======================================================
+     DEFAULT COLOR
+  ======================================================= */
+
+  const defaultColor =
+    colors.find(
+      (
+        color
+      ) =>
+        color?.isDefault ===
+        true
+    ) ||
+    colors[0] ||
+    null;
+
+  /* =======================================================
+     DEFAULT COLOR IMAGES
+  ======================================================= */
+
+  const defaultColorImages =
+    Array.isArray(
+      defaultColor?.images
+    )
+      ? defaultColor.images
+      : [];
+
+  /*
+   * First priority:
+   * image.isDefault === true
+   */
+  const defaultImage =
+    defaultColorImages.find(
+      (
+        image
+      ) =>
+        image?.isDefault ===
+          true &&
+        Boolean(
+          image?.url
+        )
+    );
+
+  /*
+   * Second priority:
+   * first image inside default color
+   */
+  const firstDefaultColorImage =
+    defaultColorImages.find(
       (
         image
       ) =>
         Boolean(
           image?.url
         )
-    )?.url ||
-    "";
+    );
 
   /*
-    IMPORTANT:
+   * Final fallback:
+   * any image from any color
+   */
+  const anyColorImage =
+    colors
+      .flatMap(
+        (
+          color
+        ) =>
+          Array.isArray(
+            color?.images
+          )
+            ? color.images
+            : []
+      )
+      .find(
+        (
+          image
+        ) =>
+          Boolean(
+            image?.url
+          )
+      );
 
-    New Product model has direct product-level stock:
-
-      product.stock
-
-    So All Products page should show that value.
-
-    For OLD products created before stock field existed,
-    fallback to colors[].sizes[].stock total.
-  */
-
-  const variantStock =
-    Array.isArray(
-      product?.colors
-    )
-      ? product.colors.reduce(
-          (
-            total,
-            color
-          ) => {
-            const sizes =
-              Array.isArray(
-                color?.sizes
-              )
-                ? color.sizes
-                : [];
-
-            return (
-              total +
-              sizes.reduce(
-                (
-                  sum,
-                  size
-                ) =>
-                  sum +
-                  Math.max(
-                    0,
-                    Number(
-                      size?.stock
-                    ) ||
-                      0
-                  ),
-                0
-              )
-            );
-          },
-          0
-        )
-      : 0;
+  /* =======================================================
+     STOCK
+     Sum all ACTIVE size stock from all colors
+  ======================================================= */
 
   const totalStock =
-    product?.stock !==
-      undefined &&
-    product?.stock !==
-      null
-      ? Math.max(
-          0,
-          Number(
-            product.stock
-          ) ||
+    colors.reduce(
+      (
+        productTotal,
+        color
+      ) => {
+        const sizes =
+          Array.isArray(
+            color?.sizes
+          )
+            ? color.sizes
+            : [];
+
+        const colorStock =
+          sizes.reduce(
+            (
+              sizeTotal,
+              size
+            ) => {
+              if (
+                size?.isActive ===
+                false
+              ) {
+                return sizeTotal;
+              }
+
+              return (
+                sizeTotal +
+                Math.max(
+                  0,
+                  Number(
+                    size?.stock
+                  ) ||
+                    0
+                )
+              );
+            },
             0
-        )
-      : variantStock;
+          );
+
+        return (
+          productTotal +
+          colorStock
+        );
+      },
+      0
+    );
+
+  /* =======================================================
+     RATINGS
+  ======================================================= */
 
   const average =
     Math.max(
@@ -1474,55 +1172,90 @@ function normalizeProduct(
       )
     );
 
-  const productStatus =
-    product?.status ===
-      "active" ||
-    product?.status ===
-      "inactive" ||
-    product?.status ===
-      "draft"
-      ? product.status
-      : "draft";
+  /* =======================================================
+     CATEGORY
+  ======================================================= */
+
+  const categories =
+    Array.isArray(
+      product?.categories
+    )
+      ? product.categories
+      : [];
+
+  const categoryName =
+    categories.length
+      ? String(
+          categories[
+            categories.length -
+              1
+          ]?.name ||
+            ""
+        )
+      : "";
+
+  const categoriesText =
+    categories
+      .map(
+        (
+          category
+        ) =>
+          String(
+            category?.name ||
+              ""
+          )
+      )
+      .filter(
+        Boolean
+      )
+      .join(" ");
+
+  /* =======================================================
+     FINAL FRONTEND PRODUCT
+
+     THIS IS THE MAIN FIX:
+     name = defaultColor.nameProduct
+  ======================================================= */
 
   return {
     id,
 
     name:
-      product?.name ||
-      "Unnamed Product",
+      String(
+        defaultColor?.nameProduct ||
+          "Unnamed Product"
+      ),
 
     slug:
-      product?.slug ||
-      "",
+      String(
+        defaultColor?.slugProduct ||
+          ""
+      ),
 
     shortDescription:
-      product?.shortDescription ||
-      "",
-
-    price:
-      Math.max(
-        0,
-        Number(
-          product?.price ||
-            0
-        )
+      String(
+        defaultColor
+          ?.shortDescription ||
+          ""
       ),
 
-    compareAtPrice:
-      Math.max(
-        0,
-        Number(
-          product?.compareAtPrice ||
-            0
-        )
+    defaultColorName:
+      String(
+        defaultColor?.nameColor ||
+          ""
       ),
 
-    status:
-      productStatus,
+    defaultColorSlug:
+      String(
+        defaultColor?.slugColor ||
+          ""
+      ),
 
     image:
-      mainImage ||
-      colorImage ||
+      defaultImage?.url ||
+      firstDefaultColorImage
+        ?.url ||
+      anyColorImage?.url ||
       "",
 
     totalStock,
@@ -1531,11 +1264,37 @@ function normalizeProduct(
       average,
       count,
     },
+
+    isColor:
+      product?.isColor ===
+      true,
+
+    isActive:
+      product?.isActive ===
+      true,
+
+    status:
+      product?.isActive ===
+      true
+        ? "active"
+        : "inactive",
+
+    isFeatured:
+      product?.isFeatured ===
+      true,
+
+    isNewLaunch:
+      product?.isNewLaunch ===
+      true,
+
+    categoryName,
+
+    categoriesText,
   };
 }
 
 /* =========================================================
-   SMALL UI
+   CELL
 ========================================================= */
 
 function Cell({
@@ -1544,17 +1303,7 @@ function Cell({
 }) {
   return (
     <div>
-      <p
-        className="
-          mb-2
-          text-[7px]
-          font-semibold
-          uppercase
-          tracking-[0.1em]
-          text-[#211A18]/30
-          xl:hidden
-        "
-      >
+      <p className="mb-2 text-[7px] font-semibold uppercase tracking-[0.1em] text-[#211A18]/30 xl:hidden">
         {
           label
         }
@@ -1567,19 +1316,15 @@ function Cell({
   );
 }
 
+/* =========================================================
+   COLUMN TITLE
+========================================================= */
+
 function ColumnTitle({
   children,
 }) {
   return (
-    <span
-      className="
-        text-[8px]
-        font-semibold
-        uppercase
-        tracking-[0.1em]
-        text-[#211A18]/40
-      "
-    >
+    <span className="text-[8px] font-semibold uppercase tracking-[0.1em] text-[#211A18]/40">
       {
         children
       }
@@ -1587,47 +1332,35 @@ function ColumnTitle({
   );
 }
 
+/* =========================================================
+   STATUS
+========================================================= */
+
 function StatusBadge({
   status,
 }) {
-  const style =
+  const active =
     status ===
-    "active"
-      ? "bg-green-50 text-green-700"
-      : status ===
-          "inactive"
-        ? "bg-red-50 text-red-600"
-        : "bg-[#F4F0ED] text-[#211A18]/60";
-
-  const label =
-    status ===
-    "active"
-      ? "Published"
-      : status ===
-          "inactive"
-        ? "Inactive"
-        : "Draft";
+    "active";
 
   return (
     <span
-      className={`
-        inline-flex
-        items-center
-        rounded-full
-        px-3
-        py-2
-        text-[7px]
-        font-semibold
-        uppercase
-        ${style}
-      `}
+      className={`inline-flex items-center rounded-full px-3 py-2 text-[7px] font-semibold uppercase ${
+        active
+          ? "bg-green-50 text-green-700"
+          : "bg-[#F4F0ED] text-[#211A18]/60"
+      }`}
     >
-      {
-        label
-      }
+      {active
+        ? "Published"
+        : "Unpublished"}
     </span>
   );
 }
+
+/* =========================================================
+   MESSAGE
+========================================================= */
 
 function Message({
   tone,
@@ -1635,21 +1368,12 @@ function Message({
 }) {
   return (
     <div
-      className={`
-        mt-5
-        rounded-xl
-        border
-        px-4
-        py-3
-        text-[10px]
-
-        ${
-          tone ===
-          "error"
-            ? "border-red-200 bg-red-50 text-red-600"
-            : "border-green-200 bg-green-50 text-green-700"
-        }
-      `}
+      className={`mt-5 rounded-xl border px-4 py-3 text-[10px] ${
+        tone ===
+        "error"
+          ? "border-red-200 bg-red-50 text-red-600"
+          : "border-green-200 bg-green-50 text-green-700"
+      }`}
     >
       {
         children
@@ -1673,10 +1397,7 @@ function SearchIcon() {
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="
-        shrink-0
-        text-[#211A18]/35
-      "
+      className="shrink-0 text-[#211A18]/35"
     >
       <circle
         cx="11"

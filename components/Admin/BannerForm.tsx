@@ -336,7 +336,7 @@ export default function BannerForm({
           ),
 
           fetch(
-            `${API_URL}/api/products/active`,
+            `${API_URL}/api/products/catalog`,
             {
               credentials:
                 "include",
@@ -405,7 +405,7 @@ export default function BannerForm({
           GET /api/categories/active
           { success, count, categories: [...] }
 
-          GET /api/products/active
+          GET /api/products/catalog
           { success, count, products: [...] }
 
           Isliye sirf result.data read karne par dropdown empty tha.
@@ -441,7 +441,16 @@ export default function BannerForm({
         );
 
         setProducts(
-          productRows
+          productRows.map((product: any) => {
+            const colors = Array.isArray(product?.colors) ? product.colors : [];
+            const color = colors.find((item: any) => item?.isDefault) || colors[0] || {};
+
+            return {
+              _id: String(product?._id || ""),
+              name: color.nameProduct || "Product",
+              slug: color.slugProduct || "",
+            };
+          }).filter((product: ProductOption) => Boolean(product._id))
         );
 
         if (
@@ -1695,10 +1704,7 @@ export default function BannerForm({
                                   value={product._id}
                                 >
                                   {product.name}
-                                  {typeof product.price ===
-                                  "number"
-                                    ? ` — ₹${product.price}`
-                                    : ""}
+                                  
                                 </option>
                               )
                             )}

@@ -15,6 +15,7 @@ import {
 
 import Header from "@/components/Header/Header";
 import AccountSidebar from "@/app/account/components/AccountSidebar";
+import { catalogProductsFromResponse } from "@/lib/product-catalog";
 
 /* =========================================================
    API
@@ -192,19 +193,7 @@ function getWishlistFromResponse(data) {
 }
 
 function getProductsFromResponse(data) {
-  if (Array.isArray(data?.products)) {
-    return data.products;
-  }
-
-  if (Array.isArray(data?.data)) {
-    return data.data;
-  }
-
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  return [];
+  return catalogProductsFromResponse(data);
 }
 
 /* =========================================================
@@ -251,7 +240,7 @@ function AddToCartButton({ product, onMessage }) {
     }
   };
 
-  if (!variant) {
+  if (!variant || !variant.color?._id || !variant.size?._id) {
     return (
       <Link
         href={`/product/${product.slug}`}
@@ -438,7 +427,7 @@ export default function WishlistPage() {
       setError("");
       setLoginRequired(false);
 
-      const productPromise = apiRequest("/api/products/active")
+      const productPromise = apiRequest("/api/products/catalog")
         .then(getProductsFromResponse)
         .catch(() => []);
 
@@ -571,7 +560,7 @@ export default function WishlistPage() {
 
       showMessage("Product removed from wishlist.");
 
-      const activeProducts = await apiRequest("/api/products/active")
+      const activeProducts = await apiRequest("/api/products/catalog")
         .then(getProductsFromResponse)
         .catch(() => []);
 
@@ -628,7 +617,7 @@ export default function WishlistPage() {
       notifyWishlistUpdated(0);
       showMessage("Wishlist cleared.");
 
-      const activeProducts = await apiRequest("/api/products/active")
+      const activeProducts = await apiRequest("/api/products/catalog")
         .then(getProductsFromResponse)
         .catch(() => []);
 

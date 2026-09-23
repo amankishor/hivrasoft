@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,155 +8,260 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-
-import {
-  useRouter,
-} from "next/navigation";
-
-import ProductImagesUploader, {
-  type ImageValue,
-} from "@/components/Admin/ProductImagesUploader";
-
-import HtmlDescriptionEditor from "@/components/Admin/HtmlDescriptionEditor";
-
-type ProductFormProps = {
-  mode?: "create" | "edit";
-  productId?: string;
-};
-
-type CategoryNode = {
-  id?: string;
-  _id?: string;
-  name: string;
-  level?: number;
-  children?: CategoryNode[];
-};
-
-type SizeInput = {
-  size: string;
-  sku: string;
-  stock: string;
-  isActive: boolean;
-};
-
-type ColorInput = {
-  name: string;
-  hex: string;
-  isDefault: boolean;
-  nameProduct: string;
-  slugProduct: string;
-  shortDescription: string;
-  description: string;
-  tags: string;
-  seoTitle: string;
-  seoDescription: string;
-  images: ImageValue[];
-  sizes: SizeInput[];
-  isActive: boolean;
-};
-
-type ProductStatus =
-  | "draft"
-  | "active"
-  | "inactive";
-
-type ProductApiData = {
-  name?: string;
-  slug?: string;
-  shortDescription?: string;
-  description?: string;
-  categories?: Array<
-    | string
-    | {
-        _id?: string;
-        id?: string;
-      }
-  >;
-  price?: number;
-  compareAtPrice?: number;
-  costPrice?: number;
-  stock?: number;
-  mainImages?: ImageValue[];
-  isColor?: boolean;
-  isActive?: boolean;
-  colors?: Array<{
-    name?: string;
-    nameColor?: string;
-    slugColor?: string;
-    nameProduct?: string;
-    slugProduct?: string;
-    hex?: string;
-    isDefault?: boolean;
-    shortDescription?: string;
-    description?: string;
-    tags?: string[];
-    seoTitle?: string;
-    seoDescription?: string;
-    images?: ImageValue[];
-    sizes?: Array<{
-      size?: string;
-      sku?: string;
-      stock?: number;
-      isActive?: boolean;
-    }>;
-    isActive?: boolean;
-  }>;
-  ratings?: {
-    average?: number;
-    count?: number;
-  };
-  status?: ProductStatus;
-  isFeatured?: boolean;
-  isNewLaunch?: boolean;
-  tags?: string[];
-  seoTitle?: string;
-  seoDescription?: string;
-};
+import { useRouter } from "next/navigation";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
 
-const emptyImage =
-  (): ImageValue => ({
-    url: "",
-    publicId: "",
-    name: "",
-    alt: "",
-    isDefault: false,
-  });
+/* =========================================================
+   TYPES
+========================================================= */
 
-const emptySize =
-  (): SizeInput => ({
-    size: "",
-    sku: "",
-    stock: "0",
-    isActive: true,
-  });
+type Category = {
+  _id?: string;
+  id?: string;
+  name: string;
+  slug?: string;
+  level?: number;
+  children?: Category[];
+};
 
-const emptyColor =
-  (): ColorInput => ({
-    name: "",
-    hex: "#000000",
-    isDefault: false,
+type ImageValue = {
+  url: string;
+  publicId: string;
+  isDefault?: boolean;
+
+  /*
+   * These two fields require backend model/service support
+   * if you want them to persist after save.
+   */
+  name?: string;
+  alt?: string;
+};
+
+type PendingImage = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  name: string;
+  alt: string;
+  isDefault: boolean;
+};
+
+type SizeValue = {
+  _id?: string;
+  size: string;
+  stock: number | string;
+  isActive?: boolean;
+};
+
+type ColorValue = {
+  nameProduct: string;
+  slugProduct: string;
+
+  nameColor: string;
+  slugColor: string;
+
+  hex: string;
+  isDefault: boolean;
+
+  shortDescription: string;
+  description: string;
+
+  tags: string;
+
+  seoTitle: string;
+  seoDescription: string;
+
+  images: ImageValue[];
+  pendingImages: PendingImage[];
+
+  sizes: SizeValue[];
+};
+
+type Props = {
+  mode: "create" | "edit";
+  productId?: string;
+};
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function slugify(
+  value: string
+) {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, " and ")
+    .replace(
+      /[^\p{L}\p{N}]+/gu,
+      "-"
+    )
+    .replace(
+      /^-+|-+$/g,
+      ""
+    );
+}
+
+function imageNameFromFile(
+  fileName: string
+) {
+  return fileName
+    .replace(
+      /\.[^/.]+$/,
+      ""
+    )
+    .trim();
+}
+
+function imageNameFromPublicId(
+  publicId: string
+) {
+  return (
+    publicId
+      .split("/")
+      .pop()
+      ?.replace(
+        /[-_]+/g,
+        " "
+      )
+      .trim() ||
+    "Product image"
+  );
+}
+
+function emptyColor(
+  index = 0
+): ColorValue {
+  return {
     nameProduct: "",
     slugProduct: "",
+
+    nameColor: "",
+    slugColor: "",
+
+    hex: "#000000",
+    isDefault:
+      index === 0,
+
     shortDescription: "",
     description: "",
+
     tags: "",
+
     seoTitle: "",
     seoDescription: "",
+
     images: [],
+    pendingImages: [],
+
     sizes: [
-      emptySize(),
+      {
+        size: "S",
+        stock: 0,
+        isActive: true,
+      },
     ],
-    isActive: true,
-  });
+  };
+}
+
+function flattenCategories(
+  items: Category[],
+  depth = 0
+): Category[] {
+  return items.flatMap(
+    (item) => [
+      {
+        ...item,
+        level:
+          item.level ??
+          depth,
+      },
+
+      ...flattenCategories(
+        Array.isArray(
+          item.children
+        )
+          ? item.children
+          : [],
+        depth + 1
+      ),
+    ]
+  );
+}
+
+async function readJson(
+  response: Response
+) {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
+}
+
+function createPendingImages(
+  files: File[],
+  productName: string,
+  alreadyHasImages: boolean
+): PendingImage[] {
+  return files.map(
+    (
+      file,
+      index
+    ) => {
+      const name =
+        imageNameFromFile(
+          file.name
+        );
+
+      const altBase =
+        productName.trim() ||
+        name;
+
+      return {
+        id:
+          `${Date.now()}-${index}-${Math.random()
+            .toString(36)
+            .slice(2)}`,
+
+        file,
+
+        previewUrl:
+          URL.createObjectURL(
+            file
+          ),
+
+        name,
+
+        alt:
+          `${altBase} - ${name}`
+            .replace(
+              /\s+/g,
+              " "
+            )
+            .trim(),
+
+        isDefault:
+          !alreadyHasImages &&
+          index === 0,
+      };
+    }
+  );
+}
+
+/* =========================================================
+   PRODUCT FORM
+========================================================= */
 
 export default function ProductForm({
-  mode = "create",
+  mode,
   productId,
-}: ProductFormProps) {
+}: Props) {
   const router =
     useRouter();
 
@@ -167,1603 +271,1733 @@ export default function ProductForm({
   const [
     categories,
     setCategories,
-  ] =
-    useState<CategoryNode[]>(
-      []
-    );
+  ] = useState<
+    Category[]
+  >([]);
 
   const [
     selectedCategories,
     setSelectedCategories,
-  ] =
-    useState<string[]>(
-      []
-    );
+  ] = useState<
+    string[]
+  >([]);
+
+  /* =======================================================
+     CATEGORY DROPDOWN
+  ======================================================= */
 
   const [
-    categoriesLoading,
-    setCategoriesLoading,
-  ] =
-    useState(true);
+    categoryDropdownOpen,
+    setCategoryDropdownOpen,
+  ] = useState(false);
 
   const [
-    name,
-    setName,
-  ] =
-    useState("");
-
-  const [
-    slug,
-    setSlug,
-  ] =
-    useState("");
-
-  /*
-    Create mode:
-    product name se slug auto-suggest hota rahega
-    jab tak admin slug field manually edit nahi karta.
-  */
-  const slugTouchedRef =
-    useRef(false);
-
-  const [
-    shortDescription,
-    setShortDescription,
-  ] =
-    useState("");
-
-  const [
-    description,
-    setDescription,
-  ] =
-    useState("");
-
-  const [
-    price,
-    setPrice,
-  ] =
-    useState("");
-
-  const [
-    compareAtPrice,
-    setCompareAtPrice,
-  ] =
-    useState("");
-
-  const [
-    costPrice,
-    setCostPrice,
-  ] =
-    useState("");
-
-  /*
-    Single product-level stock.
-    Existing variant/size stock stays unchanged.
-  */
-  const [
-    stock,
-    setStock,
-  ] =
-    useState("0");
-
-  const [
-    mainImages,
-    setMainImages,
-  ] =
-    useState<ImageValue[]>(
-      []
-    );
-
-  const [
-    isColor,
-    setIsColor,
-  ] =
-    useState(false);
+    categorySearch,
+    setCategorySearch,
+  ] = useState("");
 
   const [
     colors,
     setColors,
-  ] =
-    useState<ColorInput[]>(
-      []
-    );
+  ] = useState<
+    ColorValue[]
+  >([
+    emptyColor(0),
+  ]);
+
+  /*
+   * true  = Color product
+   * false = No Color product
+   *
+   * No Color still uses one internal "default" color document
+   * because product name, SEO, images and sizes live inside colors[].
+   * The storefront hides the color selector when isColor=false.
+   */
+  const [
+    isColor,
+    setIsColor,
+  ] = useState(true);
 
   const [
-    status,
-    setStatus,
-  ] =
-    useState<ProductStatus>(
-      "draft"
-    );
+    isActive,
+    setIsActive,
+  ] = useState(true);
 
   const [
     isFeatured,
     setIsFeatured,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     isNewLaunch,
     setIsNewLaunch,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
-    ratingAverage,
-    setRatingAverage,
-  ] =
-    useState(0);
-
-  const [
-    ratingCount,
-    setRatingCount,
-  ] =
-    useState(0);
-
-  const [
-    tags,
-    setTags,
-  ] =
-    useState("");
-
-  const [
-    seoTitle,
-    setSeoTitle,
-  ] =
-    useState("");
-
-  const [
-    seoDescription,
-    setSeoDescription,
-  ] =
-    useState("");
-
-  const [
-    productLoading,
-    setProductLoading,
-  ] =
-    useState(isEdit);
+    loading,
+    setLoading,
+  ] = useState(
+    isEdit
+  );
 
   const [
     saving,
     setSaving,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     error,
     setError,
-  ] =
-    useState("");
+  ] = useState("");
 
   const [
     success,
     setSuccess,
-  ] =
-    useState("");
+  ] = useState("");
+
+  const [
+    uploadMessage,
+    setUploadMessage,
+  ] = useState("");
+
+  const colorsRef =
+    useRef(colors);
+
+  useEffect(() => {
+    colorsRef.current =
+      colors;
+  }, [colors]);
 
   /*
-    Only images uploaded during
-    this unsaved form session.
-  */
-  const newUploadIdsRef =
-    useRef<Set<string>>(
-      new Set()
-    );
-
-  const savedRef =
-    useRef(false);
-
-  const deleteCloudinaryImage =
-    useCallback(
-      async (
-        publicId: string
-      ) => {
-        if (!publicId) {
-          return;
-        }
-
-        const response =
-          await fetch(
-            `${API_URL}/api/uploads/image`,
-            {
-              method: "DELETE",
-              credentials:
-                "include",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body:
-                JSON.stringify({
-                  publicId,
-                }),
-            }
-          );
-
-        if (!response.ok) {
-          const data =
-            await response
-              .json()
-              .catch(
-                () => ({})
-              );
-
-          throw new Error(
-            data.message ||
-              "Unable to delete image."
-          );
-        }
-      },
-      []
-    );
-
-  const cleanupUnsavedUploads =
-    useCallback(
-      async () => {
-        const ids =
-          Array.from(
-            newUploadIdsRef.current
-          );
-
-        await Promise.allSettled(
-          ids.map(
-            (
-              publicId
-            ) =>
-              deleteCloudinaryImage(
-                publicId
-              )
-          )
-        );
-
-        newUploadIdsRef.current.clear();
-      },
-      [
-        deleteCloudinaryImage,
-      ]
-    );
-
-  useEffect(
-    () => {
-      return () => {
-        if (
-          savedRef.current
-        ) {
-          return;
-        }
-
+   * Revoke local preview URLs when page unmounts.
+   */
+  useEffect(() => {
+    return () => {
+      for (
+        const color
+        of colorsRef.current
+      ) {
         for (
-          const publicId
-          of Array.from(
-            newUploadIdsRef.current
-          )
+          const image
+          of color.pendingImages
         ) {
-          void fetch(
-            `${API_URL}/api/uploads/image`,
-            {
-              method: "DELETE",
-              credentials:
-                "include",
-              keepalive: true,
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body:
-                JSON.stringify({
-                  publicId,
-                }),
-            }
+          URL.revokeObjectURL(
+            image.previewUrl
           );
         }
-      };
-    },
-    []
-  );
+      }
+    };
+  }, []);
 
-  useEffect(
-    () => {
-      let cancelled =
-        false;
+  /* =======================================================
+     LOAD CATEGORIES
+  ======================================================= */
 
-      const loadCategories =
-        async () => {
-          try {
-            setCategoriesLoading(
-              true
+  useEffect(() => {
+    let cancelled =
+      false;
+
+    const load =
+      async () => {
+        try {
+          const response =
+            await fetch(
+              `${API_URL}/api/categories/tree`,
+              {
+                credentials:
+                  "include",
+
+                cache:
+                  "no-store",
+              }
             );
 
-            const response =
-              await fetch(
-                `${API_URL}/api/categories/tree`,
-                {
-                  credentials:
-                    "include",
-                  cache:
-                    "no-store",
-                }
-              );
+          const data =
+            await readJson(
+              response
+            );
 
-            const data =
-              await response.json();
+          if (
+            !response.ok
+          ) {
+            throw new Error(
+              data?.message ||
+                "Unable to load categories."
+            );
+          }
 
-            if (!response.ok) {
-              throw new Error(
-                data.message ||
-                  "Unable to load categories."
-              );
-            }
-
-            if (!cancelled) {
-              setCategories(
+          if (
+            !cancelled
+          ) {
+            setCategories(
+              flattenCategories(
                 Array.isArray(
-                  data.categories
+                  data?.categories
                 )
                   ? data.categories
                   : []
-              );
-            }
-          } catch (error) {
-            if (!cancelled) {
-              setError(
-                error instanceof
-                  Error
-                  ? error.message
-                  : "Unable to load categories."
-              );
-            }
-          } finally {
-            if (!cancelled) {
-              setCategoriesLoading(
-                false
-              );
-            }
-          }
-        };
-
-      void loadCategories();
-
-      return () => {
-        cancelled =
-          true;
-      };
-    },
-    []
-  );
-
-  useEffect(
-    () => {
-      if (!isEdit) {
-        setProductLoading(
-          false
-        );
-        return;
-      }
-
-      if (!productId) {
-        setError(
-          "Product ID is missing."
-        );
-        setProductLoading(
-          false
-        );
-        return;
-      }
-
-      let cancelled =
-        false;
-
-      const loadProduct =
-        async () => {
-          try {
-            setProductLoading(
-              true
-            );
-
-            const response =
-              await fetch(
-                `${API_URL}/api/products/${productId}`,
-                {
-                  credentials:
-                    "include",
-                  cache:
-                    "no-store",
-                }
-              );
-
-            const data =
-              await response.json();
-
-            if (!response.ok) {
-              throw new Error(
-                data.message ||
-                  "Unable to load product."
-              );
-            }
-
-            if (cancelled) {
-              return;
-            }
-
-            const product:
-              ProductApiData =
-              data.product ||
-              data;
-
-            setName(
-              product.name ||
-                ""
-            );
-
-            setSlug(
-              product.slug ||
-                ""
-            );
-
-            slugTouchedRef.current =
-              true;
-
-            setShortDescription(
-              product.shortDescription ||
-                ""
-            );
-
-            setDescription(
-              product.description ||
-                ""
-            );
-
-            setPrice(
-              product.price !==
-                undefined
-                ? String(
-                    product.price
-                  )
-                : ""
-            );
-
-            setCompareAtPrice(
-              product.compareAtPrice !==
-                undefined
-                ? String(
-                    product.compareAtPrice
-                  )
-                : ""
-            );
-
-            setCostPrice(
-              product.costPrice !==
-                undefined
-                ? String(
-                    product.costPrice
-                  )
-                : ""
-            );
-
-            setStock(
-              product.stock !==
-                undefined
-                ? String(
-                    product.stock
-                  )
-                : "0"
-            );
-
-            setSelectedCategories(
-              (
-                product.categories ||
-                []
               )
-                .map(
-                  (
-                    category
-                  ) =>
-                    typeof category ===
-                    "string"
-                      ? category
-                      : (
-                          category.id ||
-                          category._id ||
+            );
+          }
+        } catch (
+          loadError
+        ) {
+          if (
+            !cancelled
+          ) {
+            setError(
+              loadError instanceof
+                Error
+                ? loadError.message
+                : "Unable to load categories."
+            );
+          }
+        }
+      };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* =======================================================
+     LOAD PRODUCT FOR EDIT
+  ======================================================= */
+
+  useEffect(() => {
+    if (
+      !isEdit
+    ) {
+      setLoading(
+        false
+      );
+
+      return;
+    }
+
+    if (
+      !productId
+    ) {
+      setError(
+        "Product ID is missing."
+      );
+
+      setLoading(
+        false
+      );
+
+      return;
+    }
+
+    let cancelled =
+      false;
+
+    const load =
+      async () => {
+        try {
+          setLoading(
+            true
+          );
+
+          const response =
+            await fetch(
+              `${API_URL}/api/products/${productId}`,
+              {
+                credentials:
+                  "include",
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const data =
+            await readJson(
+              response
+            );
+
+          if (
+            !response.ok
+          ) {
+            throw new Error(
+              data?.message ||
+                "Unable to load product."
+            );
+          }
+
+          const product =
+            data?.product ||
+            data;
+
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+          setSelectedCategories(
+            (
+              product?.categories ||
+              []
+            )
+              .map(
+                (
+                  item: any
+                ) =>
+                  String(
+                    typeof item ===
+                      "string"
+                      ? item
+                      : item?._id ||
+                          item?.id ||
                           ""
-                        )
-                )
-                .filter(
-                  Boolean
-                )
-            );
-
-            setMainImages(
-              normalizeMainImages(
-                product.mainImages ||
-                  []
-              )
-            );
-
-            const productHasColors =
-              product.isColor ===
-                true ||
-              (
-                Array.isArray(
-                  product.colors
-                ) &&
-                product.colors.length >
-                  0
-              );
-
-            setIsColor(
-              productHasColors
-            );
-
-            setColors(
-              productHasColors
-                ? normalizeColors(
-                    product.colors ||
-                      []
                   )
-                : []
-            );
-
-            setRatingAverage(
-              Number(
-                product.ratings
-                  ?.average ||
-                  0
               )
-            );
-
-            setRatingCount(
-              Number(
-                product.ratings
-                  ?.count ||
-                  0
+              .filter(
+                Boolean
               )
-            );
+          );
 
-            setStatus(
-              product.status ||
-                "draft"
-            );
+          const nextColors =
+            Array.isArray(
+              product?.colors
+            )
+              ? product.colors.map(
+                  (
+                    color: any,
+                    index: number
+                  ) => ({
+                    nameProduct:
+                      color?.nameProduct ||
+                      "",
 
-            setIsFeatured(
-              Boolean(
-                product.isFeatured
-              )
-            );
+                    slugProduct:
+                      color?.slugProduct ||
+                      "",
 
-            setIsNewLaunch(
-              Boolean(
-                product.isNewLaunch
-              )
-            );
+                    nameColor:
+                      color?.nameColor ||
+                      "",
 
-            setTags(
-              Array.isArray(
-                product.tags
-              )
-                ? product.tags.join(
-                    ", "
-                  )
-                : ""
-            );
+                    slugColor:
+                      color?.slugColor ||
+                      "",
 
-            setSeoTitle(
-              product.seoTitle ||
-                ""
-            );
+                    hex:
+                      color?.hex ||
+                      "#000000",
 
-            setSeoDescription(
-              product.seoDescription ||
-                ""
+                    isDefault:
+                      color?.isDefault ??
+                      index === 0,
+
+                    shortDescription:
+                      color?.shortDescription ||
+                      "",
+
+                    description:
+                      color?.description ||
+                      "",
+
+                    tags:
+                      Array.isArray(
+                        color?.tags
+                      )
+                        ? color.tags.join(
+                            ", "
+                          )
+                        : "",
+
+                    seoTitle:
+                      color?.seoTitle ||
+                      "",
+
+                    seoDescription:
+                      color?.seoDescription ||
+                      "",
+
+                    images:
+                      Array.isArray(
+                        color?.images
+                      )
+                        ? color.images.map(
+                            (
+                              image: any
+                            ) => ({
+                              url:
+                                image?.url ||
+                                "",
+
+                              publicId:
+                                image?.publicId ||
+                                "",
+
+                              isDefault:
+                                image?.isDefault ===
+                                true,
+
+                              name:
+                                image?.name ||
+                                imageNameFromPublicId(
+                                  image?.publicId ||
+                                    ""
+                                ),
+
+                              alt:
+                                image?.alt ||
+                                `${color?.nameProduct || "Product"} ${color?.nameColor || ""}`
+                                  .trim(),
+                            })
+                          )
+                        : [],
+
+                    pendingImages:
+                      [],
+
+                    sizes:
+                      Array.isArray(
+                        color?.sizes
+                      ) &&
+                      color.sizes
+                        .length
+                        ? color.sizes.map(
+                            (
+                              size: any
+                            ) => ({
+                              _id:
+                                size?._id,
+
+                              size:
+                                size?.size ||
+                                "",
+
+                              stock:
+                                Number(
+                                  size?.stock ||
+                                    0
+                                ),
+
+                              isActive:
+                                size?.isActive !==
+                                false,
+                            })
+                          )
+                        : [
+                            {
+                              size:
+                                "S",
+
+                              stock:
+                                0,
+
+                              isActive:
+                                true,
+                            },
+                          ],
+                  })
+                )
+              : [];
+
+          setColors(
+            nextColors.length
+              ? nextColors
+              : [
+                  emptyColor(
+                    0
+                  ),
+                ]
+          );
+
+          setIsColor(
+            product?.isColor !==
+              false
+          );
+
+          setIsActive(
+            product?.isActive ===
+              true
+          );
+
+          setIsFeatured(
+            product?.isFeatured ===
+              true
+          );
+
+          setIsNewLaunch(
+            product?.isNewLaunch ===
+              true
+          );
+        } catch (
+          loadError
+        ) {
+          if (
+            !cancelled
+          ) {
+            setError(
+              loadError instanceof
+                Error
+                ? loadError.message
+                : "Unable to load product."
             );
-          } catch (error) {
-            if (!cancelled) {
-              setError(
-                error instanceof
-                  Error
-                  ? error.message
-                  : "Unable to load product."
-              );
-            }
-          } finally {
-            if (!cancelled) {
-              setProductLoading(
-                false
-              );
-            }
           }
-        };
-
-      void loadProduct();
-
-      return () => {
-        cancelled =
-          true;
+        } finally {
+          if (
+            !cancelled
+          ) {
+            setLoading(
+              false
+            );
+          }
+        }
       };
-    },
-    [
-      isEdit,
-      productId,
-    ]
-  );
 
-  const productFolderName =
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isEdit,
+    productId,
+  ]);
+
+  /* =======================================================
+     DERIVED DATA
+  ======================================================= */
+
+  const filteredCategories =
     useMemo(
-      () =>
-        slugifyFolder(
-          name
-        ) ||
-        (
-          productId
-            ? `product-${productId}`
-            : "new-product"
-        ),
+      () => {
+        const search =
+          categorySearch
+            .trim()
+            .toLowerCase();
+
+        if (!search) {
+          return categories;
+        }
+
+        return categories.filter(
+          (
+            category
+          ) =>
+            category.name
+              .toLowerCase()
+              .includes(
+                search
+              ) ||
+            String(
+              category.slug ||
+                ""
+            )
+              .toLowerCase()
+              .includes(
+                search
+              )
+        );
+      },
       [
-        name,
-        productId,
+        categories,
+        categorySearch,
       ]
     );
 
-  const toggleCategory =
-    (
-      categoryId: string
-    ) => {
-      setSelectedCategories(
-        (
-          current
-        ) =>
-          current.includes(
-            categoryId
-          )
-            ? current.filter(
-                (
-                  id
-                ) =>
-                  id !==
-                  categoryId
-              )
-            : [
-                ...current,
-                categoryId,
-              ]
-      );
-    };
+  const selectedCategoryObjects =
+    useMemo(
+      () =>
+        categories.filter(
+          (
+            category
+          ) => {
+            const id =
+              String(
+                category._id ||
+                  category.id ||
+                  ""
+              );
 
-  const registerNewUpload =
-    (
-      image: ImageValue
-    ) => {
-      if (image.publicId) {
-        newUploadIdsRef.current.add(
-          image.publicId
-        );
-      }
-    };
-
-  const removeUnsavedImage =
-    async (
-      image: ImageValue
-    ) => {
-      if (
-        !image.publicId ||
-        !newUploadIdsRef.current.has(
-          image.publicId
-        )
-      ) {
-        return;
-      }
-
-      await deleteCloudinaryImage(
-        image.publicId
-      );
-
-      newUploadIdsRef.current.delete(
-        image.publicId
-      );
-    };
-
-  const onMainImagesUploaded =
-    (
-      uploadedImages: ImageValue[]
-    ) => {
-      for (
-        const image
-        of uploadedImages
-      ) {
-        registerNewUpload(
-          image
-        );
-      }
-
-      setMainImages(
-        (
-          current
-        ) => [
-          ...current,
-          ...uploadedImages,
-        ]
-      );
-    };
-
-  const removeMainImage =
-    async (
-      index: number
-    ) => {
-      const oldImage =
-        mainImages[
-          index
-        ];
-
-      if (!oldImage) {
-        return;
-      }
-
-      if (
-        newUploadIdsRef.current.has(
-          oldImage.publicId
-        )
-      ) {
-        await removeUnsavedImage(
-          oldImage
-        );
-      }
-
-      /*
-        Existing DB image:
-        remove only from state.
-        Backend PATCH compares old/new image publicIds
-        and deletes removed Cloudinary images after save.
-      */
-      setMainImages(
-        (
-          current
-        ) =>
-          current.filter(
-            (
-              _,
-              itemIndex
-            ) =>
-              itemIndex !==
-              index
-          )
-      );
-    };
-
-  const makeMainImage =
-    (
-      index: number
-    ) => {
-      setMainImages(
-        (
-          current
-        ) => {
-          if (
-            index <= 0 ||
-            index >= current.length
-          ) {
-            return current;
+            return selectedCategories.includes(
+              id
+            );
           }
+        ),
+      [
+        categories,
+        selectedCategories,
+      ]
+    );
 
-          const next =
-            [
+  const toggleCategory = (
+    id: string
+  ) => {
+    if (!id) {
+      return;
+    }
+
+    setSelectedCategories(
+      (
+        current
+      ) =>
+        current.includes(
+          id
+        )
+          ? current.filter(
+              (
+                value
+              ) =>
+                value !==
+                id
+            )
+          : [
               ...current,
-            ];
+              id,
+            ]
+    );
+  };
 
-          const [image] =
-            next.splice(
-              index,
+  const visibleColors =
+    useMemo(
+      () =>
+        isColor
+          ? colors
+          : colors.slice(
+              0,
               1
-            );
+            ),
+      [
+        colors,
+        isColor,
+      ]
+    );
 
-          next.unshift(
-            image
-          );
+  const totalStock =
+    useMemo(
+      () =>
+        visibleColors.reduce(
+          (
+            total,
+            color
+          ) =>
+            total +
+            color.sizes.reduce(
+              (
+                sum,
+                size
+              ) =>
+                sum +
+                Math.max(
+                  0,
+                  Number(
+                    size.stock ||
+                      0
+                  )
+                ),
+              0
+            ),
+          0
+        ),
+      [visibleColors]
+    );
 
-          return next;
-        }
-      );
-    };
+  const totalImages =
+    useMemo(
+      () =>
+        visibleColors.reduce(
+          (
+            total,
+            color
+          ) =>
+            total +
+            color.images
+              .length +
+            color
+              .pendingImages
+              .length,
+          0
+        ),
+      [visibleColors]
+    );
 
-  const updateMainImage =
-    (
-      imageIndex: number,
-      patch: Partial<Pick<ImageValue, "name" | "alt">>
-    ) => {
-      setMainImages(
-        current =>
-          current.map(
-            (image, index) =>
-              index === imageIndex
-                ? {
-                    ...image,
-                    ...patch,
-                  }
-                : image
-          )
-      );
-    };
+  /* =======================================================
+     STATE HELPERS
+  ======================================================= */
 
-  const handleColorModeChange =
-    async (
-      enabled: boolean
-    ) => {
-      if (enabled) {
-        /*
-          In color mode images live only in colors[].images[].
-          Remove unsaved main-gallery uploads now; existing saved
-          main images are deleted by backend after the product save.
-        */
-        for (const image of mainImages) {
-          if (
-            newUploadIdsRef.current.has(
-              image.publicId
-            )
-          ) {
-            await removeUnsavedImage(
-              image
-            );
-          }
-        }
+  const changeColorMode = (
+    nextValue: boolean
+  ) => {
+    setIsColor(
+      nextValue
+    );
 
-        setMainImages([]);
-        setIsColor(true);
+    /*
+     * Keep at least one details block.
+     * If user switches back to Color mode, previous color data
+     * remains available instead of being destroyed.
+     */
+    setColors(
+      (
+        current
+      ) =>
+        current.length
+          ? current
+          : [
+              emptyColor(
+                0
+              ),
+            ]
+    );
 
-        setColors(
-          current =>
-            current.length > 0
-              ? current
-              : [
-                  {
-                    ...emptyColor(),
-                    isDefault: true,
-                  },
-                ]
-        );
+    setError(
+      ""
+    );
 
-        return;
-      }
+    setSuccess(
+      ""
+    );
+  };
 
-      /*
-        Newly uploaded unsaved color images are not known to MongoDB,
-        so delete them immediately before color mode is switched off.
-        Existing saved images are deleted by the backend after PATCH.
-      */
-      for (const color of colors) {
-        for (const image of color.images) {
-          if (
-            newUploadIdsRef.current.has(
-              image.publicId
-            )
-          ) {
-            await removeUnsavedImage(
-              image
-            );
-          }
-        }
-      }
-
-      setColors([]);
-      setIsColor(false);
-    };
+  const updateColor = (
+    index: number,
+    patch:
+      Partial<ColorValue>
+  ) => {
+    setColors(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            color,
+            i
+          ) =>
+            i === index
+              ? {
+                  ...color,
+                  ...patch,
+                }
+              : color
+        )
+    );
+  };
 
   const addColor =
     () => {
-      if (!isColor) {
-        return;
-      }
-
       setColors(
         (
           current
         ) => [
           ...current,
-          emptyColor(),
+          emptyColor(
+            current.length
+          ),
         ]
       );
     };
 
-  const removeColor =
+  const removeColor = (
+    index: number
+  ) => {
+    setColors(
+      (
+        current
+      ) => {
+        const removed =
+          current[
+            index
+          ];
+
+        for (
+          const image
+          of removed
+            ?.pendingImages ||
+          []
+        ) {
+          URL.revokeObjectURL(
+            image.previewUrl
+          );
+        }
+
+        const next =
+          current.filter(
+            (
+              _,
+              i
+            ) =>
+              i !==
+              index
+          );
+
+        if (
+          next.length >
+            0 &&
+          !next.some(
+            (
+              color
+            ) =>
+              color.isDefault
+          )
+        ) {
+          next[0] = {
+            ...next[0],
+            isDefault:
+              true,
+          };
+        }
+
+        return next;
+      }
+    );
+  };
+
+  const makeDefaultColor = (
+    index: number
+  ) => {
+    setColors(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            color,
+            i
+          ) => ({
+            ...color,
+
+            isDefault:
+              i ===
+              index,
+          })
+        )
+    );
+  };
+
+  const addSize = (
+    colorIndex: number
+  ) => {
+    setColors(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            color,
+            i
+          ) =>
+            i ===
+            colorIndex
+              ? {
+                  ...color,
+
+                  sizes: [
+                    ...color.sizes,
+
+                    {
+                      size:
+                        "",
+
+                      stock:
+                        0,
+
+                      isActive:
+                        true,
+                    },
+                  ],
+                }
+              : color
+        )
+    );
+  };
+
+  const updateSize = (
+    colorIndex: number,
+    sizeIndex: number,
+    patch:
+      Partial<SizeValue>
+  ) => {
+    setColors(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            color,
+            i
+          ) =>
+            i ===
+            colorIndex
+              ? {
+                  ...color,
+
+                  sizes:
+                    color.sizes.map(
+                      (
+                        size,
+                        j
+                      ) =>
+                        j ===
+                        sizeIndex
+                          ? {
+                              ...size,
+                              ...patch,
+                            }
+                          : size
+                    ),
+                }
+              : color
+        )
+    );
+  };
+
+  const removeSize = (
+    colorIndex: number,
+    sizeIndex: number
+  ) => {
+    setColors(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            color,
+            i
+          ) =>
+            i ===
+            colorIndex
+              ? {
+                  ...color,
+
+                  sizes:
+                    color.sizes.filter(
+                      (
+                        _,
+                        j
+                      ) =>
+                        j !==
+                        sizeIndex
+                    ),
+                }
+              : color
+        )
+    );
+  };
+
+  /* =======================================================
+     PENDING IMAGE HELPERS
+  ======================================================= */
+
+  const addPendingImages = (
+    colorIndex: number,
+    fileList:
+      FileList | null
+  ) => {
+    if (
+      !fileList
+    ) {
+      return;
+    }
+
+    const files =
+      Array.from(
+        fileList
+      );
+
+    if (
+      files.length ===
+      0
+    ) {
+      return;
+    }
+
+    const color =
+      colors[
+        colorIndex
+      ];
+
+    const existingCount =
+      color.images.length +
+      color
+        .pendingImages
+        .length;
+
+    const newImages =
+      createPendingImages(
+        files,
+        color.nameProduct,
+        existingCount > 0
+      );
+
+    updateColor(
+      colorIndex,
+      {
+        pendingImages: [
+          ...color.pendingImages,
+          ...newImages,
+        ],
+      }
+    );
+  };
+
+  const updatePendingImage = (
+    colorIndex: number,
+    imageId: string,
+    patch:
+      Partial<PendingImage>
+  ) => {
+    const color =
+      colors[
+        colorIndex
+      ];
+
+    updateColor(
+      colorIndex,
+      {
+        pendingImages:
+          color.pendingImages.map(
+            (
+              image
+            ) =>
+              image.id ===
+              imageId
+                ? {
+                    ...image,
+                    ...patch,
+                  }
+                : image
+          ),
+      }
+    );
+  };
+
+  const removePendingImage = (
+    colorIndex: number,
+    imageId: string
+  ) => {
+    const color =
+      colors[
+        colorIndex
+      ];
+
+    const image =
+      color.pendingImages.find(
+        (
+          item
+        ) =>
+          item.id ===
+          imageId
+      );
+
+    if (image) {
+      URL.revokeObjectURL(
+        image.previewUrl
+      );
+    }
+
+    const nextImages =
+      color.pendingImages.filter(
+        (
+          item
+        ) =>
+          item.id !==
+          imageId
+      );
+
+    const hadDefault =
+      image?.isDefault ===
+      true;
+
+    if (
+      hadDefault &&
+      color.images
+        .length ===
+        0 &&
+      nextImages.length >
+        0
+    ) {
+      nextImages[0] = {
+        ...nextImages[0],
+        isDefault:
+          true,
+      };
+    }
+
+    updateColor(
+      colorIndex,
+      {
+        pendingImages:
+          nextImages,
+      }
+    );
+  };
+
+  const setDefaultPendingImage = (
+    colorIndex: number,
+    imageId: string
+  ) => {
+    const color =
+      colors[
+        colorIndex
+      ];
+
+    updateColor(
+      colorIndex,
+      {
+        /*
+         * Existing images lose local default selection.
+         * Backend default is finalized after upload.
+         */
+        images:
+          color.images.map(
+            (
+              image
+            ) => ({
+              ...image,
+              isDefault:
+                false,
+            })
+          ),
+
+        pendingImages:
+          color.pendingImages.map(
+            (
+              image
+            ) => ({
+              ...image,
+              isDefault:
+                image.id ===
+                imageId,
+            })
+          ),
+      }
+    );
+  };
+
+  const updateExistingImageMeta = (
+    colorIndex: number,
+    publicId: string,
+    patch:
+      Partial<ImageValue>
+  ) => {
+    const color =
+      colors[
+        colorIndex
+      ];
+
+    updateColor(
+      colorIndex,
+      {
+        images:
+          color.images.map(
+            (
+              image
+            ) =>
+              image.publicId ===
+              publicId
+                ? {
+                    ...image,
+                    ...patch,
+                  }
+                : image
+          ),
+      }
+    );
+  };
+
+  /* =======================================================
+     DELETE EXISTING IMAGE
+  ======================================================= */
+
+  const deleteExistingImage =
     async (
-      colorIndex: number
+      colorIndex: number,
+      image:
+        ImageValue
     ) => {
       const color =
         colors[
           colorIndex
         ];
 
-      for (
-        const image
-        of color.images
-      ) {
-        if (
-          newUploadIdsRef.current.has(
-            image.publicId
-          )
-        ) {
-          await removeUnsavedImage(
-            image
-          );
-        }
-      }
-
-      setColors(
-        (
-          current
-        ) =>
-          current.filter(
-            (
-              _,
-              index
-            ) =>
-              index !==
-              colorIndex
-          )
-      );
-    };
-
-  const updateColor =
-    (
-      colorIndex: number,
-      field:
-        | "name"
-        | "hex"
-        | "isDefault"
-        | "nameProduct"
-        | "slugProduct"
-        | "shortDescription"
-        | "description"
-        | "tags"
-        | "seoTitle"
-        | "seoDescription"
-        | "isActive",
-      value:
-        | string
-        | boolean
-    ) => {
-      setColors(
-        current =>
-          current.map(
-            (color, index) => {
-              if (field === "isDefault") {
-                return {
-                  ...color,
-                  isDefault:
-                    index === colorIndex
-                      ? Boolean(value)
-                      : Boolean(value)
-                        ? false
-                        : color.isDefault,
-                };
-              }
-
-              return index === colorIndex
-                ? {
-                    ...color,
-                    [field]: value,
-                  }
-                : color;
-            }
-          )
-      );
-    };
-
-  const onColorImagesUploaded =
-    (
-      colorIndex: number,
-      uploadedImages: ImageValue[]
-    ) => {
-      for (
-        const image
-        of uploadedImages
-      ) {
-        registerNewUpload(
-          image
-        );
-      }
-
-      setColors(
-        (
-          current
-        ) =>
-          current.map(
-            (
-              color,
-              index
-            ) =>
-              index ===
-              colorIndex
-                ? {
-                    ...color,
-                    images: [
-                      ...color.images,
-                      ...uploadedImages,
-                    ],
-                  }
-                : color
-          )
-      );
-    };
-
-  const updateColorImage =
-    (
-      colorIndex: number,
-      imageIndex: number,
-      patch: Partial<Pick<ImageValue, "name" | "alt">>
-    ) => {
-      setColors(
-        current =>
-          current.map(
-            (color, index) =>
-              index === colorIndex
-                ? {
-                    ...color,
-                    images:
-                      color.images.map(
-                        (image, currentImageIndex) =>
-                          currentImageIndex === imageIndex
-                            ? {
-                                ...image,
-                                ...patch,
-                              }
-                            : image
-                      ),
-                  }
-                : color
-          )
-      );
-    };
-
-  const removeColorImage =
-    async (
-      colorIndex: number,
-      imageIndex: number
-    ) => {
-      const oldImage =
-        colors[
-          colorIndex
-        ]?.images[
-          imageIndex
-        ];
-
-      if (!oldImage) {
-        return;
-      }
-
       if (
-        newUploadIdsRef.current.has(
-          oldImage.publicId
-        )
+        !isEdit ||
+        !productId
       ) {
-        await removeUnsavedImage(
-          oldImage
+        updateColor(
+          colorIndex,
+          {
+            images:
+              color.images.filter(
+                (
+                  item
+                ) =>
+                  item.publicId !==
+                  image.publicId
+              ),
+          }
         );
-      }
 
-      setColors(
-        (
-          current
-        ) =>
-          current.map(
-            (
-              color,
-              index
-            ) => {
-              if (
-                index !==
-                colorIndex
-              ) {
-                return color;
-              }
-
-              return {
-                ...color,
-                images:
-                  color.images.filter(
-                    (
-                      _,
-                      currentImageIndex
-                    ) =>
-                      currentImageIndex !==
-                      imageIndex
-                  ),
-              };
-            }
-          )
-      );
-    };
-
-  const makeColorMainImage =
-    (
-      colorIndex: number,
-      imageIndex: number
-    ) => {
-      setColors(
-        (
-          current
-        ) =>
-          current.map(
-            (
-              color,
-              index
-            ) => {
-              if (
-                index !==
-                  colorIndex ||
-                imageIndex <= 0 ||
-                imageIndex >=
-                  color.images.length
-              ) {
-                return color;
-              }
-
-              const images =
-                [
-                  ...color.images,
-                ];
-
-              const [image] =
-                images.splice(
-                  imageIndex,
-                  1
-                );
-
-              images.unshift(
-                image
-              );
-
-              return {
-                ...color,
-                images,
-              };
-            }
-          )
-      );
-    };
-
-  const addSize =
-    (
-      colorIndex: number
-    ) => {
-      setColors(
-        (
-          current
-        ) =>
-          current.map(
-            (
-              color,
-              index
-            ) =>
-              index ===
-              colorIndex
-                ? {
-                    ...color,
-                    sizes: [
-                      ...color.sizes,
-                      emptySize(),
-                    ],
-                  }
-                : color
-          )
-      );
-    };
-
-  const removeSize =
-    (
-      colorIndex: number,
-      sizeIndex: number
-    ) => {
-      setColors(
-        (
-          current
-        ) =>
-          current.map(
-            (
-              color,
-              index
-            ) =>
-              index ===
-              colorIndex
-                ? {
-                    ...color,
-                    sizes:
-                      color.sizes.filter(
-                        (
-                          _,
-                          currentSizeIndex
-                        ) =>
-                          currentSizeIndex !==
-                          sizeIndex
-                      ),
-                  }
-                : color
-          )
-      );
-    };
-
-  const updateSize =
-    (
-      colorIndex: number,
-      sizeIndex: number,
-      field:
-        | "size"
-        | "sku"
-        | "stock"
-        | "isActive",
-      value:
-        | string
-        | boolean
-    ) => {
-      setColors(
-        (
-          current
-        ) =>
-          current.map(
-            (
-              color,
-              index
-            ) => {
-              if (
-                index !==
-                colorIndex
-              ) {
-                return color;
-              }
-
-              return {
-                ...color,
-                sizes:
-                  color.sizes.map(
-                    (
-                      size,
-                      currentSizeIndex
-                    ) =>
-                      currentSizeIndex ===
-                      sizeIndex
-                        ? {
-                            ...size,
-                            [field]:
-                              value,
-                          }
-                        : size
-                  ),
-              };
-            }
-          )
-      );
-    };
-
-  const handleSubmit =
-    async (
-      event:
-        FormEvent<HTMLFormElement>
-    ) => {
-      event.preventDefault();
-
-      if (saving) {
         return;
-      }
-
-      setError("");
-      setSuccess("");
-
-      if (!name.trim()) {
-        setError(
-          "Product name is required."
-        );
-        return;
-      }
-
-      if (
-        !slug.trim()
-      ) {
-        setError(
-          "Product slug is required."
-        );
-        return;
-      }
-
-      if (
-        selectedCategories.length ===
-        0
-      ) {
-        setError(
-          "Please select at least one category."
-        );
-        return;
-      }
-
-      if (
-        price.trim() ===
-          "" ||
-        !Number.isFinite(
-          Number(
-            price
-          )
-        ) ||
-        Number(
-          price
-        ) <
-          0
-      ) {
-        setError(
-          "Please enter a valid price."
-        );
-        return;
-      }
-
-      if (
-        stock.trim() ===
-          "" ||
-        !Number.isInteger(
-          Number(
-            stock
-          )
-        ) ||
-        Number(
-          stock
-        ) <
-          0
-      ) {
-        setError(
-          "Please enter a valid stock quantity (0 or greater)."
-        );
-        return;
-      }
-
-      if (isColor) {
-        const submittedColors =
-          colors.filter(
-            color =>
-              color.name.trim()
-          );
-
-        if (
-          submittedColors.length ===
-          0
-        ) {
-          setError(
-            "At least one color variant is required when Color Variants is enabled."
-          );
-          return;
-        }
-
-        const missingProductName =
-          submittedColors.find(
-            color =>
-              !color.nameProduct.trim()
-          );
-
-        if (missingProductName) {
-          setError(
-            `Color product name is required for ${missingProductName.name || "every color"}.`
-          );
-          return;
-        }
       }
 
       try {
-        setSaving(true);
+        setError("");
 
-        const payload = {
-          name:
-            name.trim(),
+        const response =
+          await fetch(
+            `${API_URL}/api/products/${productId}/colors/${encodeURIComponent(
+              color.slugColor
+            )}/images`,
+            {
+              method:
+                "DELETE",
 
-          slug:
-            slug.trim(),
+              credentials:
+                "include",
 
-          shortDescription:
-            shortDescription.trim(),
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
 
-          description:
-            description.trim(),
+              body:
+                JSON.stringify(
+                  {
+                    publicId:
+                      image.publicId,
+                  }
+                ),
+            }
+          );
 
-          categories:
-            selectedCategories,
+        const data =
+          await readJson(
+            response
+          );
 
-          price:
-            Number(
-              price
-            ),
+        if (
+          !response.ok
+        ) {
+          throw new Error(
+            data?.message ||
+              "Unable to delete image."
+          );
+        }
 
-          compareAtPrice:
-            compareAtPrice.trim()
-              ? Number(
-                  compareAtPrice
-                )
-              : 0,
-
-          costPrice:
-            costPrice.trim()
-              ? Number(
-                  costPrice
-                )
-              : 0,
-
-          stock:
-            Number(
-              stock
-            ),
-
-          isColor,
-
-          mainImages:
-            isColor
-              ? []
-              : mainImages
-              .filter(
-                image =>
-                  image.url &&
-                  image.publicId
-              )
-              .map((image, index) => ({
-                ...image,
-                name:
-                  image.name?.trim() ||
-                  image.alt?.trim() ||
-                  `product-image-${index + 1}`,
-                alt:
-                  image.alt?.trim() ||
-                  image.name?.trim() ||
-                  name.trim(),
-                isDefault:
-                  index === 0,
-              })),
-
-          colors:
-            isColor
-              ? colors
-              .filter(
+        updateColor(
+          colorIndex,
+          {
+            images:
+              color.images.filter(
                 (
-                  color
+                  item
                 ) =>
-                  color.name.trim()
-              )
-              .map(
-                (
-                  color,
-                  colorIndex
-                ) => ({
-                  name:
-                    color.name.trim(),
+                  item.publicId !==
+                  image.publicId
+              ),
+          }
+        );
 
-                  nameColor:
-                    color.name.trim(),
+        setSuccess(
+          "Image deleted successfully."
+        );
+      } catch (
+        deleteError
+      ) {
+        setError(
+          deleteError instanceof
+            Error
+            ? deleteError.message
+            : "Unable to delete image."
+        );
+      }
+    };
 
-                  slugColor:
-                    slugifyProductSlug(
-                      color.name
+  /* =======================================================
+     DEFAULT EXISTING IMAGE
+  ======================================================= */
+
+  const setDefaultImage =
+    async (
+      colorIndex: number,
+      image:
+        ImageValue
+    ) => {
+      const color =
+        colors[
+          colorIndex
+        ];
+
+      updateColor(
+        colorIndex,
+        {
+          images:
+            color.images.map(
+              (
+                item
+              ) => ({
+                ...item,
+
+                isDefault:
+                  item.publicId ===
+                  image.publicId,
+              })
+            ),
+
+          pendingImages:
+            color.pendingImages.map(
+              (
+                item
+              ) => ({
+                ...item,
+
+                isDefault:
+                  false,
+              })
+            ),
+        }
+      );
+
+      if (
+        !isEdit ||
+        !productId
+      ) {
+        return;
+      }
+
+      try {
+        const response =
+          await fetch(
+            `${API_URL}/api/products/${productId}/colors/${encodeURIComponent(
+              color.slugColor
+            )}/images/default`,
+            {
+              method:
+                "PATCH",
+
+              credentials:
+                "include",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+
+              body:
+                JSON.stringify(
+                  {
+                    publicId:
+                      image.publicId,
+                  }
+                ),
+            }
+          );
+
+        const data =
+          await readJson(
+            response
+          );
+
+        if (
+          !response.ok
+        ) {
+          throw new Error(
+            data?.message ||
+              "Unable to set default image."
+          );
+        }
+      } catch (
+        defaultError
+      ) {
+        setError(
+          defaultError instanceof
+            Error
+            ? defaultError.message
+            : "Unable to set default image."
+        );
+      }
+    };
+
+  /* =======================================================
+     UPLOAD PENDING IMAGES
+
+     Sends:
+     - images[] = files
+     - imageMeta = JSON containing name/alt/isDefault
+
+     Backend must read req.body.imageMeta if you want name/alt
+     persisted in MongoDB.
+  ======================================================= */
+
+  const uploadPendingImages =
+    async (
+      id: string
+    ) => {
+      const uploadColors =
+        isColor
+          ? colors
+          : colors.slice(
+              0,
+              1
+            );
+
+      for (
+        let colorIndex =
+          0;
+        colorIndex <
+        uploadColors.length;
+        colorIndex++
+      ) {
+        const color =
+          uploadColors[
+            colorIndex
+          ];
+
+        if (
+          !color
+            .pendingImages
+            .length
+        ) {
+          continue;
+        }
+
+        setUploadMessage(
+          `Uploading ${
+            isColor
+              ? color.nameColor ||
+                `color ${colorIndex + 1}`
+              : color.nameProduct ||
+                "product"
+          } images...`
+        );
+
+        const formData =
+          new FormData();
+
+        for (
+          const image
+          of color.pendingImages
+        ) {
+          formData.append(
+            "images",
+            image.file
+          );
+        }
+
+        formData.append(
+          "imageMeta",
+          JSON.stringify(
+            color.pendingImages.map(
+              (
+                image
+              ) => ({
+                name:
+                  image.name.trim(),
+
+                alt:
+                  image.alt.trim(),
+
+                isDefault:
+                  image.isDefault,
+              })
+            )
+          )
+        );
+
+        const response =
+          await fetch(
+            `${API_URL}/api/products/${id}/colors/${encodeURIComponent(
+              isColor
+                ? color.slugColor
+                : "default"
+            )}/images`,
+            {
+              method:
+                "POST",
+
+              credentials:
+                "include",
+
+              body:
+                formData,
+            }
+          );
+
+        const data =
+          await readJson(
+            response
+          );
+
+        if (
+          !response.ok
+        ) {
+          throw new Error(
+            data?.message ||
+              `Unable to upload ${color.nameColor} images.`
+          );
+        }
+      }
+
+      setUploadMessage(
+        ""
+      );
+    };
+
+  /* =======================================================
+     SUBMIT
+  ======================================================= */
+
+  const submit =
+    async (
+      event:
+        FormEvent
+    ) => {
+      event.preventDefault();
+
+      if (
+        saving
+      ) {
+        return;
+      }
+
+      try {
+        setSaving(
+          true
+        );
+
+        setError(
+          ""
+        );
+
+        setSuccess(
+          ""
+        );
+
+        if (
+          !selectedCategories.length
+        ) {
+          throw new Error(
+            "Select at least one category."
+          );
+        }
+
+        if (
+          !colors.length
+        ) {
+          throw new Error(
+            "Product details are required."
+          );
+        }
+
+        const submitColors =
+          isColor
+            ? colors
+            : colors.slice(
+                0,
+                1
+              );
+
+        const normalizedColors =
+          submitColors.map(
+            (
+              color,
+              index
+            ) => {
+              const nameProduct =
+                color.nameProduct.trim();
+
+              const nameColor =
+                isColor
+                  ? color.nameColor.trim()
+                  : "Default";
+
+              if (
+                !nameProduct
+              ) {
+                throw new Error(
+                  `${isColor ? `Color ${index + 1}` : "Product"}: product name is required.`
+                );
+              }
+
+              if (
+                isColor &&
+                !nameColor
+              ) {
+                throw new Error(
+                  `Color ${index + 1}: color name is required.`
+                );
+              }
+
+              const slugProduct =
+                slugify(
+                  color.slugProduct ||
+                    nameProduct
+                );
+
+              const slugColor =
+                isColor
+                  ? slugify(
+                      color.slugColor ||
+                        nameColor
+                    )
+                  : "default";
+
+              if (
+                !slugProduct ||
+                !slugColor
+              ) {
+                throw new Error(
+                  `${isColor ? `Color ${index + 1}` : "Product"}: valid slug is required.`
+                );
+              }
+
+              const sizes =
+                color.sizes.map(
+                  (
+                    size,
+                    sizeIndex
+                  ) => {
+                    const sizeName =
+                      String(
+                        size.size ||
+                          ""
+                      )
+                        .trim()
+                        .toUpperCase();
+
+                    const stock =
+                      Number(
+                        size.stock
+                      );
+
+                    if (
+                      !sizeName
+                    ) {
+                      throw new Error(
+                        `${nameColor}: size ${sizeIndex + 1} name is required.`
+                      );
+                    }
+
+                    if (
+                      !Number.isInteger(
+                        stock
+                      ) ||
+                      stock < 0
+                    ) {
+                      throw new Error(
+                        `${isColor ? nameColor : nameProduct} / ${sizeName}: stock must be 0 or greater.`
+                      );
+                    }
+
+                    return {
+                      size:
+                        sizeName,
+
+                      stock,
+
+                      isActive:
+                        size.isActive !==
+                        false,
+                    };
+                  }
+                );
+
+              return {
+                nameProduct,
+
+                slugProduct,
+
+                nameColor,
+
+                slugColor,
+
+                hex:
+                  isColor
+                    ? color.hex.trim()
+                    : "",
+
+                isDefault:
+                  isColor
+                    ? color.isDefault
+                    : true,
+
+                shortDescription:
+                  color.shortDescription.trim(),
+
+                description:
+                  color.description,
+
+                tags:
+                  color.tags
+                    .split(
+                      ","
+                    )
+                    .map(
+                      (
+                        tag
+                      ) =>
+                        tag
+                          .trim()
+                          .toLowerCase()
+                    )
+                    .filter(
+                      Boolean
                     ),
 
-                  nameProduct:
-                    color.nameProduct.trim() ||
-                    name.trim(),
+                seoTitle:
+                  color.seoTitle.trim(),
 
-                  slugProduct:
-                    color.slugProduct.trim(),
+                seoDescription:
+                  color.seoDescription.trim(),
 
-                  hex:
-                    color.hex.trim(),
+                /*
+                 * Existing Cloudinary images stay in update payload.
+                 * name/alt require backend schema support.
+                 */
+                images:
+                  color.images.map(
+                    (
+                      image
+                    ) => ({
+                      url:
+                        image.url,
 
-                  isDefault:
-                    color.isDefault,
+                      publicId:
+                        image.publicId,
 
-                  shortDescription:
-                    color.shortDescription.trim(),
+                      isDefault:
+                        image.isDefault ===
+                        true,
 
-                  description:
-                    color.description.trim(),
+                      name:
+                        image.name?.trim(),
 
-                  tags:
-                    color.tags
-                      .split(",")
-                      .map(tag =>
-                        tag.trim().toLowerCase()
-                      )
-                      .filter(Boolean),
+                      alt:
+                        image.alt?.trim(),
+                    })
+                  ),
 
-                  seoTitle:
-                    color.seoTitle.trim(),
+                sizes,
+              };
+            }
+          );
 
-                  seoDescription:
-                    color.seoDescription.trim(),
+        const payload =
+          {
+            categories:
+              selectedCategories,
 
-                  sortOrder:
-                    colorIndex,
+            isColor,
 
-                  isActive:
-                    color.isActive,
+            colors:
+              normalizedColors,
 
-                  images:
-                    color.images
-                      .filter(
-                        image =>
-                          image.url &&
-                          image.publicId
-                      )
-                      .map((image, imageIndex) => ({
-                        ...image,
-                        name:
-                          image.name?.trim() ||
-                          image.alt?.trim() ||
-                          `${slugifyFolder(color.name) || "color"}-image-${imageIndex + 1}`,
-                        alt:
-                          image.alt?.trim() ||
-                          image.name?.trim() ||
-                          color.nameProduct.trim() ||
-                          name.trim(),
-                        isDefault:
-                          imageIndex === 0,
-                      })),
+            isActive,
 
-                  sizes:
-                    color.sizes
-                      .filter(
-                        (
-                          size
-                        ) =>
-                          size.size.trim() &&
-                          size.sku.trim()
-                      )
-                      .map(
-                        (
-                          size
-                        ) => ({
-                          size:
-                            size.size
-                              .trim()
-                              .toUpperCase(),
+            isFeatured,
 
-                          sku:
-                            size.sku
-                              .trim()
-                              .toUpperCase(),
-
-                          stock:
-                            Math.max(
-                              0,
-                              Math.floor(
-                                Number(
-                                  size.stock
-                                ) ||
-                                  0
-                              )
-                            ),
-
-                          isActive:
-                            size.isActive,
-                        })
-                      ),
-                })
-              )
-              : [],
-
-          status,
-
-          isFeatured,
-
-          isNewLaunch,
-
-          tags:
-            tags
-              .split(",")
-              .map(
-                (
-                  tag
-                ) =>
-                  tag
-                    .trim()
-                    .toLowerCase()
-              )
-              .filter(
-                Boolean
-              ),
-
-          seoTitle:
-            seoTitle.trim(),
-
-          seoDescription:
-            seoDescription.trim(),
-        };
+            isNewLaunch,
+          };
 
         const endpoint =
           isEdit
@@ -1785,6 +2019,9 @@ export default function ProductForm({
               headers: {
                 "Content-Type":
                   "application/json",
+
+                Accept:
+                  "application/json",
               },
 
               body:
@@ -1795,23 +2032,52 @@ export default function ProductForm({
           );
 
         const data =
-          await response.json();
+          await readJson(
+            response
+          );
 
-        if (!response.ok) {
+        if (
+          !response.ok
+        ) {
           throw new Error(
-            data.message ||
-              (
-                isEdit
-                  ? "Unable to update product."
-                  : "Unable to create product."
-              )
+            data?.message ||
+              "Unable to save product."
           );
         }
 
-        newUploadIdsRef.current.clear();
+        const id =
+          String(
+            data?.product?._id ||
+              productId ||
+              ""
+          );
 
-        savedRef.current =
-          true;
+        if (!id) {
+          throw new Error(
+            "Product saved but product ID was not returned."
+          );
+        }
+
+        await uploadPendingImages(
+          id
+        );
+
+        /*
+         * Revoke preview URLs after successful upload.
+         */
+        for (
+          const color
+          of colors
+        ) {
+          for (
+            const image
+            of color.pendingImages
+          ) {
+            URL.revokeObjectURL(
+              image.previewUrl
+            );
+          }
+        }
 
         setSuccess(
           isEdit
@@ -1819,560 +2085,1350 @@ export default function ProductForm({
             : "Product created successfully."
         );
 
-        window.setTimeout(
-          () => {
-            router.push(
-              "/admin/products"
-            );
-            router.refresh();
-          },
-          500
+        if (
+          !isEdit
+        ) {
+          router.push(
+            `/admin/products/${id}/edit`
+          );
+
+          return;
+        }
+
+        router.refresh();
+      } catch (
+        submitError
+      ) {
+        setUploadMessage(
+          ""
         );
-      } catch (error) {
+
         setError(
-          error instanceof
+          submitError instanceof
             Error
-            ? error.message
+            ? submitError.message
             : "Unable to save product."
         );
       } finally {
-        setSaving(false);
+        setSaving(
+          false
+        );
       }
     };
 
-  const handleCancel =
-    async () => {
-      setSaving(true);
-
-      await cleanupUnsavedUploads();
-
-      setSaving(false);
-
-      router.push(
-        "/admin/products"
-      );
-    };
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
   if (
-    productLoading
+    loading
   ) {
     return (
-      <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-[#211A18]/10 bg-white">
-        <LoadingSpinner />
+      <div className="min-h-[70vh] bg-[#F6F3EF] px-5 py-16">
+        <div className="mx-auto max-w-7xl">
+          <div className="animate-pulse rounded-[28px] border border-black/5 bg-white p-8 shadow-[0_24px_70px_rgba(49,31,24,0.08)]">
+            <div className="h-3 w-28 rounded-full bg-black/10" />
+            <div className="mt-4 h-10 w-72 max-w-full rounded-xl bg-black/10" />
+            <div className="mt-3 h-4 w-96 max-w-full rounded-full bg-black/5" />
+
+            <div className="mt-10 grid gap-5 md:grid-cols-3">
+              {[
+                1,
+                2,
+                3,
+              ].map(
+                (
+                  item
+                ) => (
+                  <div
+                    key={
+                      item
+                    }
+                    className="h-32 rounded-2xl bg-black/[0.04]"
+                  />
+                )
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
     <form
       onSubmit={
-        handleSubmit
+        submit
       }
-      className="mx-auto max-w-[1500px]"
+      className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(140,24,57,0.09),_transparent_28%),linear-gradient(180deg,#F9F7F4_0%,#F4F0EC_100%)] px-4 py-7 md:px-8 md:py-10"
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#8C1839]">
-            Catalog Management
-          </p>
+      <div className="mx-auto w-full max-w-[1440px]">
+        {/* =================================================
+            PREMIUM HEADER
+        ================================================= */}
 
-          <h1 className="mt-2 text-[28px] font-semibold text-[#211A18]">
-            {isEdit
-              ? "Edit Product"
-              : "Add Product"}
-          </h1>
+        <div className="overflow-hidden rounded-[30px] border border-white/70 bg-[#201816] text-white shadow-[0_30px_90px_rgba(43,27,22,0.20)]">
+          <div className="relative px-6 py-7 md:px-9 md:py-9">
+            <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-[#8C1839]/35 blur-3xl" />
+            <div className="pointer-events-none absolute bottom-0 left-1/3 h-32 w-72 rounded-full bg-[#C89B6D]/10 blur-3xl" />
 
-          <p className="mt-1 text-[11px] text-[#211A18]/45">
-            Product details, media,
-            pricing, colors, sizes,
-            stock and publishing.
-          </p>
+            <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-[#E6C7D0]">
+                  Product Studio
+                </div>
+
+                <h1 className="mt-4 text-3xl font-semibold tracking-[-0.035em] md:text-5xl">
+                  {isEdit
+                    ? "Edit Product"
+                    : "Create Product"}
+                </h1>
+
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/55 md:text-base">
+                  {isColor
+                    ? "Build each color as its own storefront-ready product with SEO, premium image gallery, sizes and inventory."
+                    : "Build a single no-color product with SEO, premium image gallery, sizes and inventory."}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <MiniStat
+                  label="Mode"
+                  value={
+                    isColor
+                      ? `${colors.length} Color${colors.length === 1 ? "" : "s"}`
+                      : "No Color"
+                  }
+                />
+
+                <MiniStat
+                  label="Images"
+                  value={
+                    totalImages
+                  }
+                />
+
+                <MiniStat
+                  label="Stock"
+                  value={
+                    totalStock
+                  }
+                />
+
+                <button
+                  type="submit"
+                  disabled={
+                    saving
+                  }
+                  className="ml-0 h-12 rounded-2xl bg-[#F4DCE3] px-6 text-sm font-bold text-[#64142D] shadow-lg transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 lg:ml-2"
+                >
+                  {saving
+                    ? uploadMessage ||
+                      "Saving..."
+                    : isEdit
+                      ? "Update Product"
+                      : "Create Product"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="flex gap-3">
-          <button
-            type="button"
-            disabled={
-              saving
-            }
-            onClick={() =>
-              void handleCancel()
-            }
-            className="h-11 rounded-xl border border-[#211A18]/10 bg-white px-5 text-[9px] font-semibold uppercase disabled:opacity-50"
+        {/* =================================================
+            ALERTS
+        ================================================= */}
+
+        {(error ||
+          success ||
+          uploadMessage) && (
+          <div
+            className={`mt-5 rounded-2xl border px-5 py-4 text-sm shadow-sm ${
+              error
+                ? "border-red-200 bg-red-50 text-red-700"
+                : uploadMessage
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            }`}
           >
-            Cancel
-          </button>
+            {error ||
+              uploadMessage ||
+              success}
+          </div>
+        )}
 
-          <button
-            type="submit"
-            disabled={
-              saving
-            }
-            className="h-11 rounded-xl bg-[#8C1839] px-6 text-[9px] font-semibold uppercase tracking-[0.1em] text-white hover:bg-[#211A18] disabled:opacity-50"
-          >
-            {saving
-              ? "Saving..."
-              : isEdit
-                ? "Update Product"
-                : "Create Product"}
-          </button>
-        </div>
-      </div>
+        {/* =================================================
+            CATEGORY SECTION
+        ================================================= */}
 
-      {error && (
-        <Message tone="error">
-          {error}
-        </Message>
-      )}
+        <SectionCard
+          eyebrow="01"
+          title="Categories"
+          description="Choose one or more categories from the dropdown. Parent and child categories are shown together."
+        >
+          {categories.length ===
+          0 ? (
+            <div className="rounded-2xl border border-dashed border-black/10 px-5 py-8 text-center text-sm text-black/45">
+              No categories available.
+            </div>
+          ) : (
+            <div className="relative">
+              {/* ============================================
+                  DROPDOWN BUTTON
+              ============================================ */}
 
-      {success && (
-        <Message tone="success">
-          {success}
-        </Message>
-      )}
-
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-6">
-          <Card title="Product Details">
-            <div className="space-y-4">
-              <Field
-                label="Product Name"
-                required
+              <button
+                type="button"
+                onClick={() =>
+                  setCategoryDropdownOpen(
+                    (
+                      current
+                    ) =>
+                      !current
+                  )
+                }
+                className={`flex min-h-14 w-full items-center justify-between gap-4 rounded-2xl border bg-white px-4 text-left transition ${
+                  categoryDropdownOpen
+                    ? "border-[#8C1839]/35 ring-4 ring-[#8C1839]/[0.05]"
+                    : "border-black/[0.08] hover:border-black/15"
+                }`}
               >
-                <input
-                  value={name}
-                  onChange={(
-                    event
-                  ) => {
-                    const nextName =
-                      event.target.value;
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-[#2A201D]/75">
+                    Product Categories
+                  </div>
 
-                    setName(
-                      nextName
-                    );
+                  <div className="mt-1 truncate text-sm text-[#251C19]">
+                    {selectedCategories.length >
+                    0
+                      ? `${selectedCategories.length} categor${selectedCategories.length === 1 ? "y" : "ies"} selected`
+                      : "Select categories"}
+                  </div>
+                </div>
 
-                    if (
-                      !slugTouchedRef.current
-                    ) {
-                      setSlug(
-                        slugifyProductSlug(
-                          nextName
+                <span
+                  className={`text-lg text-black/35 transition-transform ${
+                    categoryDropdownOpen
+                      ? "rotate-180"
+                      : ""
+                  }`}
+                >
+                  ⌄
+                </span>
+              </button>
+
+              {/* ============================================
+                  DROPDOWN PANEL
+              ============================================ */}
+
+              {categoryDropdownOpen && (
+                <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-50 overflow-hidden rounded-[22px] border border-black/[0.08] bg-white shadow-[0_25px_70px_rgba(45,29,23,0.16)]">
+                  {/* SEARCH */}
+
+                  <div className="border-b border-black/[0.06] p-3">
+                    <div className="flex items-center gap-3 rounded-xl border border-black/[0.08] bg-[#FAF8F6] px-3">
+                      <span className="text-black/35">
+                        ⌕
+                      </span>
+
+                      <input
+                        type="search"
+                        value={
+                          categorySearch
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setCategorySearch(
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        placeholder="Search category..."
+                        className="h-11 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-black/30"
+                      />
+
+                      {categorySearch && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCategorySearch(
+                              ""
+                            )
+                          }
+                          className="grid h-7 w-7 place-items-center rounded-full text-black/35 hover:bg-black/[0.05] hover:text-[#8C1839]"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[10px] text-black/40">
+                        {selectedCategories.length} selected
+                      </p>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedCategories(
+                              categories
+                                .map(
+                                  (
+                                    category
+                                  ) =>
+                                    String(
+                                      category._id ||
+                                        category.id ||
+                                        ""
+                                    )
+                                )
+                                .filter(
+                                  Boolean
+                                )
+                            )
+                          }
+                          className="rounded-lg bg-[#FFF4F7] px-3 py-1.5 text-[10px] font-bold text-[#8C1839]"
+                        >
+                          Select All
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedCategories(
+                              []
+                            )
+                          }
+                          className="rounded-lg bg-[#F5F2EF] px-3 py-1.5 text-[10px] font-bold text-black/50"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ALL CATEGORIES */}
+
+                  <div className="max-h-80 overflow-y-auto p-2">
+                    {filteredCategories.length ===
+                    0 ? (
+                      <div className="px-4 py-8 text-center text-xs text-black/40">
+                        No category found.
+                      </div>
+                    ) : (
+                      filteredCategories.map(
+                        (
+                          category
+                        ) => {
+                          const id =
+                            String(
+                              category._id ||
+                                category.id ||
+                                ""
+                            );
+
+                          const checked =
+                            selectedCategories.includes(
+                              id
+                            );
+
+                          const level =
+                            Math.max(
+                              0,
+                              Number(
+                                category.level ||
+                                  0
+                              )
+                            );
+
+                          return (
+                            <button
+                              key={
+                                id
+                              }
+                              type="button"
+                              onClick={() =>
+                                toggleCategory(
+                                  id
+                                )
+                              }
+                              className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                                checked
+                                  ? "bg-[#FFF4F7]"
+                                  : "hover:bg-[#F8F6F4]"
+                              }`}
+                            >
+                              <span
+                                className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border text-[11px] font-black ${
+                                  checked
+                                    ? "border-[#8C1839] bg-[#8C1839] text-white"
+                                    : "border-black/15 bg-white text-transparent"
+                                }`}
+                              >
+                                ✓
+                              </span>
+
+                              <span
+                                className="min-w-0 flex-1"
+                                style={{
+                                  paddingLeft:
+                                    `${level * 18}px`,
+                                }}
+                              >
+                                <span className="block truncate text-sm font-semibold text-[#2A211E]">
+                                  {
+                                    category.name
+                                  }
+                                </span>
+
+                                <span className="mt-0.5 block truncate text-[10px] text-black/35">
+                                  {level ===
+                                  0
+                                    ? "Main category"
+                                    : `Level ${level} category`}
+                                  {category.slug
+                                    ? ` · ${category.slug}`
+                                    : ""}
+                                </span>
+                              </span>
+
+                              {level >
+                                0 && (
+                                <span className="rounded-full bg-[#F3EFEC] px-2 py-1 text-[9px] font-semibold text-black/40">
+                                  L{
+                                    level
+                                  }
+                                </span>
+                              )}
+                            </button>
+                          );
+                        }
+                      )
+                    )}
+                  </div>
+
+                  {/* DONE */}
+
+                  <div className="flex items-center justify-between gap-3 border-t border-black/[0.06] bg-[#FCFAF8] p-3">
+                    <span className="text-[10px] text-black/40">
+                      Select all categories that apply to this product.
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCategoryDropdownOpen(
+                          false
                         )
+                      }
+                      className="rounded-xl bg-[#211816] px-5 py-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-white hover:bg-[#8C1839]"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ============================================
+                  SELECTED CATEGORY CHIPS
+              ============================================ */}
+
+              {selectedCategoryObjects.length >
+                0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {selectedCategoryObjects.map(
+                    (
+                      category
+                    ) => {
+                      const id =
+                        String(
+                          category._id ||
+                            category.id ||
+                            ""
+                        );
+
+                      return (
+                        <span
+                          key={
+                            id
+                          }
+                          className="inline-flex items-center gap-2 rounded-full border border-[#8C1839]/15 bg-[#FFF6F8] px-3 py-2 text-[11px] font-semibold text-[#7A1734]"
+                        >
+                          {
+                            category.name
+                          }
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleCategory(
+                                id
+                              )
+                            }
+                            className="grid h-4 w-4 place-items-center rounded-full bg-[#8C1839]/10 text-[12px] leading-none hover:bg-[#8C1839] hover:text-white"
+                            aria-label={`Remove ${category.name}`}
+                          >
+                            ×
+                          </button>
+                        </span>
                       );
                     }
-                  }}
-                  className={
-                    inputClass
-                  }
-                  placeholder="Everyday Sports Bra"
-                />
-              </Field>
-
-              <Field
-                label="Product Slug"
-                required
-              >
-                <input
-                  value={slug}
-                  onChange={(
-                    event
-                  ) => {
-                    slugTouchedRef.current =
-                      true;
-
-                    setSlug(
-                      event.target.value
-                    );
-                  }}
-                  className={
-                    inputClass
-                  }
-                  placeholder="coral-red-maternity-bra"
-                />
-
-                <p className="mt-2 text-[8px] leading-4 text-[#211A18]/40">
-                  Admin kuch bhi readable value type kar sakta hai. Backend ise safe URL slug me convert karega. Example: <b>Coral Red Bra 2026</b> → <b>coral-red-bra-2026</b>.
-                </p>
-              </Field>
-
-              <Field label="Short Description">
-                <input
-                  value={
-                    shortDescription
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setShortDescription(
-                      event.target.value
-                    )
-                  }
-                  className={
-                    inputClass
-                  }
-                  placeholder="Short listing description"
-                />
-              </Field>
-
-              <Field label="Description (HTML + Inline CSS)">
-                <HtmlDescriptionEditor
-                  value={description}
-                  onChange={setDescription}
-                  disabled={saving}
-                />
-              </Field>
+                  )}
+                </div>
+              )}
             </div>
-          </Card>
-
-          <Card title="Pricing">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Field
-                label="Selling Price"
-                required
-              >
-                <MoneyInput
-                  value={price}
-                  setValue={
-                    setPrice
-                  }
-                />
-              </Field>
-
-              <Field label="Compare At Price">
-                <MoneyInput
-                  value={
-                    compareAtPrice
-                  }
-                  setValue={
-                    setCompareAtPrice
-                  }
-                />
-              </Field>
-
-              <Field label="Cost Price">
-                <MoneyInput
-                  value={
-                    costPrice
-                  }
-                  setValue={
-                    setCostPrice
-                  }
-                />
-              </Field>
-
-              <Field
-                label="Stock"
-                required
-              >
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={stock}
-                  onChange={(
-                    event
-                  ) =>
-                    setStock(
-                      event.target.value
-                    )
-                  }
-                  className={
-                    inputClass
-                  }
-                  placeholder="0"
-                />
-              </Field>
-            </div>
-          </Card>
-
-          {!isColor && (
-            <Card title="Main Product Images">
-              <p className="mb-4 text-[9px] leading-5 text-[#211A18]/40">
-                No fixed image limit. These images are used only when Color Variants is OFF.
-              </p>
-
-              <ProductImagesUploader
-                label="Product Gallery"
-                value={mainImages}
-                folder={`products/${productFolderName}/main`}
-                disabled={saving}
-                onUploaded={onMainImagesUploaded}
-                onRemove={removeMainImage}
-                onMakeMain={makeMainImage}
-                onUpdate={updateMainImage}
-              />
-            </Card>
           )}
+        </SectionCard>
 
-          {isColor && (
-          <Card
-            title="Color Variants"
-            action={
+        {/* =================================================
+            PRODUCT TYPE / COLOR MODE
+        ================================================= */}
+
+        <SectionCard
+          eyebrow="02"
+          title="Product Type"
+          description="Choose whether this product has selectable color variants or is a single no-color product."
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <button
+              type="button"
+              onClick={() =>
+                changeColorMode(
+                  true
+                )
+              }
+              className={`group rounded-[22px] border p-5 text-left transition ${
+                isColor
+                  ? "border-[#8C1839]/25 bg-[#FFF5F8] shadow-[0_12px_35px_rgba(140,24,57,0.08)]"
+                  : "border-black/[0.07] bg-white hover:border-black/15"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-bold text-[#291F1C]">
+                    Color Product
+                  </div>
+
+                  <p className="mt-1 text-xs leading-5 text-black/45">
+                    Multiple colors allowed. Every color can have its own name, SEO, images, sizes and stock.
+                  </p>
+                </div>
+
+                <span
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                    isColor
+                      ? "bg-[#8C1839]"
+                      : "bg-black/10"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${
+                      isColor
+                        ? "left-6"
+                        : "left-1"
+                    }`}
+                  />
+                </span>
+              </div>
+
+              <div className="mt-4 rounded-xl bg-white/70 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#8C1839]">
+                Database: isColor = true
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                changeColorMode(
+                  false
+                )
+              }
+              className={`group rounded-[22px] border p-5 text-left transition ${
+                !isColor
+                  ? "border-[#8C1839]/25 bg-[#FFF5F8] shadow-[0_12px_35px_rgba(140,24,57,0.08)]"
+                  : "border-black/[0.07] bg-white hover:border-black/15"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-bold text-[#291F1C]">
+                    No Color Product
+                  </div>
+
+                  <p className="mt-1 text-xs leading-5 text-black/45">
+                    Color controls are hidden. Product name, SEO, images, sizes and stock stay available.
+                  </p>
+                </div>
+
+                <span
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                    !isColor
+                      ? "bg-[#8C1839]"
+                      : "bg-black/10"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${
+                      !isColor
+                        ? "left-6"
+                        : "left-1"
+                    }`}
+                  />
+                </span>
+              </div>
+
+              <div className="mt-4 rounded-xl bg-white/70 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#8C1839]">
+                Database: isColor = false
+              </div>
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[#E5D7DC] bg-[#FFF9FB] px-4 py-3 text-xs leading-5 text-[#704957]">
+            <strong>
+              {isColor
+                ? "Color mode:"
+                : "No Color mode:"}
+            </strong>{" "}
+            {isColor
+              ? "Customers can select colors on the storefront."
+              : "The form keeps one internal default details block only for storing product content; the storefront must not show a color selector."}
+          </div>
+        </SectionCard>
+
+        {/* =================================================
+            COLOR / PRODUCT DETAILS
+        ================================================= */}
+
+        <SectionCard
+          eyebrow="03"
+          title={
+            isColor
+              ? "Color Products"
+              : "Product Details"
+          }
+          description={
+            isColor
+              ? "Every color can have a unique product name, slug, SEO copy, images and stock."
+              : "No color selector will be shown. Manage the product name, SEO, gallery, sizes and stock here."
+          }
+          action={
+            isColor ? (
               <button
                 type="button"
                 onClick={
                   addColor
                 }
-                className="rounded-lg bg-[#211A18] px-4 py-2 text-[8px] font-semibold uppercase text-white"
+                className="rounded-2xl border border-[#8C1839]/15 bg-[#FFF7F9] px-4 py-2.5 text-xs font-bold text-[#7A1734] transition hover:bg-[#FCECF1]"
               >
                 + Add Color
               </button>
-            }
-          >
-            <div className="space-y-5">
-              {colors.map(
-                (
-                  color,
-                  colorIndex
-                ) => (
-                  <div
-                    key={
-                      colorIndex
-                    }
-                    className="rounded-2xl border border-[#211A18]/10 bg-[#FAF8F6] p-4"
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-[12px] font-semibold">
-                        Color{" "}
-                        {colorIndex + 1}
-                      </p>
+            ) : null
+          }
+        >
+          <div className="space-y-7">
+            {visibleColors.map(
+              (
+                color,
+                colorIndex
+              ) => (
+                <div
+                  key={
+                    colorIndex
+                  }
+                  className="overflow-hidden rounded-[26px] border border-black/[0.07] bg-[#FBF9F7] shadow-[0_16px_45px_rgba(44,29,23,0.05)]"
+                >
+                  {/* COLOR HEADER */}
 
-                      {colors.length >
-                        1 && (
+                  <div className="flex flex-col gap-4 border-b border-black/[0.06] bg-white px-5 py-5 md:flex-row md:items-center md:justify-between md:px-6">
+                    <div className="flex items-center gap-3">
+                      {isColor ? (
+                        <div
+                          className="h-11 w-11 rounded-2xl border border-black/10 shadow-inner"
+                          style={{
+                            backgroundColor:
+                              color.hex ||
+                              "#000000",
+                          }}
+                        />
+                      ) : (
+                        <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#F8E8ED] text-lg text-[#8C1839]">
+                          ◇
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-[#241B18]">
+                            {isColor
+                              ? color.nameColor ||
+                                `Color ${colorIndex + 1}`
+                              : color.nameProduct ||
+                                "No Color Product"}
+                          </h3>
+
+                          <span className="rounded-full bg-[#FBE8EE] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#8C1839]">
+                            {isColor
+                              ? color.isDefault
+                                ? "Default"
+                                : "Color"
+                              : "No Color"}
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-xs text-black/40">
+                          {isColor
+                            ? `Color variant ${colorIndex + 1}`
+                            : "Single product · no customer color selector"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isColor && (
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() =>
-                            void removeColor(
+                            makeDefaultColor(
                               colorIndex
                             )
                           }
-                          className="text-[8px] font-semibold uppercase text-red-500"
+                          className="rounded-xl border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-semibold text-black/65 transition hover:border-[#8C1839]/25 hover:text-[#8C1839]"
                         >
-                          Remove Color
+                          Set default
                         </button>
-                      )}
-                    </div>
 
-                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[1fr_150px]">
-                      <Field label="Color Name">
+                        {colors.length >
+                          1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeColor(
+                                colorIndex
+                              )
+                            }
+                            className="rounded-xl border border-red-100 bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100"
+                          >
+                            Remove color
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-5 md:p-6">
+                    {/* PRODUCT IDENTITY */}
+
+                    <SubHeading
+                      title="Product identity"
+                      description="Name and slug shown on storefront and used in product URLs."
+                    />
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <Field
+                        label="Product Name"
+                        required
+                      >
                         <input
-                          value={
-                            color.name
+                          className={
+                            inputClass
                           }
+                          value={
+                            color.nameProduct
+                          }
+                          placeholder="Black Bikini Panty For Women"
+                          onChange={(
+                            event
+                          ) => {
+                            const nextName =
+                              event
+                                .target
+                                .value;
+
+                            updateColor(
+                              colorIndex,
+                              {
+                                nameProduct:
+                                  nextName,
+
+                                slugProduct:
+                                  color.slugProduct ||
+                                  slugify(
+                                    nextName
+                                  ),
+                              }
+                            );
+                          }}
+                        />
+                      </Field>
+
+                      <Field
+                        label="Product Slug"
+                        hint="URL-safe; generated automatically if blank."
+                      >
+                        <input
+                          className={
+                            inputClass
+                          }
+                          value={
+                            color.slugProduct
+                          }
+                          placeholder="black-bikini-panty-for-women"
                           onChange={(
                             event
                           ) =>
                             updateColor(
                               colorIndex,
-                              "name",
-                              event.target.value
+                              {
+                                slugProduct:
+                                  slugify(
+                                    event
+                                      .target
+                                      .value
+                                  ),
+                              }
                             )
                           }
+                        />
+                      </Field>
+
+                      {isColor && (
+                        <>
+                          <Field
+                            label="Color Name"
+                            required
+                          >
+                            <input
+                              className={
+                                inputClass
+                              }
+                              value={
+                                color.nameColor
+                              }
+                              placeholder="Black"
+                              onChange={(
+                                event
+                              ) => {
+                                const nextName =
+                                  event
+                                    .target
+                                    .value;
+
+                                updateColor(
+                                  colorIndex,
+                                  {
+                                    nameColor:
+                                      nextName,
+
+                                    slugColor:
+                                      color.slugColor ||
+                                      slugify(
+                                        nextName
+                                      ),
+                                  }
+                                );
+                              }}
+                            />
+                          </Field>
+
+                          <Field
+                            label="Color Slug"
+                          >
+                            <input
+                              className={
+                                inputClass
+                              }
+                              value={
+                                color.slugColor
+                              }
+                              placeholder="black"
+                              onChange={(
+                                event
+                              ) =>
+                                updateColor(
+                                  colorIndex,
+                                  {
+                                    slugColor:
+                                      slugify(
+                                        event
+                                          .target
+                                          .value
+                                      ),
+                                  }
+                                )
+                              }
+                            />
+                          </Field>
+
+                          <Field
+                            label="Color"
+                            hint="Choose color visually or enter HEX."
+                          >
+                            <div className="flex gap-2">
+                              <input
+                                type="color"
+                                value={
+                                  /^#[0-9a-fA-F]{6}$/.test(
+                                    color.hex
+                                  )
+                                    ? color.hex
+                                    : "#000000"
+                                }
+                                onChange={(
+                                  event
+                                ) =>
+                                  updateColor(
+                                    colorIndex,
+                                    {
+                                      hex:
+                                        event
+                                          .target
+                                          .value,
+                                    }
+                                  )
+                                }
+                                className="h-12 w-14 cursor-pointer rounded-xl border border-black/[0.08] bg-white p-1.5"
+                              />
+
+                              <input
+                                className={
+                                  inputClass
+                                }
+                                value={
+                                  color.hex
+                                }
+                                placeholder="#000000"
+                                onChange={(
+                                  event
+                                ) =>
+                                  updateColor(
+                                    colorIndex,
+                                    {
+                                      hex:
+                                        event
+                                          .target
+                                          .value,
+                                    }
+                                  )
+                                }
+                              />
+                            </div>
+                          </Field>
+                        </>
+                      )}
+
+                      <Field
+                        label="Tags"
+                        hint="Separate tags with commas."
+                      >
+                        <input
                           className={
                             inputClass
                           }
-                          placeholder="Black"
+                          value={
+                            color.tags
+                          }
+                          placeholder="women, panty, black panty"
+                          onChange={(
+                            event
+                          ) =>
+                            updateColor(
+                              colorIndex,
+                              {
+                                tags:
+                                  event
+                                    .target
+                                    .value,
+                              }
+                            )
+                          }
+                        />
+                      </Field>
+                    </div>
+
+                    {/* CONTENT */}
+
+                    <Divider />
+
+                    <SubHeading
+                      title="Content"
+                      description="Short copy for cards and full HTML description for the product detail page."
+                    />
+
+                    <div className="mt-4 grid gap-4">
+                      <Field
+                        label="Short Description"
+                        hint={`${color.shortDescription.length}/1000 characters`}
+                      >
+                        <textarea
+                          className={`${inputClass} min-h-28 resize-y py-3 leading-6`}
+                          maxLength={
+                            1000
+                          }
+                          value={
+                            color.shortDescription
+                          }
+                          placeholder="Short premium product summary..."
+                          onChange={(
+                            event
+                          ) =>
+                            updateColor(
+                              colorIndex,
+                              {
+                                shortDescription:
+                                  event
+                                    .target
+                                    .value,
+                              }
+                            )
+                          }
                         />
                       </Field>
 
-                      <Field label="Hex">
-                        <div className="flex h-12 items-center gap-3 rounded-xl border border-[#211A18]/10 bg-white px-3">
-                          <input
-                            type="color"
-                            value={
-                              color.hex
-                            }
-                            onChange={(
+                      <Field
+                        label="Description"
+                        hint="HTML supported by your backend sanitizer."
+                      >
+                        <textarea
+                          className={`${inputClass} min-h-52 resize-y py-3 font-mono text-xs leading-6`}
+                          value={
+                            color.description
+                          }
+                          placeholder="<p>Full product description...</p>"
+                          onChange={(
+                            event
+                          ) =>
+                            updateColor(
+                              colorIndex,
+                              {
+                                description:
+                                  event
+                                    .target
+                                    .value,
+                              }
+                            )
+                          }
+                        />
+                      </Field>
+                    </div>
+
+                    {/* SEO */}
+
+                    <Divider />
+
+                    <SubHeading
+                      title="Search & SEO"
+                      description="Metadata used for search engines and social/product snippets."
+                    />
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <Field
+                        label="SEO Title"
+                        hint={`${color.seoTitle.length}/200`}
+                      >
+                        <input
+                          className={
+                            inputClass
+                          }
+                          maxLength={
+                            200
+                          }
+                          value={
+                            color.seoTitle
+                          }
+                          placeholder="Black Bikini Panty For Women"
+                          onChange={(
+                            event
+                          ) =>
+                            updateColor(
+                              colorIndex,
+                              {
+                                seoTitle:
+                                  event
+                                    .target
+                                    .value,
+                              }
+                            )
+                          }
+                        />
+                      </Field>
+
+                      <Field
+                        label="SEO Description"
+                        hint={`${color.seoDescription.length}/1000`}
+                      >
+                        <textarea
+                          className={`${inputClass} min-h-24 resize-y py-3`}
+                          maxLength={
+                            1000
+                          }
+                          value={
+                            color.seoDescription
+                          }
+                          placeholder="Search-friendly description..."
+                          onChange={(
+                            event
+                          ) =>
+                            updateColor(
+                              colorIndex,
+                              {
+                                seoDescription:
+                                  event
+                                    .target
+                                    .value,
+                              }
+                            )
+                          }
+                        />
+                      </Field>
+                    </div>
+
+                    {/* IMAGE STUDIO */}
+
+                    <Divider />
+
+                    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                      <SubHeading
+                        title="Image Studio"
+                        description="Preview before upload, assign image name and ALT text, and choose the primary image."
+                      />
+
+                      <label className="group relative cursor-pointer overflow-hidden rounded-2xl bg-[#211816] px-5 py-3 text-xs font-bold text-white shadow-lg transition hover:-translate-y-0.5">
+                        <span className="relative z-10">
+                          + Choose Images
+                        </span>
+
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp,image/avif"
+                          className="hidden"
+                          onChange={(
+                            event
+                          ) => {
+                            addPendingImages(
+                              colorIndex,
                               event
-                            ) =>
-                              updateColor(
-                                colorIndex,
-                                "hex",
-                                event.target.value
-                              )
-                            }
-                          />
+                                .target
+                                .files
+                            );
 
-                          <span className="text-[9px] uppercase">
-                            {color.hex}
-                          </span>
+                            event.currentTarget.value =
+                              "";
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {color.images
+                      .length ===
+                      0 &&
+                    color
+                      .pendingImages
+                      .length ===
+                      0 ? (
+                      <label className="mt-5 flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed border-[#8C1839]/20 bg-[linear-gradient(145deg,#FFF9FB,#FFFFFF)] px-6 text-center transition hover:border-[#8C1839]/40 hover:bg-[#FFF7FA]">
+                        <div className="grid h-14 w-14 place-items-center rounded-2xl bg-[#F8E8ED] text-2xl">
+                          ↑
                         </div>
-                      </Field>
-                    </div>
 
-                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <Field label="Color Product Name">
+                        <p className="mt-4 text-sm font-bold text-[#2B201D]">
+                          Upload product photos
+                        </p>
+
+                        <p className="mt-1 max-w-md text-xs leading-5 text-black/45">
+                          JPG, PNG, WEBP or AVIF. You will see an instant preview before the image is uploaded.
+                        </p>
+
                         <input
-                          value={color.nameProduct}
-                          onChange={(event) =>
-                            updateColor(
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp,image/avif"
+                          className="hidden"
+                          onChange={(
+                            event
+                          ) => {
+                            addPendingImages(
                               colorIndex,
-                              "nameProduct",
-                              event.target.value
-                            )
-                          }
-                          className={inputClass}
-                          placeholder={name || "Black Bikini Panty For Women"}
-                        />
-                      </Field>
+                              event
+                                .target
+                                .files
+                            );
 
-                      <Field label="Color Product Slug">
-                        <input
-                          value={color.slugProduct}
-                          onChange={(event) =>
-                            updateColor(
-                              colorIndex,
-                              "slugProduct",
-                              event.target.value
-                            )
-                          }
-                          className={inputClass}
-                          placeholder="black-bikini-panty-for-women"
+                            event.currentTarget.value =
+                              "";
+                          }}
                         />
-                      </Field>
-                    </div>
+                      </label>
+                    ) : (
+                      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {/* EXISTING IMAGES */}
 
-                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <Field label="Color Short Description">
-                        <textarea
-                          value={color.shortDescription}
-                          onChange={(event) =>
-                            updateColor(
-                              colorIndex,
-                              "shortDescription",
-                              event.target.value
-                            )
-                          }
-                          rows={3}
-                          className={`${inputClass} h-auto py-3`}
-                          placeholder="Description for this color variant"
-                        />
-                      </Field>
+                        {color.images.map(
+                          (
+                            image
+                          ) => (
+                            <ImageEditorCard
+                              key={
+                                image.publicId
+                              }
+                              src={
+                                image.url
+                              }
+                              badge="Uploaded"
+                              isDefault={
+                                image.isDefault ===
+                                true
+                              }
+                              name={
+                                image.name ||
+                                ""
+                              }
+                              alt={
+                                image.alt ||
+                                ""
+                              }
+                              publicId={
+                                image.publicId
+                              }
+                              onNameChange={(
+                                value
+                              ) =>
+                                updateExistingImageMeta(
+                                  colorIndex,
+                                  image.publicId,
+                                  {
+                                    name:
+                                      value,
+                                  }
+                                )
+                              }
+                              onAltChange={(
+                                value
+                              ) =>
+                                updateExistingImageMeta(
+                                  colorIndex,
+                                  image.publicId,
+                                  {
+                                    alt:
+                                      value,
+                                  }
+                                )
+                              }
+                              onDefault={() =>
+                                void setDefaultImage(
+                                  colorIndex,
+                                  image
+                                )
+                              }
+                              onDelete={() =>
+                                void deleteExistingImage(
+                                  colorIndex,
+                                  image
+                                )
+                              }
+                            />
+                          )
+                        )}
 
-                      <Field label="Color Tags (comma separated)">
-                        <textarea
-                          value={color.tags}
-                          onChange={(event) =>
-                            updateColor(
-                              colorIndex,
-                              "tags",
-                              event.target.value
-                            )
-                          }
-                          rows={3}
-                          className={`${inputClass} h-auto py-3`}
-                          placeholder="women, bikini panty, black panty"
-                        />
-                      </Field>
-                    </div>
+                        {/* LOCAL PREVIEW IMAGES */}
 
-                    <div className="mt-4">
-                      <Field label="Color Description (HTML + Inline CSS)">
-                        <HtmlDescriptionEditor
-                          value={color.description}
-                          onChange={(value) =>
-                            updateColor(
-                              colorIndex,
-                              "description",
-                              value
-                            )
-                          }
-                          disabled={saving}
-                        />
-                      </Field>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <Field label="Color SEO Title">
-                        <input
-                          value={color.seoTitle}
-                          onChange={(event) =>
-                            updateColor(
-                              colorIndex,
-                              "seoTitle",
-                              event.target.value
-                            )
-                          }
-                          className={inputClass}
-                        />
-                      </Field>
-
-                      <Field label="Color SEO Description">
-                        <textarea
-                          value={color.seoDescription}
-                          onChange={(event) =>
-                            updateColor(
-                              colorIndex,
-                              "seoDescription",
-                              event.target.value
-                            )
-                          }
-                          rows={3}
-                          className={`${inputClass} h-auto py-3`}
-                        />
-                      </Field>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between rounded-xl bg-white p-3">
-                      <div>
-                        <p className="text-[10px] font-semibold">Default Color</p>
-                        <p className="mt-1 text-[8px] text-[#211A18]/40">This color is used as the default storefront variant.</p>
+                        {color.pendingImages.map(
+                          (
+                            image
+                          ) => (
+                            <ImageEditorCard
+                              key={
+                                image.id
+                              }
+                              src={
+                                image.previewUrl
+                              }
+                              badge="Preview · Not uploaded yet"
+                              isDefault={
+                                image.isDefault
+                              }
+                              name={
+                                image.name
+                              }
+                              alt={
+                                image.alt
+                              }
+                              fileInfo={`${(
+                                image.file
+                                  .size /
+                                1024 /
+                                1024
+                              ).toFixed(
+                                2
+                              )} MB · ${image.file.type}`}
+                              onNameChange={(
+                                value
+                              ) =>
+                                updatePendingImage(
+                                  colorIndex,
+                                  image.id,
+                                  {
+                                    name:
+                                      value,
+                                  }
+                                )
+                              }
+                              onAltChange={(
+                                value
+                              ) =>
+                                updatePendingImage(
+                                  colorIndex,
+                                  image.id,
+                                  {
+                                    alt:
+                                      value,
+                                  }
+                                )
+                              }
+                              onDefault={() =>
+                                setDefaultPendingImage(
+                                  colorIndex,
+                                  image.id
+                                )
+                              }
+                              onDelete={() =>
+                                removePendingImage(
+                                  colorIndex,
+                                  image.id
+                                )
+                              }
+                            />
+                          )
+                        )}
                       </div>
-                      <Toggle
-                        checked={color.isDefault}
-                        onChange={(value) =>
-                          updateColor(
-                            colorIndex,
-                            "isDefault",
-                            value
-                          )
-                        }
-                      />
+                    )}
+
+                    <div className="mt-4 rounded-2xl border border-[#D9C7CE] bg-[#FFF9FB] px-4 py-3 text-xs leading-5 text-[#704957]">
+                      <strong>
+                        SEO image tip:
+                      </strong>{" "}
+                      Image ALT should describe the actual photo, for example{" "}
+                      <span className="font-semibold">
+                        “Black Bikini Panty For Women front view”
+                      </span>
+                      . Avoid keyword stuffing.
                     </div>
 
-                    <div className="mt-5">
-                      <ProductImagesUploader
-                        label="Color Images"
-                        value={color.images}
-                        folder={`products/${productFolderName}/colors/${
-                          slugifyFolder(
-                            color.name
-                          ) ||
-                          `color-${colorIndex + 1}`
-                        }`}
-                        disabled={saving}
-                        onUploaded={(uploadedImages) =>
-                          onColorImagesUploaded(
-                            colorIndex,
-                            uploadedImages
-                          )
-                        }
-                        onRemove={(imageIndex) =>
-                          removeColorImage(
-                            colorIndex,
-                            imageIndex
-                          )
-                        }
-                        onMakeMain={(imageIndex) =>
-                          makeColorMainImage(
-                            colorIndex,
-                            imageIndex
-                          )
-                        }
-                        onUpdate={(imageIndex, patch) =>
-                          updateColorImage(
-                            colorIndex,
-                            imageIndex,
-                            patch
-                          )
-                        }
-                      />
-                    </div>
+                    {/* SIZES */}
 
-                    <div className="mt-6 flex items-center justify-between">
-                      <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#211A18]/50">
-                        Sizes & Inventory
-                      </p>
+                    <Divider />
+
+                    <div className="flex items-end justify-between gap-4">
+                      <SubHeading
+                        title="Sizes & Inventory"
+                        description="Manage size-level stock. No SKU field is used in your current model."
+                      />
 
                       <button
                         type="button"
@@ -2381,13 +3437,13 @@ export default function ProductForm({
                             colorIndex
                           )
                         }
-                        className="rounded-lg border border-[#8C1839]/20 px-3 py-2 text-[8px] font-semibold uppercase text-[#8C1839]"
+                        className="rounded-xl border border-black/[0.08] bg-white px-4 py-2.5 text-xs font-bold text-black/65 transition hover:border-[#8C1839]/20 hover:text-[#8C1839]"
                       >
                         + Add Size
                       </button>
                     </div>
 
-                    <div className="mt-3 space-y-3">
+                    <div className="mt-4 space-y-2.5">
                       {color.sizes.map(
                         (
                           size,
@@ -2395,11 +3451,16 @@ export default function ProductForm({
                         ) => (
                           <div
                             key={
+                              size._id ||
                               sizeIndex
                             }
-                            className="grid grid-cols-1 gap-3 rounded-xl border border-[#211A18]/10 bg-white p-3 md:grid-cols-[100px_minmax(140px,1fr)_110px_80px_auto] md:items-center"
+                            className="grid gap-3 rounded-2xl border border-black/[0.07] bg-white p-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-center"
                           >
                             <input
+                              className={
+                                inputClass
+                              }
+                              placeholder="Size"
                               value={
                                 size.size
                               }
@@ -2409,39 +3470,29 @@ export default function ProductForm({
                                 updateSize(
                                   colorIndex,
                                   sizeIndex,
-                                  "size",
-                                  event.target.value
+                                  {
+                                    size:
+                                      event
+                                        .target
+                                        .value
+                                        .toUpperCase(),
+                                  }
                                 )
-                              }
-                              placeholder="Size"
-                              className={
-                                smallInputClass
                               }
                             />
 
                             <input
-                              value={
-                                size.sku
-                              }
-                              onChange={(
-                                event
-                              ) =>
-                                updateSize(
-                                  colorIndex,
-                                  sizeIndex,
-                                  "sku",
-                                  event.target.value
-                                )
-                              }
-                              placeholder="SKU"
                               className={
-                                smallInputClass
+                                inputClass
                               }
-                            />
-
-                            <input
                               type="number"
-                              min="0"
+                              min={
+                                0
+                              }
+                              step={
+                                1
+                              }
+                              placeholder="Stock"
                               value={
                                 size.stock
                               }
@@ -2451,36 +3502,42 @@ export default function ProductForm({
                                 updateSize(
                                   colorIndex,
                                   sizeIndex,
-                                  "stock",
-                                  event.target.value
+                                  {
+                                    stock:
+                                      event
+                                        .target
+                                        .value,
+                                  }
                                 )
-                              }
-                              placeholder="Stock"
-                              className={
-                                smallInputClass
                               }
                             />
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateSize(
-                                  colorIndex,
-                                  sizeIndex,
-                                  "isActive",
-                                  !size.isActive
-                                )
-                              }
-                              className={`h-10 rounded-lg text-[8px] font-semibold uppercase ${
-                                size.isActive
-                                  ? "bg-green-50 text-green-700"
-                                  : "bg-[#211A18]/5 text-[#211A18]/40"
-                              }`}
-                            >
-                              {size.isActive
-                                ? "Active"
-                                : "Off"}
-                            </button>
+                            <label className="flex items-center gap-2 rounded-xl bg-[#F7F5F3] px-3 py-3 text-xs font-semibold text-black/60">
+                              <input
+                                type="checkbox"
+                                checked={
+                                  size.isActive !==
+                                  false
+                                }
+                                onChange={(
+                                  event
+                                ) =>
+                                  updateSize(
+                                    colorIndex,
+                                    sizeIndex,
+                                    {
+                                      isActive:
+                                        event
+                                          .target
+                                          .checked,
+                                    }
+                                  )
+                                }
+                                className="accent-[#8C1839]"
+                              />
+
+                              Active
+                            </label>
 
                             <button
                               type="button"
@@ -2490,7 +3547,7 @@ export default function ProductForm({
                                   sizeIndex
                                 )
                               }
-                              className="h-10 rounded-lg px-3 text-[8px] font-semibold uppercase text-red-500"
+                              className="rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-xs font-semibold text-red-600"
                             >
                               Remove
                             </button>
@@ -2499,783 +3556,555 @@ export default function ProductForm({
                       )}
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between rounded-xl bg-white p-3">
-                      <div>
-                        <p className="text-[10px] font-semibold">
-                          Active Color
-                        </p>
-                        <p className="mt-1 text-[8px] text-[#211A18]/40">
-                          Show to customers
-                        </p>
+                    <div className="mt-3 flex justify-end">
+                      <div className="rounded-full bg-[#EEE8E3] px-3 py-1.5 text-[11px] font-semibold text-black/50">
+                        Color stock:{" "}
+                        {color.sizes.reduce(
+                          (
+                            total,
+                            size
+                          ) =>
+                            total +
+                            Math.max(
+                              0,
+                              Number(
+                                size.stock ||
+                                  0
+                              )
+                            ),
+                          0
+                        )}
                       </div>
-
-                      <Toggle
-                        checked={
-                          color.isActive
-                        }
-                        onChange={(
-                          value
-                        ) =>
-                          updateColor(
-                            colorIndex,
-                            "isActive",
-                            value
-                          )
-                        }
-                      />
                     </div>
                   </div>
-                )
-              )}
-            </div>
-          </Card>
-          )}
-
-          <Card title="SEO">
-            <div className="space-y-4">
-              <Field label="SEO Title">
-                <input
-                  value={
-                    seoTitle
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setSeoTitle(
-                      event.target.value
-                    )
-                  }
-                  className={
-                    inputClass
-                  }
-                />
-              </Field>
-
-              <Field label="SEO Description">
-                <textarea
-                  value={
-                    seoDescription
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setSeoDescription(
-                      event.target.value
-                    )
-                  }
-                  rows={4}
-                  className={`${inputClass} h-auto py-3`}
-                />
-              </Field>
-            </div>
-          </Card>
-        </div>
-
-        <div className="space-y-6 xl:sticky xl:top-[100px] xl:h-fit">
-          <Card title="Publishing">
-            <div className="mb-4 flex items-center justify-between rounded-xl bg-[#FAF8F6] p-3">
-              <div>
-                <p className="text-[10px] font-semibold">Color Variants</p>
-                <p className="mt-1 text-[8px] text-[#211A18]/40">Enable color-wise product name, slug, SEO, images and sizes.</p>
-              </div>
-              <Toggle
-                checked={isColor}
-                onChange={(value) =>
-                  void handleColorModeChange(
-                    value
-                  )
-                }
-              />
-            </div>
-
-            <Field label="Status">
-              <select
-                value={
-                  status
-                }
-                onChange={(
-                  event
-                ) =>
-                  setStatus(
-                    event.target.value as
-                      ProductStatus
-                  )
-                }
-                className={
-                  inputClass
-                }
-              >
-                <option value="draft">
-                  Draft
-                </option>
-                <option value="active">
-                  Published
-                </option>
-                <option value="inactive">
-                  Inactive
-                </option>
-              </select>
-            </Field>
-
-            <div className="mt-4 space-y-3">
-              <ToggleRow
-                label="Featured Product"
-                checked={
-                  isFeatured
-                }
-                onChange={
-                  setIsFeatured
-                }
-              />
-
-              <ToggleRow
-                label="New Launch"
-                checked={
-                  isNewLaunch
-                }
-                onChange={
-                  setIsNewLaunch
-                }
-              />
-            </div>
-          </Card>
-
-          <Card title="Categories">
-            {categoriesLoading ? (
-              <LoadingSpinner />
-            ) : (
-              <div className="max-h-[420px] overflow-y-auto">
-                {categories.map(
-                  (
-                    category
-                  ) => (
-                    <CategoryOption
-                      key={
-                        getCategoryId(
-                          category
-                        )
-                      }
-                      category={
-                        category
-                      }
-                      selected={
-                        selectedCategories
-                      }
-                      toggle={
-                        toggleCategory
-                      }
-                    />
-                  )
-                )}
-              </div>
+                </div>
+              )
             )}
-          </Card>
+          </div>
+        </SectionCard>
 
-          {isEdit && (
-            <Card title="Ratings">
-              <div className="rounded-xl bg-[#FAF8F6] p-4">
-                <p className="text-2xl font-semibold">
-                  {ratingAverage.toFixed(
-                    1
-                  )}{" "}
-                  <span className="text-[#8C1839]">
-                    ★
-                  </span>
-                </p>
-                <p className="mt-1 text-[9px] text-[#211A18]/40">
-                  {ratingCount} review
-                  {ratingCount ===
-                  1
-                    ? ""
-                    : "s"}
-                </p>
-              </div>
+        {/* =================================================
+            PUBLISHING
+        ================================================= */}
 
-              <p className="mt-3 text-[8px] text-[#211A18]/35">
-                Rating read-only hai.
-                Review service update karegi.
-              </p>
-            </Card>
-          )}
-
-          <Card title="Tags">
-            <textarea
-              value={
-                tags
+        <SectionCard
+          eyebrow="04"
+          title="Publishing"
+          description="Control where this product appears across the storefront."
+        >
+          <div className="grid gap-3 md:grid-cols-3">
+            <Toggle
+              label="Active"
+              description="Visible on the live storefront."
+              checked={
+                isActive
               }
-              onChange={(
-                event
-              ) =>
-                setTags(
-                  event.target.value
-                )
+              onChange={
+                setIsActive
               }
-              rows={4}
-              className={`${inputClass} h-auto py-3`}
-              placeholder="sports bra, padded, seamless"
             />
-          </Card>
 
-          <Card title="Summary">
-            <div className="space-y-2">
-              <SummaryRow
-                label="Images"
-                value={`${mainImages.filter(
-                  (
-                    image
-                  ) =>
-                    image.url
-                ).length}`}
-              />
+            <Toggle
+              label="Featured"
+              description="Show in featured product sections."
+              checked={
+                isFeatured
+              }
+              onChange={
+                setIsFeatured
+              }
+            />
 
-              <SummaryRow
-                label="Colors"
-                value={String(
-                  isColor
-                    ? colors.filter(
-                    (
-                      color
-                    ) =>
-                      color.name.trim()
-                  ).length
-                    : 0
-                )}
-              />
+            <Toggle
+              label="New Launch"
+              description="Show in new-launch collections."
+              checked={
+                isNewLaunch
+              }
+              onChange={
+                setIsNewLaunch
+              }
+            />
+          </div>
 
-              <SummaryRow
-                label="Categories"
-                value={String(
-                  selectedCategories.length
-                )}
-              />
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <SummaryBox
+              label="Color Mode"
+              value={
+                isColor
+                  ? `${colors.length} color${colors.length === 1 ? "" : "s"}`
+                  : "No Color"
+              }
+            />
 
-              <SummaryRow
-                label="Total Stock"
-                value={String(
-                  isColor
-                    ? calculateTotalStock(
-                        colors
-                      )
-                    : Math.max(
-                        0,
-                        Number(stock) || 0
-                      )
-                )}
-              />
+            <SummaryBox
+              label="Total Images"
+              value={
+                totalImages
+              }
+            />
+
+            <SummaryBox
+              label="Total Stock"
+              value={
+                totalStock
+              }
+            />
+          </div>
+        </SectionCard>
+
+        {/* =================================================
+            BOTTOM ACTION BAR
+        ================================================= */}
+
+        <div className="sticky bottom-4 z-30 mt-6">
+          <div className="flex flex-col gap-3 rounded-[22px] border border-white/80 bg-white/90 p-3 shadow-[0_20px_70px_rgba(45,29,23,0.16)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
+            <div className="px-2 text-xs text-black/45">
+              {saving
+                ? uploadMessage ||
+                  "Saving product..."
+                : "Review product details, image ALT tags and stock before publishing."}
             </div>
-          </Card>
+
+            <button
+              type="submit"
+              disabled={
+                saving
+              }
+              className="h-12 rounded-2xl bg-[#8C1839] px-8 text-sm font-bold text-white shadow-[0_10px_30px_rgba(140,24,57,0.22)] transition hover:-translate-y-0.5 hover:bg-[#77132F] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving
+                ? "Saving..."
+                : isEdit
+                  ? "Update Product"
+                  : "Create Product"}
+            </button>
+          </div>
         </div>
       </div>
     </form>
   );
 }
 
-function CategoryOption({
-  category,
-  selected,
-  toggle,
+/* =========================================================
+   IMAGE EDITOR CARD
+========================================================= */
+
+function ImageEditorCard({
+  src,
+  badge,
+  isDefault,
+  name,
+  alt,
+  publicId,
+  fileInfo,
+  onNameChange,
+  onAltChange,
+  onDefault,
+  onDelete,
 }: {
-  category: CategoryNode;
-  selected: string[];
-  toggle: (
-    id: string
-  ) => void;
+  src: string;
+  badge: string;
+  isDefault: boolean;
+  name: string;
+  alt: string;
+  publicId?: string;
+  fileInfo?: string;
+
+  onNameChange:
+    (value: string) =>
+      void;
+
+  onAltChange:
+    (value: string) =>
+      void;
+
+  onDefault:
+    () => void;
+
+  onDelete:
+    () => void;
 }) {
-  const id =
-    getCategoryId(
-      category
-    );
-
-  if (!id) {
-    return null;
-  }
-
   return (
-    <>
-      <label
-        style={{
-          paddingLeft:
-            8 +
-            Number(
-              category.level ||
-                0
-            ) *
-              14,
-        }}
-        className="mb-1 flex cursor-pointer items-center gap-2 rounded-lg py-2 pr-2 text-[10px] hover:bg-[#FAF8F6]"
-      >
-        <input
-          type="checkbox"
-          checked={
-            selected.includes(
-              id
-            )
+    <div className="overflow-hidden rounded-[22px] border border-black/[0.07] bg-white shadow-[0_12px_32px_rgba(45,29,23,0.06)]">
+      <div className="relative bg-[#EEEAE6]">
+        <img
+          src={
+            src
           }
-          onChange={() =>
-            toggle(id)
+          alt={
+            alt ||
+            name ||
+            "Product preview"
           }
-          className="h-4 w-4 accent-[#8C1839]"
+          className="aspect-[4/5] w-full object-cover"
         />
-        {category.name}
-      </label>
 
-      {(category.children ||
-        []).map(
-        (
-          child
-        ) => (
-          <CategoryOption
-            key={
-              getCategoryId(
-                child
+        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+          <span className="rounded-full bg-black/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur">
+            {
+              badge
+            }
+          </span>
+
+          {isDefault && (
+            <span className="rounded-full bg-[#8C1839] px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-white shadow-lg">
+              Main image
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-3 p-4">
+        <Field
+          label="Image Name"
+          hint="Readable internal/SEO-friendly image name."
+        >
+          <input
+            className={
+              smallInputClass
+            }
+            value={
+              name
+            }
+            placeholder="Black bikini panty front view"
+            onChange={(
+              event
+            ) =>
+              onNameChange(
+                event
+                  .target
+                  .value
               )
             }
-            category={
-              child
+          />
+        </Field>
+
+        <Field
+          label="Image ALT Tag"
+          hint={`${alt.length}/160 · Used by accessibility and image SEO.`}
+        >
+          <textarea
+            className={`${smallInputClass} min-h-20 resize-y py-2.5 leading-5`}
+            maxLength={
+              160
             }
-            selected={
-              selected
+            value={
+              alt
             }
-            toggle={
-              toggle
+            placeholder="Black Bikini Panty For Women front view"
+            onChange={(
+              event
+            ) =>
+              onAltChange(
+                event
+                  .target
+                  .value
+              )
             }
           />
-        )
-      )}
-    </>
+        </Field>
+
+        {(fileInfo ||
+          publicId) && (
+          <div className="rounded-xl bg-[#F8F6F4] px-3 py-2 text-[10px] leading-4 text-black/40">
+            {fileInfo ||
+              publicId}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={
+              onDefault
+            }
+            className={`flex-1 rounded-xl border px-3 py-2.5 text-[11px] font-bold transition ${
+              isDefault
+                ? "border-[#8C1839]/20 bg-[#FFF4F7] text-[#8C1839]"
+                : "border-black/[0.08] text-black/55 hover:border-[#8C1839]/20 hover:text-[#8C1839]"
+            }`}
+          >
+            {isDefault
+              ? "✓ Main Image"
+              : "Set Main"}
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              onDelete
+            }
+            className="rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-[11px] font-bold text-red-600 transition hover:bg-red-100"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function Card({
+/* =========================================================
+   UI COMPONENTS
+========================================================= */
+
+function SectionCard({
+  eyebrow,
   title,
-  children,
+  description,
   action,
+  children,
 }: {
+  eyebrow: string;
   title: string;
-  children: ReactNode;
-  action?: ReactNode;
+  description:
+    string;
+  action?:
+    ReactNode;
+  children:
+    ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-[22px] border border-[#211A18]/10 bg-white">
-      <div className="flex items-center justify-between gap-4 border-b border-[#211A18]/10 px-5 py-4">
-        <h2 className="text-[14px] font-semibold">
-          {title}
-        </h2>
-        {action}
+    <section className="mt-6 rounded-[28px] border border-white/70 bg-white/95 p-5 shadow-[0_24px_70px_rgba(45,29,23,0.07)] md:p-7">
+      <div className="mb-5 flex flex-col gap-4 border-b border-black/[0.06] pb-5 md:flex-row md:items-end md:justify-between">
+        <div className="flex gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#F8E8ED] text-[11px] font-black text-[#8C1839]">
+            {
+              eyebrow
+            }
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-[#251C19]">
+              {
+                title
+              }
+            </h2>
+
+            <p className="mt-1 max-w-3xl text-sm leading-5 text-black/45">
+              {
+                description
+              }
+            </p>
+          </div>
+        </div>
+
+        {
+          action
+        }
       </div>
 
-      <div className="p-5">
-        {children}
-      </div>
+      {
+        children
+      }
     </section>
+  );
+}
+
+function SubHeading({
+  title,
+  description,
+}: {
+  title: string;
+  description:
+    string;
+}) {
+  return (
+    <div>
+      <h4 className="text-sm font-bold text-[#2B211E]">
+        {
+          title
+        }
+      </h4>
+
+      <p className="mt-1 text-xs leading-5 text-black/40">
+        {
+          description
+        }
+      </p>
+    </div>
+  );
+}
+
+function Divider() {
+  return (
+    <div className="my-7 h-px bg-black/[0.06]" />
   );
 }
 
 function Field({
   label,
+  hint,
   required,
   children,
 }: {
   label: string;
+  hint?: string;
   required?: boolean;
-  children: ReactNode;
+  children:
+    ReactNode;
 }) {
   return (
-    <div>
-      <label className="mb-2 block text-[9px] font-semibold uppercase tracking-[0.12em] text-[#211A18]/50">
-        {label}
-        {required && (
-          <span className="ml-1 text-[#8C1839]">
-            *
+    <label className="block">
+      <div className="mb-1.5 flex items-start justify-between gap-3">
+        <span className="text-xs font-bold text-[#2A201D]/75">
+          {
+            label
+          }
+
+          {required && (
+            <span className="ml-1 text-[#8C1839]">
+              *
+            </span>
+          )}
+        </span>
+
+        {hint && (
+          <span className="text-right text-[10px] leading-4 text-black/35">
+            {
+              hint
+            }
           </span>
         )}
-      </label>
+      </div>
 
-      {children}
-    </div>
-  );
-}
-
-function MoneyInput({
-  value,
-  setValue,
-}: {
-  value: string;
-  setValue: (
-    value: string
-  ) => void;
-}) {
-  return (
-    <div className="flex h-12 overflow-hidden rounded-xl border border-[#211A18]/10 bg-[#FAF8F6]">
-      <span className="flex items-center border-r border-[#211A18]/10 px-3">
-        ₹
-      </span>
-
-      <input
-        type="number"
-        min="0"
-        step="0.01"
-        value={
-          value
-        }
-        onChange={(
-          event
-        ) =>
-          setValue(
-            event.target.value
-          )
-        }
-        className="min-w-0 flex-1 bg-transparent px-3 text-[11px] outline-none"
-      />
-    </div>
-  );
-}
-
-function ToggleRow({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (
-    value: boolean
-  ) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-xl bg-[#FAF8F6] p-3">
-      <span className="text-[10px] font-semibold">
-        {label}
-      </span>
-
-      <Toggle
-        checked={
-          checked
-        }
-        onChange={
-          onChange
-        }
-      />
-    </div>
+      {
+        children
+      }
+    </label>
   );
 }
 
 function Toggle({
+  label,
+  description,
   checked,
   onChange,
 }: {
+  label: string;
+  description:
+    string;
   checked: boolean;
-  onChange: (
-    value: boolean
-  ) => void;
+  onChange:
+    (
+      value: boolean
+    ) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={() =>
-        onChange(
-          !checked
-        )
-      }
-      className={`relative h-7 w-12 rounded-full ${
+    <label
+      className={`flex cursor-pointer items-center justify-between gap-4 rounded-2xl border p-4 transition ${
         checked
-          ? "bg-[#8C1839]"
-          : "bg-[#211A18]/15"
+          ? "border-[#8C1839]/20 bg-[#FFF7F9]"
+          : "border-black/[0.07] bg-white"
       }`}
     >
+      <div>
+        <div className="text-sm font-bold text-[#2A201D]">
+          {
+            label
+          }
+        </div>
+
+        <p className="mt-1 text-xs leading-5 text-black/40">
+          {
+            description
+          }
+        </p>
+      </div>
+
       <span
-        className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${
+        className={`relative h-7 w-12 shrink-0 rounded-full transition ${
           checked
-            ? "left-6"
-            : "left-1"
+            ? "bg-[#8C1839]"
+            : "bg-black/10"
         }`}
-      />
-    </button>
+      >
+        <input
+          type="checkbox"
+          checked={
+            checked
+          }
+          onChange={(
+            event
+          ) =>
+            onChange(
+              event
+                .target
+                .checked
+            )
+          }
+          className="sr-only"
+        />
+
+        <span
+          className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${
+            checked
+              ? "left-6"
+              : "left-1"
+          }`}
+        />
+      </span>
+    </label>
   );
 }
 
-function SummaryRow({
+function MiniStat({
   label,
   value,
 }: {
   label: string;
-  value: string;
+  value:
+    string | number;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg bg-[#FAF8F6] px-3 py-3">
-      <span className="text-[9px] text-[#211A18]/50">
-        {label}
-      </span>
-      <span className="text-[9px] font-semibold">
-        {value}
-      </span>
+    <div className="min-w-[82px] rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 backdrop-blur">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-white/35">
+        {
+          label
+        }
+      </div>
+
+      <div className="mt-0.5 text-lg font-semibold">
+        {
+          value
+        }
+      </div>
     </div>
   );
 }
 
-function Message({
-  tone,
-  children,
+function SummaryBox({
+  label,
+  value,
 }: {
-  tone:
-    | "error"
-    | "success";
-  children: ReactNode;
+  label: string;
+  value:
+    number | string;
 }) {
   return (
-    <div
-      className={`mt-5 rounded-xl border px-4 py-3 text-[11px] ${
-        tone === "error"
-          ? "border-red-200 bg-red-50 text-red-600"
-          : "border-green-200 bg-green-50 text-green-700"
-      }`}
-    >
-      {children}
+    <div className="rounded-2xl bg-[#F7F4F1] px-4 py-4">
+      <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-black/35">
+        {
+          label
+        }
+      </div>
+
+      <div className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-[#2A201D]">
+        {
+          value
+        }
+      </div>
     </div>
   );
 }
 
-function normalizeMainImages(
-  images: ImageValue[]
-): ImageValue[] {
-  return (images || [])
-    .filter(image =>
-      Boolean(
-        image?.url &&
-        image?.publicId
-      )
-    )
-    .map((image, index) => ({
-      url: image.url,
-      publicId: image.publicId,
-      name:
-        image.name ||
-        image.alt ||
-        `product-image-${index + 1}`,
-      alt:
-        image.alt ||
-        image.name ||
-        `Product image ${index + 1}`,
-      isDefault:
-        image.isDefault ??
-        index === 0,
-    }));
-}
+/* =========================================================
+   STYLES
+========================================================= */
 
-function normalizeColors(
-  apiColors:
-    ProductApiData["colors"]
-): ColorInput[] {
-  if (
-    !apiColors ||
-    apiColors.length === 0
-  ) {
-    return [
-      {
-        ...emptyColor(),
-        isDefault: true,
-      },
-    ];
-  }
+const inputClass =
+  "min-h-12 w-full rounded-2xl border border-black/[0.08] bg-white px-4 text-sm text-[#251C19] outline-none transition placeholder:text-black/25 focus:border-[#8C1839]/35 focus:ring-4 focus:ring-[#8C1839]/[0.05]";
 
-  return apiColors.map(
-    (color, colorIndex) => ({
-      name:
-        color.nameColor ||
-        color.name ||
-        "",
-
-      hex:
-        color.hex ||
-        "#000000",
-
-      isDefault:
-        color.isDefault ??
-        colorIndex === 0,
-
-      nameProduct:
-        color.nameProduct ||
-        "",
-
-      slugProduct:
-        color.slugProduct ||
-        "",
-
-      shortDescription:
-        color.shortDescription ||
-        "",
-
-      description:
-        color.description ||
-        "",
-
-      tags:
-        Array.isArray(color.tags)
-          ? color.tags.join(", ")
-          : "",
-
-      seoTitle:
-        color.seoTitle ||
-        "",
-
-      seoDescription:
-        color.seoDescription ||
-        "",
-
-      images:
-        normalizeMainImages(
-          color.images || []
-        ),
-
-      sizes:
-        color.sizes &&
-        color.sizes.length > 0
-          ? color.sizes.map(
-              size => ({
-                size:
-                  size.size ||
-                  "",
-                sku:
-                  size.sku ||
-                  "",
-                stock:
-                  String(
-                    size.stock ??
-                    0
-                  ),
-                isActive:
-                  size.isActive !==
-                  false,
-              })
-            )
-          : [
-              emptySize(),
-            ],
-
-      isActive:
-        color.isActive !==
-        false,
-    })
-  );
-}
-
-function getCategoryId(
-  category: CategoryNode
-) {
-  return String(
-    category.id ||
-      category._id ||
-      ""
-  );
-}
-
-function slugifyProductSlug(
-  value: string
-) {
-  return value
-    .normalize(
-      "NFKC"
-    )
-    .toLowerCase()
-    .trim()
-    .replace(
-      /&/g,
-      " and "
-    )
-    .replace(
-      /[^\p{L}\p{N}]+/gu,
-      "-"
-    )
-    .replace(
-      /^-+|-+$/g,
-      ""
-    );
-}
-
-function slugifyFolder(
-  value: string
-) {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize(
-      "NFKD"
-    )
-    .replace(
-      /[\u0300-\u036f]/g,
-      ""
-    )
-    .replace(
-      /&/g,
-      " and "
-    )
-    .replace(
-      /[^a-z0-9]+/g,
-      "-"
-    )
-    .replace(
-      /^-+|-+$/g,
-      ""
-    );
-}
-
-function calculateTotalStock(
-  colors: ColorInput[]
-) {
-  return colors.reduce(
-    (
-      productTotal,
-      color
-    ) =>
-      productTotal +
-      color.sizes.reduce(
-        (
-          colorTotal,
-          size
-        ) =>
-          colorTotal +
-          Math.max(
-            0,
-            Number(
-              size.stock
-            ) ||
-              0
-          ),
-        0
-      ),
-    0
-  );
-}
-
-function LoadingSpinner() {
-  return (
-    <span className="block h-7 w-7 animate-spin rounded-full border-2 border-[#211A18]/10 border-t-[#8C1839]" />
-  );
-}
-
-const inputClass = `
-  h-12
-  w-full
-  rounded-xl
-  border
-  border-[#211A18]/10
-  bg-[#FAF8F6]
-  px-4
-  text-[11px]
-  text-[#211A18]
-  outline-none
-  focus:border-[#8C1839]
-`;
-
-const smallInputClass = `
-  h-10
-  w-full
-  rounded-lg
-  border
-  border-[#211A18]/10
-  bg-[#FAF8F6]
-  px-3
-  text-[10px]
-  outline-none
-  focus:border-[#8C1839]
-`;
+const smallInputClass =
+  "min-h-10 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-xs text-[#251C19] outline-none transition placeholder:text-black/25 focus:border-[#8C1839]/35 focus:ring-4 focus:ring-[#8C1839]/[0.05]";
