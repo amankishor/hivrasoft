@@ -11,6 +11,8 @@ import {
   getProductBySlug,
   updateProduct,
   deleteProduct,
+  toStorefrontProduct,
+  toCatalogProduct,
 } from "../services/product.service";
 
 /* =========================================================
@@ -68,8 +70,10 @@ export const createProductController =
         costPrice,
         stock,
         mainImages,
+        isColor,
         colors,
         status,
+        isActive,
         isFeatured,
         isNewLaunch,
         tags,
@@ -169,9 +173,13 @@ export const createProductController =
 
           mainImages,
 
+          isColor,
+
           colors,
 
           status,
+
+          isActive,
 
           isFeatured,
 
@@ -252,6 +260,73 @@ export const getAllProductsController =
   };
 
 /* =========================================================
+   GET CATALOG PRODUCTS - CLEAN COLOR-CENTRIC API
+========================================================= */
+
+export const getCatalogProductsController =
+  async (
+    _req: Request,
+    res: Response
+  ) => {
+    try {
+      const productDocuments =
+        await getActiveProducts();
+
+      const products =
+        productDocuments.map(
+          toCatalogProduct
+        );
+
+      return res.status(200).json({
+        success: true,
+        count: products.length,
+        products,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to load catalog products.",
+      });
+    }
+  };
+
+export const getCatalogProductBySlugController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const slug =
+        getRouteParam(
+          req.params.slug,
+          "Product slug"
+        );
+
+      const product =
+        await getProductBySlug(slug);
+
+      return res.status(200).json({
+        success: true,
+        product:
+          toCatalogProduct(
+            product
+          ),
+      });
+    } catch (error) {
+      return res.status(404).json({
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Product not found.",
+      });
+    }
+  };
+
+/* =========================================================
    GET ACTIVE PRODUCTS - STOREFRONT
 ========================================================= */
 
@@ -261,8 +336,13 @@ export const getActiveProductsController =
     res: Response
   ) => {
     try {
-      const products =
+      const productDocuments =
         await getActiveProducts();
+
+      const products =
+        productDocuments.map(
+          toStorefrontProduct
+        );
 
       return res
         .status(200)
@@ -351,9 +431,14 @@ export const getProductBySlugController =
           "Product slug"
         );
 
-      const product =
+      const productDocument =
         await getProductBySlug(
           slug
+        );
+
+      const product =
+        toStorefrontProduct(
+          productDocument
         );
 
       return res
@@ -434,11 +519,19 @@ export const updateProductController =
               req.body
                 .mainImages,
 
+            isColor:
+              req.body
+                .isColor,
+
             colors:
               req.body.colors,
 
             status:
               req.body.status,
+
+            isActive:
+              req.body
+                .isActive,
 
             isFeatured:
               req.body

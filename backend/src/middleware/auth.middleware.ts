@@ -1,5 +1,3 @@
-// middleware/auth.middleware.ts
-
 import {
   Request,
   Response,
@@ -9,21 +7,12 @@ import {
 import User from "../models/User.model";
 import { verifyToken } from "../utils/jwt";
 
-/* =========================================================
-   AUTHENTICATE
-========================================================= */
-
-export const authenticate = async (
+const authenticate = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    /* ===============================================
-       IMPORTANT:
-       Login me cookie ka naam accessToken hai
-    =============================================== */
-
     const token =
       req.cookies?.accessToken;
 
@@ -37,10 +26,6 @@ export const authenticate = async (
       return;
     }
 
-    /* ===============================================
-       VERIFY TOKEN
-    =============================================== */
-
     const decoded =
       verifyToken(token);
 
@@ -53,10 +38,6 @@ export const authenticate = async (
 
       return;
     }
-
-    /* ===============================================
-       FIND USER
-    =============================================== */
 
     const user =
       await User.findById(
@@ -73,10 +54,6 @@ export const authenticate = async (
       return;
     }
 
-    /* ===============================================
-       ACTIVE USER
-    =============================================== */
-
     if (!user.isActive) {
       res.status(403).json({
         success: false,
@@ -86,10 +63,6 @@ export const authenticate = async (
 
       return;
     }
-
-    /* ===============================================
-       ATTACH USER
-    =============================================== */
 
     req.user = user;
 
@@ -110,11 +83,11 @@ export const authenticate = async (
   }
 };
 
-/* =========================================================
-   PROTECT ALIAS
-
-   Agar routes me protect use karna hai
-========================================================= */
-
 export const protect =
   authenticate;
+
+export {
+  authenticate,
+};
+
+export default authenticate;

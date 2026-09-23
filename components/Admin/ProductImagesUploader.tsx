@@ -9,6 +9,9 @@ import {
 export type ImageValue = {
   url: string;
   publicId: string;
+  name?: string;
+  alt?: string;
+  isDefault?: boolean;
 };
 
 type ProductImagesUploaderProps = {
@@ -36,6 +39,11 @@ type ProductImagesUploaderProps = {
     index: number
   ) =>
     void;
+
+  onUpdate?: (
+    index: number,
+    patch: Partial<Pick<ImageValue, "name" | "alt">>
+  ) => void;
 };
 
 const API_URL =
@@ -71,6 +79,7 @@ export default function ProductImagesUploader({
   onUploaded,
   onRemove,
   onMakeMain,
+  onUpdate,
 }: ProductImagesUploaderProps) {
   const inputRef =
     useRef<HTMLInputElement | null>(
@@ -119,6 +128,15 @@ export default function ProductImagesUploader({
         folder
       );
 
+      /*
+        Cloudinary public_id uses the uploaded file name.
+        Backend also falls back to file.originalname for older callers.
+      */
+      formData.append(
+        "imageName",
+        file.name
+      );
+
       const response =
         await fetch(
           `${API_URL}/api/uploads/image`,
@@ -159,12 +177,29 @@ export default function ProductImagesUploader({
         );
       }
 
+      const originalName =
+        file.name.replace(
+          /\.[^.]+$/,
+          ""
+        );
+
       return {
         url:
           data.image.url,
 
         publicId:
           data.image.publicId,
+
+        name:
+          data.image.name ||
+          originalName,
+
+        alt:
+          data.image.alt ||
+          data.image.name ||
+          originalName,
+
+        isDefault: false,
       };
     };
 
@@ -553,7 +588,11 @@ export default function ProductImagesUploader({
                     src={
                       image.url
                     }
-                    alt={`${label} ${index + 1}`}
+                    alt={
+                      image.alt ||
+                      image.name ||
+                      `${label} ${index + 1}`
+                    }
                     className="
                       h-full
                       w-full
@@ -600,14 +639,42 @@ export default function ProductImagesUploader({
                   </span>
                 </div>
 
-                <div
-                  className="
-                    flex
-                    flex-wrap
-                    gap-2
-                    p-2.5
-                  "
-                >
+                <div className="space-y-2 p-2.5">
+                  <div>
+                    <label className="mb-1 block text-[7px] font-semibold uppercase tracking-[0.08em] text-[#211A18]/45">
+                      Image name
+                    </label>
+                    <input
+                      value={image.name || ""}
+                      disabled={disabled || uploading}
+                      onChange={(event) =>
+                        onUpdate?.(index, {
+                          name: event.target.value,
+                        })
+                      }
+                      placeholder="black-bikini-front"
+                      className="h-8 w-full rounded-[8px] border border-[#211A18]/10 bg-[#FAF8F6] px-2 text-[8px] outline-none focus:border-[#8C1839] disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[7px] font-semibold uppercase tracking-[0.08em] text-[#211A18]/45">
+                      Alt text
+                    </label>
+                    <input
+                      value={image.alt || image.name || ""}
+                      disabled={disabled || uploading}
+                      onChange={(event) =>
+                        onUpdate?.(index, {
+                          alt: event.target.value,
+                        })
+                      }
+                      placeholder="Black Bikini Panty front view"
+                      className="h-8 w-full rounded-[8px] border border-[#211A18]/10 bg-[#FAF8F6] px-2 text-[8px] outline-none focus:border-[#8C1839] disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
                   {index > 0 &&
                     onMakeMain && (
                     <button
@@ -664,6 +731,7 @@ export default function ProductImagesUploader({
                   >
                     Remove
                   </button>
+                  </div>
                 </div>
               </div>
             )

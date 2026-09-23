@@ -43,6 +43,14 @@ type SizeInput = {
 type ColorInput = {
   name: string;
   hex: string;
+  isDefault: boolean;
+  nameProduct: string;
+  slugProduct: string;
+  shortDescription: string;
+  description: string;
+  tags: string;
+  seoTitle: string;
+  seoDescription: string;
   images: ImageValue[];
   sizes: SizeInput[];
   isActive: boolean;
@@ -70,9 +78,21 @@ type ProductApiData = {
   costPrice?: number;
   stock?: number;
   mainImages?: ImageValue[];
+  isColor?: boolean;
+  isActive?: boolean;
   colors?: Array<{
     name?: string;
+    nameColor?: string;
+    slugColor?: string;
+    nameProduct?: string;
+    slugProduct?: string;
     hex?: string;
+    isDefault?: boolean;
+    shortDescription?: string;
+    description?: string;
+    tags?: string[];
+    seoTitle?: string;
+    seoDescription?: string;
     images?: ImageValue[];
     sizes?: Array<{
       size?: string;
@@ -102,6 +122,9 @@ const emptyImage =
   (): ImageValue => ({
     url: "",
     publicId: "",
+    name: "",
+    alt: "",
+    isDefault: false,
   });
 
 const emptySize =
@@ -116,6 +139,14 @@ const emptyColor =
   (): ColorInput => ({
     name: "",
     hex: "#000000",
+    isDefault: false,
+    nameProduct: "",
+    slugProduct: "",
+    shortDescription: "",
+    description: "",
+    tags: "",
+    seoTitle: "",
+    seoDescription: "",
     images: [],
     sizes: [
       emptySize(),
@@ -224,12 +255,21 @@ export default function ProductForm({
     );
 
   const [
+    isColor,
+    setIsColor,
+  ] =
+    useState(true);
+
+  const [
     colors,
     setColors,
   ] =
     useState<ColorInput[]>(
       [
-        emptyColor(),
+        {
+          ...emptyColor(),
+          isDefault: true,
+        },
       ]
     );
 
@@ -645,6 +685,11 @@ export default function ProductForm({
               )
             );
 
+            setIsColor(
+              product.isColor !==
+                false
+            );
+
             setColors(
               normalizeColors(
                 product.colors ||
@@ -912,6 +957,25 @@ export default function ProductForm({
       );
     };
 
+  const updateMainImage =
+    (
+      imageIndex: number,
+      patch: Partial<Pick<ImageValue, "name" | "alt">>
+    ) => {
+      setMainImages(
+        current =>
+          current.map(
+            (image, index) =>
+              index === imageIndex
+                ? {
+                    ...image,
+                    ...patch,
+                  }
+                : image
+          )
+      );
+    };
+
   const addColor =
     () => {
       setColors(
@@ -969,28 +1033,42 @@ export default function ProductForm({
       field:
         | "name"
         | "hex"
+        | "isDefault"
+        | "nameProduct"
+        | "slugProduct"
+        | "shortDescription"
+        | "description"
+        | "tags"
+        | "seoTitle"
+        | "seoDescription"
         | "isActive",
       value:
         | string
         | boolean
     ) => {
       setColors(
-        (
-          current
-        ) =>
+        current =>
           current.map(
-            (
-              color,
-              index
-            ) =>
-              index ===
-              colorIndex
+            (color, index) => {
+              if (field === "isDefault") {
+                return {
+                  ...color,
+                  isDefault:
+                    index === colorIndex
+                      ? Boolean(value)
+                      : Boolean(value)
+                        ? false
+                        : color.isDefault,
+                };
+              }
+
+              return index === colorIndex
                 ? {
                     ...color,
-                    [field]:
-                      value,
+                    [field]: value,
                   }
-                : color
+                : color;
+            }
           )
       );
     };
@@ -1026,6 +1104,35 @@ export default function ProductForm({
                       ...color.images,
                       ...uploadedImages,
                     ],
+                  }
+                : color
+          )
+      );
+    };
+
+  const updateColorImage =
+    (
+      colorIndex: number,
+      imageIndex: number,
+      patch: Partial<Pick<ImageValue, "name" | "alt">>
+    ) => {
+      setColors(
+        current =>
+          current.map(
+            (color, index) =>
+              index === colorIndex
+                ? {
+                    ...color,
+                    images:
+                      color.images.map(
+                        (image, currentImageIndex) =>
+                          currentImageIndex === imageIndex
+                            ? {
+                                ...image,
+                                ...patch,
+                              }
+                            : image
+                      ),
                   }
                 : color
           )
@@ -1372,14 +1479,28 @@ export default function ProductForm({
               stock
             ),
 
+          isColor,
+
           mainImages:
-            mainImages.filter(
-              (
-                image
-              ) =>
-                image.url &&
-                image.publicId
-            ),
+            mainImages
+              .filter(
+                image =>
+                  image.url &&
+                  image.publicId
+              )
+              .map((image, index) => ({
+                ...image,
+                name:
+                  image.name?.trim() ||
+                  image.alt?.trim() ||
+                  `product-image-${index + 1}`,
+                alt:
+                  image.alt?.trim() ||
+                  image.name?.trim() ||
+                  name.trim(),
+                isDefault:
+                  index === 0,
+              })),
 
           colors:
             colors
@@ -1397,8 +1518,46 @@ export default function ProductForm({
                   name:
                     color.name.trim(),
 
+                  nameColor:
+                    color.name.trim(),
+
+                  slugColor:
+                    slugifyProductSlug(
+                      color.name
+                    ),
+
+                  nameProduct:
+                    color.nameProduct.trim() ||
+                    name.trim(),
+
+                  slugProduct:
+                    color.slugProduct.trim(),
+
                   hex:
                     color.hex.trim(),
+
+                  isDefault:
+                    color.isDefault,
+
+                  shortDescription:
+                    color.shortDescription.trim(),
+
+                  description:
+                    color.description.trim(),
+
+                  tags:
+                    color.tags
+                      .split(",")
+                      .map(tag =>
+                        tag.trim().toLowerCase()
+                      )
+                      .filter(Boolean),
+
+                  seoTitle:
+                    color.seoTitle.trim(),
+
+                  seoDescription:
+                    color.seoDescription.trim(),
 
                   sortOrder:
                     colorIndex,
@@ -1407,13 +1566,26 @@ export default function ProductForm({
                     color.isActive,
 
                   images:
-                    color.images.filter(
-                      (
-                        image
-                      ) =>
-                        image.url &&
-                        image.publicId
-                    ),
+                    color.images
+                      .filter(
+                        image =>
+                          image.url &&
+                          image.publicId
+                      )
+                      .map((image, imageIndex) => ({
+                        ...image,
+                        name:
+                          image.name?.trim() ||
+                          image.alt?.trim() ||
+                          `${slugifyFolder(color.name) || "color"}-image-${imageIndex + 1}`,
+                        alt:
+                          image.alt?.trim() ||
+                          image.name?.trim() ||
+                          color.nameProduct.trim() ||
+                          name.trim(),
+                        isDefault:
+                          imageIndex === 0,
+                      })),
 
                   sizes:
                     color.sizes
@@ -1818,6 +1990,7 @@ export default function ProductForm({
               onUploaded={onMainImagesUploaded}
               onRemove={removeMainImage}
               onMakeMain={makeMainImage}
+              onUpdate={updateMainImage}
             />
           </Card>
 
@@ -1916,6 +2089,136 @@ export default function ProductForm({
                       </Field>
                     </div>
 
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Field label="Color Product Name">
+                        <input
+                          value={color.nameProduct}
+                          onChange={(event) =>
+                            updateColor(
+                              colorIndex,
+                              "nameProduct",
+                              event.target.value
+                            )
+                          }
+                          className={inputClass}
+                          placeholder={name || "Black Bikini Panty For Women"}
+                        />
+                      </Field>
+
+                      <Field label="Color Product Slug">
+                        <input
+                          value={color.slugProduct}
+                          onChange={(event) =>
+                            updateColor(
+                              colorIndex,
+                              "slugProduct",
+                              event.target.value
+                            )
+                          }
+                          className={inputClass}
+                          placeholder="black-bikini-panty-for-women"
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Field label="Color Short Description">
+                        <textarea
+                          value={color.shortDescription}
+                          onChange={(event) =>
+                            updateColor(
+                              colorIndex,
+                              "shortDescription",
+                              event.target.value
+                            )
+                          }
+                          rows={3}
+                          className={`${inputClass} h-auto py-3`}
+                          placeholder="Description for this color variant"
+                        />
+                      </Field>
+
+                      <Field label="Color Tags (comma separated)">
+                        <textarea
+                          value={color.tags}
+                          onChange={(event) =>
+                            updateColor(
+                              colorIndex,
+                              "tags",
+                              event.target.value
+                            )
+                          }
+                          rows={3}
+                          className={`${inputClass} h-auto py-3`}
+                          placeholder="women, bikini panty, black panty"
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="mt-4">
+                      <Field label="Color Description (HTML + Inline CSS)">
+                        <HtmlDescriptionEditor
+                          value={color.description}
+                          onChange={(value) =>
+                            updateColor(
+                              colorIndex,
+                              "description",
+                              value
+                            )
+                          }
+                          disabled={saving}
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Field label="Color SEO Title">
+                        <input
+                          value={color.seoTitle}
+                          onChange={(event) =>
+                            updateColor(
+                              colorIndex,
+                              "seoTitle",
+                              event.target.value
+                            )
+                          }
+                          className={inputClass}
+                        />
+                      </Field>
+
+                      <Field label="Color SEO Description">
+                        <textarea
+                          value={color.seoDescription}
+                          onChange={(event) =>
+                            updateColor(
+                              colorIndex,
+                              "seoDescription",
+                              event.target.value
+                            )
+                          }
+                          rows={3}
+                          className={`${inputClass} h-auto py-3`}
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between rounded-xl bg-white p-3">
+                      <div>
+                        <p className="text-[10px] font-semibold">Default Color</p>
+                        <p className="mt-1 text-[8px] text-[#211A18]/40">This color is used as the default storefront variant.</p>
+                      </div>
+                      <Toggle
+                        checked={color.isDefault}
+                        onChange={(value) =>
+                          updateColor(
+                            colorIndex,
+                            "isDefault",
+                            value
+                          )
+                        }
+                      />
+                    </div>
+
                     <div className="mt-5">
                       <ProductImagesUploader
                         label="Color Images"
@@ -1943,6 +2246,13 @@ export default function ProductForm({
                           makeColorMainImage(
                             colorIndex,
                             imageIndex
+                          )
+                        }
+                        onUpdate={(imageIndex, patch) =>
+                          updateColorImage(
+                            colorIndex,
+                            imageIndex,
+                            patch
                           )
                         }
                       />
@@ -2151,6 +2461,17 @@ export default function ProductForm({
 
         <div className="space-y-6 xl:sticky xl:top-[100px] xl:h-fit">
           <Card title="Publishing">
+            <div className="mb-4 flex items-center justify-between rounded-xl bg-[#FAF8F6] p-3">
+              <div>
+                <p className="text-[10px] font-semibold">Color Variants</p>
+                <p className="mt-1 text-[8px] text-[#211A18]/40">Enable color-wise product name, slug, SEO, images and sizes.</p>
+              </div>
+              <Toggle
+                checked={isColor}
+                onChange={setIsColor}
+              />
+            </div>
+
             <Field label="Status">
               <select
                 value={
@@ -2594,30 +2915,28 @@ function Message({
 function normalizeMainImages(
   images: ImageValue[]
 ): ImageValue[] {
-  return (
-    images ||
-    []
-  )
-    .filter(
-      (
-        image
-      ) =>
-        Boolean(
-          image?.url &&
-          image?.publicId
-        )
+  return (images || [])
+    .filter(image =>
+      Boolean(
+        image?.url &&
+        image?.publicId
+      )
     )
-    .map(
-      (
-        image
-      ) => ({
-        url:
-          image.url,
-
-        publicId:
-          image.publicId,
-      })
-    );
+    .map((image, index) => ({
+      url: image.url,
+      publicId: image.publicId,
+      name:
+        image.name ||
+        image.alt ||
+        `product-image-${index + 1}`,
+      alt:
+        image.alt ||
+        image.name ||
+        `Product image ${index + 1}`,
+      isDefault:
+        image.isDefault ??
+        index === 0,
+    }));
 }
 
 function normalizeColors(
@@ -2626,19 +2945,20 @@ function normalizeColors(
 ): ColorInput[] {
   if (
     !apiColors ||
-    apiColors.length ===
-      0
+    apiColors.length === 0
   ) {
     return [
-      emptyColor(),
+      {
+        ...emptyColor(),
+        isDefault: true,
+      },
     ];
   }
 
   return apiColors.map(
-    (
-      color
-    ) => ({
+    (color, colorIndex) => ({
       name:
+        color.nameColor ||
         color.name ||
         "",
 
@@ -2646,54 +2966,60 @@ function normalizeColors(
         color.hex ||
         "#000000",
 
-      images:
-        (
-          color.images ||
-          []
-        )
-          .filter(
-            (
-              image
-            ) =>
-              Boolean(
-                image?.url &&
-                image?.publicId
-              )
-          )
-          .map(
-            (
-              image
-            ) => ({
-              url:
-                image.url,
+      isDefault:
+        color.isDefault ??
+        colorIndex === 0,
 
-              publicId:
-                image.publicId,
-            })
-          ),
+      nameProduct:
+        color.nameProduct ||
+        "",
+
+      slugProduct:
+        color.slugProduct ||
+        "",
+
+      shortDescription:
+        color.shortDescription ||
+        "",
+
+      description:
+        color.description ||
+        "",
+
+      tags:
+        Array.isArray(color.tags)
+          ? color.tags.join(", ")
+          : "",
+
+      seoTitle:
+        color.seoTitle ||
+        "",
+
+      seoDescription:
+        color.seoDescription ||
+        "",
+
+      images:
+        normalizeMainImages(
+          color.images || []
+        ),
 
       sizes:
         color.sizes &&
-        color.sizes.length >
-          0
+        color.sizes.length > 0
           ? color.sizes.map(
-              (
-                size
-              ) => ({
+              size => ({
                 size:
                   size.size ||
                   "",
-
                 sku:
                   size.sku ||
                   "",
-
                 stock:
                   String(
                     size.stock ??
-                      0
+                    0
                   ),
-
                 isActive:
                   size.isActive !==
                   false,

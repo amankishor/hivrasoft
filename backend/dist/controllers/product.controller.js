@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteProductController = exports.updateProductController = exports.getProductBySlugController = exports.getProductByIdController = exports.getActiveProductsController = exports.getAllProductsController = exports.createProductController = void 0;
+exports.deleteProductController = exports.updateProductController = exports.getProductBySlugController = exports.getProductByIdController = exports.getActiveProductsController = exports.getCatalogProductBySlugController = exports.getCatalogProductsController = exports.getAllProductsController = exports.createProductController = void 0;
 const product_service_1 = require("../services/product.service");
 /* =========================================================
    ROUTE PARAM HELPER
@@ -22,8 +22,9 @@ const getRouteParam = (value, paramName) => {
 ========================================================= */
 const createProductController = async (req, res) => {
     try {
-        const { name, shortDescription, description, categories, price, compareAtPrice, costPrice, mainImages, colors, status, isFeatured, isNewLaunch, tags, seoTitle, seoDescription, } = req.body;
-        if (!name) {
+        const { name, slug, shortDescription, description, categories, price, compareAtPrice, costPrice, stock, mainImages, isColor, colors, status, isActive, isFeatured, isNewLaunch, tags, seoTitle, seoDescription, } = req.body;
+        if (!name ||
+            !String(name).trim()) {
             return res
                 .status(400)
                 .json({
@@ -33,7 +34,10 @@ const createProductController = async (req, res) => {
         }
         if (price ===
             undefined ||
-            price === null) {
+            price ===
+                null ||
+            price ===
+                "") {
             return res
                 .status(400)
                 .json({
@@ -41,8 +45,22 @@ const createProductController = async (req, res) => {
                 message: "Product price is required.",
             });
         }
+        if (stock ===
+            undefined ||
+            stock ===
+                null ||
+            stock ===
+                "") {
+            return res
+                .status(400)
+                .json({
+                success: false,
+                message: "Product stock is required.",
+            });
+        }
         if (!Array.isArray(categories) ||
-            categories.length === 0) {
+            categories.length ===
+                0) {
             return res
                 .status(400)
                 .json({
@@ -52,15 +70,19 @@ const createProductController = async (req, res) => {
         }
         const product = await (0, product_service_1.createProduct)({
             name,
+            slug,
             shortDescription,
             description,
             categories,
             price,
             compareAtPrice,
             costPrice,
+            stock,
             mainImages,
+            isColor,
             colors,
             status,
+            isActive,
             isFeatured,
             isNewLaunch,
             tags,
@@ -90,7 +112,7 @@ exports.createProductController = createProductController;
 /* =========================================================
    GET ALL PRODUCTS - ADMIN
 ========================================================= */
-const getAllProductsController = async (req, res) => {
+const getAllProductsController = async (_req, res) => {
     try {
         const products = await (0, product_service_1.getAllProducts)();
         return res
@@ -99,6 +121,7 @@ const getAllProductsController = async (req, res) => {
             success: true,
             count: products.length,
             products,
+            data: products,
         });
     }
     catch (error) {
@@ -114,17 +137,61 @@ const getAllProductsController = async (req, res) => {
 };
 exports.getAllProductsController = getAllProductsController;
 /* =========================================================
+   GET CATALOG PRODUCTS - CLEAN COLOR-CENTRIC API
+========================================================= */
+const getCatalogProductsController = async (_req, res) => {
+    try {
+        const productDocuments = await (0, product_service_1.getActiveProducts)();
+        const products = productDocuments.map(product_service_1.toCatalogProduct);
+        return res.status(200).json({
+            success: true,
+            count: products.length,
+            products,
+        });
+    }
+    catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error instanceof Error
+                ? error.message
+                : "Unable to load catalog products.",
+        });
+    }
+};
+exports.getCatalogProductsController = getCatalogProductsController;
+const getCatalogProductBySlugController = async (req, res) => {
+    try {
+        const slug = getRouteParam(req.params.slug, "Product slug");
+        const product = await (0, product_service_1.getProductBySlug)(slug);
+        return res.status(200).json({
+            success: true,
+            product: (0, product_service_1.toCatalogProduct)(product),
+        });
+    }
+    catch (error) {
+        return res.status(404).json({
+            success: false,
+            message: error instanceof Error
+                ? error.message
+                : "Product not found.",
+        });
+    }
+};
+exports.getCatalogProductBySlugController = getCatalogProductBySlugController;
+/* =========================================================
    GET ACTIVE PRODUCTS - STOREFRONT
 ========================================================= */
-const getActiveProductsController = async (req, res) => {
+const getActiveProductsController = async (_req, res) => {
     try {
-        const products = await (0, product_service_1.getActiveProducts)();
+        const productDocuments = await (0, product_service_1.getActiveProducts)();
+        const products = productDocuments.map(product_service_1.toStorefrontProduct);
         return res
             .status(200)
             .json({
             success: true,
             count: products.length,
             products,
+            data: products,
         });
     }
     catch (error) {
@@ -171,7 +238,8 @@ exports.getProductByIdController = getProductByIdController;
 const getProductBySlugController = async (req, res) => {
     try {
         const slug = getRouteParam(req.params.slug, "Product slug");
-        const product = await (0, product_service_1.getProductBySlug)(slug);
+        const productDocument = await (0, product_service_1.getProductBySlug)(slug);
+        const product = (0, product_service_1.toStorefrontProduct)(productDocument);
         return res
             .status(200)
             .json({
@@ -199,6 +267,7 @@ const updateProductController = async (req, res) => {
         const id = getRouteParam(req.params.id, "Product ID");
         const product = await (0, product_service_1.updateProduct)(id, {
             name: req.body.name,
+            slug: req.body.slug,
             shortDescription: req.body
                 .shortDescription,
             description: req.body
@@ -210,10 +279,15 @@ const updateProductController = async (req, res) => {
                 .compareAtPrice,
             costPrice: req.body
                 .costPrice,
+            stock: req.body.stock,
             mainImages: req.body
                 .mainImages,
+            isColor: req.body
+                .isColor,
             colors: req.body.colors,
             status: req.body.status,
+            isActive: req.body
+                .isActive,
             isFeatured: req.body
                 .isFeatured,
             isNewLaunch: req.body

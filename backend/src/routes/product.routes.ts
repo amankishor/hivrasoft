@@ -2,18 +2,16 @@ import {
   Router,
 } from "express";
 
-import {
-  authenticate,
-} from "../middleware/auth.middleware";
+import authenticate from "../middleware/auth.middleware";
 
-import {
-  requireAdmin,
-} from "../middleware/admin.middleware";
+import requireAdmin from "../middleware/admin.middleware";
 
 import {
   createProductController,
   getAllProductsController,
   getActiveProductsController,
+  getCatalogProductsController,
+  getCatalogProductBySlugController,
   getProductByIdController,
   getProductBySlugController,
   updateProductController,
@@ -34,6 +32,20 @@ const router =
 router.get(
   "/active",
   getActiveProductsController
+);
+
+/*
+  Clean API matching the requested product/color response shape.
+  These routes intentionally do not include legacy price/SKU aliases.
+*/
+router.get(
+  "/catalog",
+  getCatalogProductsController
+);
+
+router.get(
+  "/catalog/:slug",
+  getCatalogProductBySlugController
 );
 
 router.get(

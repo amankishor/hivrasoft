@@ -14,6 +14,9 @@ import {
 type ProductImage = {
   url: string;
   publicId?: string;
+  name?: string;
+  alt?: string;
+  isDefault?: boolean;
 };
 
 type ProductSize = {
@@ -923,9 +926,11 @@ export default function ProductDetails({
                       src={
                         image.url
                       }
-                      alt={`${product.name} thumbnail ${
-                        index + 1
-                      }`}
+                      alt={
+                        image.alt ||
+                        image.name ||
+                        `${product.name} thumbnail ${index + 1}`
+                      }
                       className="
                         h-full
                         w-full
@@ -1027,9 +1032,11 @@ export default function ProductDetails({
                     src={
                       image.url
                     }
-                    alt={`${product.name} ${
-                      index + 1
-                    }`}
+                    alt={
+                      image.alt ||
+                      image.name ||
+                      `${product.name} ${index + 1}`
+                    }
                     className={`
                       absolute
                       inset-0

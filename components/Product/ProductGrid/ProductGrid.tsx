@@ -21,6 +21,9 @@ const API_URL =
 type ProductImage = {
   url: string;
   publicId?: string;
+  name?: string;
+  alt?: string;
+  isDefault?: boolean;
 };
 
 type ProductSize = {
@@ -462,13 +465,17 @@ function ProductItem({
 }: {
   product: Product;
 }) {
+  const firstImageData =
+    product.mainImages?.[0];
+
+  const hoverImageData =
+    product.mainImages?.[1];
+
   const firstImage =
-    product.mainImages?.[0]
-      ?.url || "";
+    firstImageData?.url || "";
 
   const hoverImage =
-    product.mainImages?.[1]
-      ?.url || "";
+    hoverImageData?.url || "";
 
   const totalStock =
     getTotalStock(
@@ -514,6 +521,8 @@ function ProductItem({
                   firstImage
                 }
                 alt={
+                  firstImageData?.alt ||
+                  firstImageData?.name ||
                   product.name
                 }
                 className={`
@@ -539,7 +548,11 @@ function ProductItem({
                   src={
                     hoverImage
                   }
-                  alt={`${product.name} alternate`}
+                  alt={
+                    hoverImageData?.alt ||
+                    hoverImageData?.name ||
+                    `${product.name} alternate`
+                  }
                   className="
                     absolute
                     inset-0
