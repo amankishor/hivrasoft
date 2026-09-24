@@ -53,6 +53,9 @@ type SizeValue = {
   _id?: string;
   size: string;
   stock: number | string;
+  originalPrice: number | string;
+  showPrice: number | string;
+  discountPrice: number | string;
   isActive?: boolean;
 };
 
@@ -65,6 +68,15 @@ type ColorValue = {
 
   hex: string;
   isDefault: boolean;
+
+  originalPrice: number | string;
+  showPrice: number | string;
+  discountPrice: number | string;
+
+  // Frontend-only control. Not sent to backend.
+  // true = every size uses this color/product pricing.
+  // false = every size can have its own pricing.
+  samePriceForAllSizes: boolean;
 
   shortDescription: string;
   description: string;
@@ -148,6 +160,12 @@ function emptyColor(
     isDefault:
       index === 0,
 
+    originalPrice: 0,
+    showPrice: 0,
+    discountPrice: 0,
+
+    samePriceForAllSizes: true,
+
     shortDescription: "",
     description: "",
 
@@ -161,8 +179,11 @@ function emptyColor(
 
     sizes: [
       {
-        size: "S",
-        stock: 0,
+        size: "",
+        stock: "",
+        originalPrice: "",
+        showPrice: "",
+        discountPrice: "",
         isActive: true,
       },
     ],
@@ -593,6 +614,26 @@ export default function ProductForm({
                       color?.isDefault ??
                       index === 0,
 
+                    originalPrice:
+                      Number(color?.originalPrice ?? 0),
+
+                    showPrice:
+                      Number(color?.showPrice ?? 0),
+
+                    discountPrice:
+                      Number(color?.discountPrice ?? 0),
+
+                    samePriceForAllSizes:
+                      !Array.isArray(color?.sizes) ||
+                      color.sizes.length === 0 ||
+                      color.sizes.every(
+                        (size: any) =>
+                          Number(size?.originalPrice ?? 0) ===
+                            Number(color?.originalPrice ?? 0) &&
+                          Number(size?.showPrice ?? 0) ===
+                            Number(color?.showPrice ?? 0)
+                      ),
+
                     shortDescription:
                       color?.shortDescription ||
                       "",
@@ -679,6 +720,15 @@ export default function ProductForm({
                                     0
                                 ),
 
+                              originalPrice:
+                                Number(size?.originalPrice ?? 0),
+
+                              showPrice:
+                                Number(size?.showPrice ?? 0),
+
+                              discountPrice:
+                                Number(size?.discountPrice ?? 0),
+
                               isActive:
                                 size?.isActive !==
                                 false,
@@ -687,10 +737,19 @@ export default function ProductForm({
                         : [
                             {
                               size:
-                                "S",
+                                "",
 
                               stock:
-                                0,
+                                "",
+
+                              originalPrice:
+                                "",
+
+                              showPrice:
+                                "",
+
+                              discountPrice:
+                                "",
 
                               isActive:
                                 true,
@@ -1073,6 +1132,53 @@ export default function ProductForm({
     );
   };
 
+  const setSamePriceForAllSizes = (
+    colorIndex: number,
+    enabled: boolean
+  ) => {
+    setColors(
+      (current) =>
+        current.map(
+          (color, i) => {
+            if (i !== colorIndex) {
+              return color;
+            }
+
+            if (!enabled) {
+              return {
+                ...color,
+                samePriceForAllSizes: false,
+              };
+            }
+
+            const originalPrice =
+              color.originalPrice;
+            const showPrice =
+              color.showPrice;
+            const discountPrice =
+              Math.max(
+                0,
+                Number(originalPrice || 0) -
+                  Number(showPrice || 0)
+              );
+
+            return {
+              ...color,
+              samePriceForAllSizes: true,
+              sizes: color.sizes.map(
+                (size) => ({
+                  ...size,
+                  originalPrice,
+                  showPrice,
+                  discountPrice,
+                })
+              ),
+            };
+          }
+        )
+    );
+  };
+
   const addSize = (
     colorIndex: number
   ) => {
@@ -1098,7 +1204,26 @@ export default function ProductForm({
                         "",
 
                       stock:
-                        0,
+                        "",
+
+                      originalPrice:
+                        color.samePriceForAllSizes
+                          ? color.originalPrice
+                          : "",
+
+                      showPrice:
+                        color.samePriceForAllSizes
+                          ? color.showPrice
+                          : "",
+
+                      discountPrice:
+                        color.samePriceForAllSizes
+                          ? Math.max(
+                              0,
+                              Number(color.originalPrice || 0) -
+                                Number(color.showPrice || 0)
+                            )
+                          : "",
 
                       isActive:
                         true,
@@ -1889,11 +2014,52 @@ export default function ProductForm({
                       );
                     }
 
+                    const originalPrice =
+                      Number(
+                        color.samePriceForAllSizes
+                          ? color.originalPrice
+                          : size.originalPrice
+                      );
+
+                    const showPrice =
+                      Number(
+                        color.samePriceForAllSizes
+                          ? color.showPrice
+                          : size.showPrice
+                      );
+
+                    if (!Number.isFinite(originalPrice) || originalPrice < 0) {
+                      throw new Error(
+                        `${isColor ? nameColor : nameProduct} / ${sizeName}: original price must be 0 or greater.`
+                      );
+                    }
+
+                    if (!Number.isFinite(showPrice) || showPrice < 0) {
+                      throw new Error(
+                        `${isColor ? nameColor : nameProduct} / ${sizeName}: show price must be 0 or greater.`
+                      );
+                    }
+
+                    if (showPrice > originalPrice) {
+                      throw new Error(
+                        `${isColor ? nameColor : nameProduct} / ${sizeName}: show price cannot be greater than original price.`
+                      );
+                    }
+
+                    const discountPrice =
+                      Number((originalPrice - showPrice).toFixed(2));
+
                     return {
                       size:
                         sizeName,
 
                       stock,
+
+                      originalPrice,
+
+                      showPrice,
+
+                      discountPrice,
 
                       isActive:
                         size.isActive !==
@@ -1901,6 +2067,33 @@ export default function ProductForm({
                     };
                   }
                 );
+
+              const originalPrice =
+                Number(color.originalPrice);
+
+              const showPrice =
+                Number(color.showPrice);
+
+              if (!Number.isFinite(originalPrice) || originalPrice < 0) {
+                throw new Error(
+                  `${isColor ? nameColor : nameProduct}: original price must be 0 or greater.`
+                );
+              }
+
+              if (!Number.isFinite(showPrice) || showPrice < 0) {
+                throw new Error(
+                  `${isColor ? nameColor : nameProduct}: show price must be 0 or greater.`
+                );
+              }
+
+              if (showPrice > originalPrice) {
+                throw new Error(
+                  `${isColor ? nameColor : nameProduct}: show price cannot be greater than original price.`
+                );
+              }
+
+              const discountPrice =
+                Number((originalPrice - showPrice).toFixed(2));
 
               return {
                 nameProduct,
@@ -1920,6 +2113,12 @@ export default function ProductForm({
                   isColor
                     ? color.isDefault
                     : true,
+
+                originalPrice,
+
+                showPrice,
+
+                discountPrice,
 
                 shortDescription:
                   color.shortDescription.trim(),
@@ -3051,6 +3250,92 @@ export default function ProductForm({
                       </Field>
                     </div>
 
+                    {/* PRODUCT PRICING */}
+
+                    <Divider />
+
+                    <SubHeading
+                      title="Product Pricing"
+                      description="Default price for this color/product. Size-specific prices below can override it."
+                    />
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-3">
+                      <Field label="Original Price" required hint="MRP / original amount">
+                        <input
+                          className={inputClass}
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={color.originalPrice}
+                          placeholder="499"
+                          onChange={(event) => {
+                            const originalPrice = event.target.value;
+                            const original = Number(originalPrice || 0);
+                            const show = Number(color.showPrice || 0);
+                            const discountPrice =
+                              Math.max(0, original - show);
+
+                            updateColor(colorIndex, {
+                              originalPrice,
+                              discountPrice,
+                              ...(color.samePriceForAllSizes
+                                ? {
+                                    sizes: color.sizes.map((size) => ({
+                                      ...size,
+                                      originalPrice,
+                                      showPrice: color.showPrice,
+                                      discountPrice,
+                                    })),
+                                  }
+                                : {}),
+                            });
+                          }}
+                        />
+                      </Field>
+
+                      <Field label="Show Price" required hint="Customer ko dikhne wali selling price">
+                        <input
+                          className={inputClass}
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={color.showPrice}
+                          placeholder="399"
+                          onChange={(event) => {
+                            const showPrice = event.target.value;
+                            const original = Number(color.originalPrice || 0);
+                            const show = Number(showPrice || 0);
+                            const discountPrice =
+                              Math.max(0, original - show);
+
+                            updateColor(colorIndex, {
+                              showPrice,
+                              discountPrice,
+                              ...(color.samePriceForAllSizes
+                                ? {
+                                    sizes: color.sizes.map((size) => ({
+                                      ...size,
+                                      originalPrice: color.originalPrice,
+                                      showPrice,
+                                      discountPrice,
+                                    })),
+                                  }
+                                : {}),
+                            });
+                          }}
+                        />
+                      </Field>
+
+                      <Field label="Discount Price" hint="Auto: Original Price - Show Price">
+                        <input
+                          className={`${inputClass} bg-[#F7F5F3]`}
+                          type="number"
+                          readOnly
+                          value={Number(color.discountPrice || 0)}
+                        />
+                      </Field>
+                    </div>
+
                     {/* CONTENT */}
 
                     <Divider />
@@ -3424,23 +3709,71 @@ export default function ProductForm({
 
                     <Divider />
 
-                    <div className="flex items-end justify-between gap-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                       <SubHeading
                         title="Sizes & Inventory"
-                        description="Manage size-level stock. No SKU field is used in your current model."
+                        description="Size and stock are always separate. Turn on Same Price to use Product Pricing for every size."
                       />
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          addSize(
-                            colorIndex
-                          )
-                        }
-                        className="rounded-xl border border-black/[0.08] bg-white px-4 py-2.5 text-xs font-bold text-black/65 transition hover:border-[#8C1839]/20 hover:text-[#8C1839]"
-                      >
-                        + Add Size
-                      </button>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <label
+                          className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition ${
+                            color.samePriceForAllSizes
+                              ? "border-[#8C1839]/20 bg-[#FFF5F8]"
+                              : "border-black/[0.08] bg-white"
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-bold text-[#2A201D]">
+                              Same Price for All Sizes
+                            </div>
+                            <div className="mt-0.5 text-[10px] text-black/40">
+                              {color.samePriceForAllSizes
+                                ? "ON · Product price applies to every size"
+                                : "OFF · Set price separately for each size"}
+                            </div>
+                          </div>
+
+                          <span
+                            className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+                              color.samePriceForAllSizes
+                                ? "bg-[#8C1839]"
+                                : "bg-black/10"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={color.samePriceForAllSizes}
+                              onChange={(event) =>
+                                setSamePriceForAllSizes(
+                                  colorIndex,
+                                  event.target.checked
+                                )
+                              }
+                              className="sr-only"
+                            />
+                            <span
+                              className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${
+                                color.samePriceForAllSizes
+                                  ? "left-6"
+                                  : "left-1"
+                              }`}
+                            />
+                          </span>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            addSize(
+                              colorIndex
+                            )
+                          }
+                          className="rounded-xl border border-black/[0.08] bg-white px-4 py-2.5 text-xs font-bold text-black/65 transition hover:border-[#8C1839]/20 hover:text-[#8C1839]"
+                        >
+                          + Add Size
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-4 space-y-2.5">
@@ -3454,63 +3787,161 @@ export default function ProductForm({
                               size._id ||
                               sizeIndex
                             }
-                            className="grid gap-3 rounded-2xl border border-black/[0.07] bg-white p-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-center"
+                            className="grid gap-3 rounded-2xl border border-black/[0.07] bg-white p-3 lg:grid-cols-[0.7fr_0.8fr_1fr_1fr_1fr_auto_auto] lg:items-end"
                           >
-                            <input
-                              className={
-                                inputClass
-                              }
-                              placeholder="Size"
-                              value={
-                                size.size
-                              }
-                              onChange={(
-                                event
-                              ) =>
-                                updateSize(
-                                  colorIndex,
-                                  sizeIndex,
-                                  {
-                                    size:
-                                      event
-                                        .target
-                                        .value
-                                        .toUpperCase(),
-                                  }
-                                )
-                              }
-                            />
+                            <Field label="Size">
+                              <input
+                                className={
+                                  inputClass
+                                }
+                                placeholder="Size (S / M / L)"
+                                value={
+                                  size.size
+                                }
+                                onChange={(
+                                  event
+                                ) =>
+                                  updateSize(
+                                    colorIndex,
+                                    sizeIndex,
+                                    {
+                                      size:
+                                        event
+                                          .target
+                                          .value
+                                          .toUpperCase(),
+                                    }
+                                  )
+                                }
+                              />
+                            </Field>
 
-                            <input
-                              className={
-                                inputClass
+                            <Field label="Stock">
+                              <input
+                                className={
+                                  inputClass
+                                }
+                                type="number"
+                                min={
+                                  0
+                                }
+                                step={
+                                  1
+                                }
+                                placeholder="Stock"
+                                value={
+                                  size.stock
+                                }
+                                onChange={(
+                                  event
+                                ) =>
+                                  updateSize(
+                                    colorIndex,
+                                    sizeIndex,
+                                    {
+                                      stock:
+                                        event
+                                          .target
+                                          .value,
+                                    }
+                                  )
+                                }
+                              />
+                            </Field>
+
+                            <Field
+                              label="Original Price"
+                              hint={
+                                color.samePriceForAllSizes
+                                  ? "Same for all"
+                                  : undefined
                               }
-                              type="number"
-                              min={
-                                0
-                              }
-                              step={
-                                1
-                              }
-                              placeholder="Stock"
-                              value={
-                                size.stock
-                              }
-                              onChange={(
-                                event
-                              ) =>
-                                updateSize(
-                                  colorIndex,
-                                  sizeIndex,
-                                  {
-                                    stock:
-                                      event
-                                        .target
-                                        .value,
+                            >
+                              <input
+                                className={`${inputClass} ${
+                                  color.samePriceForAllSizes
+                                    ? "cursor-not-allowed bg-[#F7F5F3] text-black/55"
+                                    : ""
+                                }`}
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                readOnly={color.samePriceForAllSizes}
+                                placeholder="Original Price"
+                                value={
+                                  color.samePriceForAllSizes
+                                    ? color.originalPrice
+                                    : size.originalPrice
+                                }
+                                onChange={(event) => {
+                                  if (color.samePriceForAllSizes) {
+                                    return;
                                   }
-                                )
+
+                                  const originalPrice = event.target.value;
+                                  const original = Number(originalPrice || 0);
+                                  const show = Number(size.showPrice || 0);
+                                  updateSize(colorIndex, sizeIndex, {
+                                    originalPrice,
+                                    discountPrice: Math.max(0, original - show),
+                                  });
+                                }}
+                              />
+                            </Field>
+
+                            <Field
+                              label="Show Price"
+                              hint={
+                                color.samePriceForAllSizes
+                                  ? "Same for all"
+                                  : undefined
                               }
-                            />
+                            >
+                              <input
+                                className={`${inputClass} ${
+                                  color.samePriceForAllSizes
+                                    ? "cursor-not-allowed bg-[#F7F5F3] text-black/55"
+                                    : ""
+                                }`}
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                readOnly={color.samePriceForAllSizes}
+                                placeholder="Show Price"
+                                value={
+                                  color.samePriceForAllSizes
+                                    ? color.showPrice
+                                    : size.showPrice
+                                }
+                                onChange={(event) => {
+                                  if (color.samePriceForAllSizes) {
+                                    return;
+                                  }
+
+                                  const showPrice = event.target.value;
+                                  const original = Number(size.originalPrice || 0);
+                                  const show = Number(showPrice || 0);
+                                  updateSize(colorIndex, sizeIndex, {
+                                    showPrice,
+                                    discountPrice: Math.max(0, original - show),
+                                  });
+                                }}
+                              />
+                            </Field>
+
+                            <Field label="Discount">
+                              <input
+                                className={`${inputClass} bg-[#F7F5F3]`}
+                                type="number"
+                                readOnly
+                                placeholder="Discount"
+                                value={
+                                  color.samePriceForAllSizes
+                                    ? Number(color.discountPrice || 0)
+                                    : Number(size.discountPrice || 0)
+                                }
+                              />
+                            </Field>
 
                             <label className="flex items-center gap-2 rounded-xl bg-[#F7F5F3] px-3 py-3 text-xs font-semibold text-black/60">
                               <input

@@ -324,6 +324,17 @@ export default function AdminSidebar() {
           </MenuLink>
 
           <MenuLink
+            href="/admin/notifications"
+            active={
+              pathname.startsWith(
+                "/admin/notifications",
+              )
+            }
+          >
+            Notifications
+          </MenuLink>
+
+          <MenuLink
             href="/admin/coupons"
             active={
               pathname.startsWith(

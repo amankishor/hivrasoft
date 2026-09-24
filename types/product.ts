@@ -8,6 +8,9 @@ export type ProductSize = {
   _id?: string;
   size: string;
   stock: number;
+  originalPrice: number;
+  showPrice: number;
+  discountPrice: number;
   isActive?: boolean;
 };
 
@@ -31,6 +34,9 @@ export type ProductColor = {
   slugColor: string;
   hex?: string;
   isDefault?: boolean;
+  originalPrice: number;
+  showPrice: number;
+  discountPrice: number;
   shortDescription?: string;
   description?: string;
   tags?: string[];

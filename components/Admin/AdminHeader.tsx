@@ -13,6 +13,7 @@ const titles: Record<string, string> = {
   "/admin/banners": "Banners",
   "/admin/orders": "Orders",
   "/admin/customers": "Customers",
+  "/admin/notifications": "Notifications",
   "/admin/coupons": "Coupons",
   "/admin/settings": "Settings",
 };
@@ -55,6 +56,10 @@ export default function AdminHeader() {
       )
     ) {
       return "Edit Banner";
+    }
+
+    if (/^\/admin\/customers\/[^/]+$/.test(pathname)) {
+      return "Customer Details";
     }
 
     if (pathname === "/admin/products/new") {

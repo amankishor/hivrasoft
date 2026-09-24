@@ -34,6 +34,11 @@ const EMPTY_CART = {
   items: [],
   totalItems: 0,
   subtotal: 0,
+  automaticDiscount: 0,
+  codeDiscount: 0,
+  discount: 0,
+  appliedDiscountCode: "",
+  total: 0,
 };
 
 async function apiRequest(path, options = {}) {
@@ -167,6 +172,21 @@ async function clearCartApi() {
   return data?.cart || EMPTY_CART;
 }
 
+async function applyDiscountCodeApi(code) {
+  const data = await apiRequest("/api/cart/discount-code", {
+    method: "POST",
+    body: { code },
+  });
+  return data?.cart || EMPTY_CART;
+}
+
+async function removeDiscountCodeApi() {
+  const data = await apiRequest("/api/cart/discount-code", {
+    method: "DELETE",
+  });
+  return data?.cart || EMPTY_CART;
+}
+
 async function addWishlistApi(productId) {
   return apiRequest("/api/wishlist", {
     method: "POST",
@@ -231,6 +251,8 @@ export default function CartPage() {
   const [error, setError] = useState("");
   const [busyItemId, setBusyItemId] = useState("");
   const [clearing, setClearing] = useState(false);
+  const [discountCode, setDiscountCode] = useState("");
+  const [applyingCode, setApplyingCode] = useState(false);
 
   /* =======================================================
      LOAD REAL CART FROM API
@@ -304,8 +326,34 @@ export default function CartPage() {
 
   const totalItems = Number(cart?.totalItems || 0);
   const subtotal = Number(cart?.subtotal || 0);
+  const automaticDiscount = Number(cart?.automaticDiscount || 0);
+  const codeDiscount = Number(cart?.codeDiscount || 0);
+  const totalDiscount = Number(cart?.discount || 0);
   const shipping = 0;
-  const estimatedTotal = subtotal + shipping;
+  const estimatedTotal = Number(cart?.total ?? (subtotal - totalDiscount + shipping));
+
+  async function handleApplyDiscountCode() {
+    if (!discountCode.trim() || applyingCode) return;
+    try {
+      setApplyingCode(true); setError("");
+      const nextCart = await applyDiscountCodeApi(discountCode);
+      setCart(nextCart); setDiscountCode("");
+      notifyCartUpdated(nextCart);
+    } catch (error) {
+      setError(getErrorMessage(error, "Unable to apply discount code."));
+    } finally { setApplyingCode(false); }
+  }
+
+  async function handleRemoveDiscountCode() {
+    if (applyingCode) return;
+    try {
+      setApplyingCode(true); setError("");
+      const nextCart = await removeDiscountCodeApi();
+      setCart(nextCart); notifyCartUpdated(nextCart);
+    } catch (error) {
+      setError(getErrorMessage(error, "Unable to remove discount code."));
+    } finally { setApplyingCode(false); }
+  }
 
   /* =======================================================
      UPDATE QUANTITY
@@ -859,8 +907,13 @@ export default function CartPage() {
 
                           <div className="md:text-right">
                             <div className="font-serif text-[18px] text-[#211A18]">
-                              {money(item?.subtotal)}
+                              {money(item?.discount?.finalLineTotal ?? item?.subtotal)}
                             </div>
+                            {Number(item?.discount?.totalDiscount || 0) > 0 && (
+                              <div className="mt-1 text-[8px] text-[#2f8a53]">
+                                You save {money(item.discount.totalDiscount)}
+                              </div>
+                            )}
 
                             <div className="mt-3 flex flex-wrap gap-3 md:justify-end">
                               <button
@@ -926,6 +979,35 @@ export default function CartPage() {
                         FREE
                       </strong>
                     </div>
+
+                    {automaticDiscount > 0 && (
+                      <div className="flex items-center justify-between gap-4 text-[#2f8a53]">
+                        <span>Automatic discount {cart?.discountSummary?.automatic?.percentage ? `(${cart.discountSummary.automatic.percentage}%)` : ""}</span>
+                        <strong>-{money(automaticDiscount)}</strong>
+                      </div>
+                    )}
+
+                    {codeDiscount > 0 && (
+                      <div className="flex items-center justify-between gap-4 text-[#a31340]">
+                        <span>Code {cart?.appliedDiscountCode}</span>
+                        <strong>-{money(codeDiscount)}</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-5 rounded-xl bg-[#fbf6f4] p-3">
+                    <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7c6d68]">Discount Code</div>
+                    {cart?.appliedDiscountCode ? (
+                      <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                        <div><strong className="text-[11px] text-[#a31340]">{cart.appliedDiscountCode}</strong><div className="text-[8px] text-[#8c817b]">Applied successfully</div></div>
+                        <button type="button" disabled={applyingCode} onClick={() => void handleRemoveDiscountCode()} className="text-[9px] font-semibold text-[#a31340]">Remove</button>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex gap-2">
+                        <input value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === "Enter") void handleApplyDiscountCode(); }} placeholder="ENTER CODE" className="h-10 min-w-0 flex-1 rounded-lg border border-[#211A18]/10 bg-white px-3 text-[10px] uppercase outline-none focus:border-[#a31340]/40" />
+                        <button type="button" disabled={applyingCode || !discountCode.trim()} onClick={() => void handleApplyDiscountCode()} className="rounded-lg bg-[#211A18] px-4 text-[9px] font-semibold uppercase text-white disabled:opacity-40">{applyingCode ? "..." : "Apply"}</button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-5 flex items-end justify-between gap-4 border-t border-[#211A18]/10 pt-4">
