@@ -14,6 +14,7 @@ import bannerRoutes from "./routes/banner.routes";
 import wishlistRoutes from "./routes/wishlist.routes";
 import cartRoutes from "./routes/cart.routes";
 import orderRoutes from "./routes/order.routes";
+import searchRoutes from "./routes/search.routes";
 
 const app =
   express();
@@ -111,6 +112,15 @@ app.use(
 app.use(
   "/api/products",
   productRoutes
+);
+
+/* =========================================================
+   GLOBAL STOREFRONT SEARCH
+========================================================= */
+
+app.use(
+  "/api/search",
+  searchRoutes
 );
 
 app.use(
