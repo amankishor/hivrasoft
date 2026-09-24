@@ -856,6 +856,9 @@ export const addProductSizeController =
       const {
         size,
         stock,
+        originalPrice,
+        showPrice,
+        discountPrice,
         isActive,
       } = req.body;
 
@@ -866,6 +869,9 @@ export const addProductSizeController =
           {
             size,
             stock,
+            originalPrice,
+            showPrice,
+            discountPrice,
             isActive,
           }
         );
@@ -935,6 +941,15 @@ export const updateProductSizeController =
 
             stock:
               req.body.stock,
+
+            originalPrice:
+              req.body.originalPrice,
+
+            showPrice:
+              req.body.showPrice,
+
+            discountPrice:
+              req.body.discountPrice,
 
             isActive:
               req.body.isActive,

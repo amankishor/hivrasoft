@@ -39,6 +39,9 @@ export type ProductImageInput = {
 export type ProductSizeInput = {
   size: string;
   stock: number;
+  originalPrice: number;
+  showPrice: number;
+  discountPrice?: number;
   isActive?: boolean;
 };
 
@@ -52,6 +55,10 @@ export type ProductColorInput = {
   hex?: string;
 
   isDefault?: boolean;
+
+  originalPrice: number;
+  showPrice: number;
+  discountPrice?: number;
 
   shortDescription?: string;
 
@@ -399,6 +406,37 @@ const normalizeImages = (
 };
 
 /* =========================================================
+   NORMALIZE PRICE
+========================================================= */
+
+const normalizePrice = (
+  originalValue: number | undefined,
+  showValue: number | undefined,
+  label: string
+) => {
+  const originalPrice = Number(originalValue);
+  const showPrice = Number(showValue);
+
+  if (!Number.isFinite(originalPrice) || originalPrice < 0) {
+    throw new Error(`${label}: originalPrice must be 0 or greater.`);
+  }
+
+  if (!Number.isFinite(showPrice) || showPrice < 0) {
+    throw new Error(`${label}: showPrice must be 0 or greater.`);
+  }
+
+  if (showPrice > originalPrice) {
+    throw new Error(`${label}: showPrice cannot be greater than originalPrice.`);
+  }
+
+  return {
+    originalPrice,
+    showPrice,
+    discountPrice: Number((originalPrice - showPrice).toFixed(2)),
+  };
+};
+
+/* =========================================================
    NORMALIZE SIZES
 
    NO SKU
@@ -409,7 +447,7 @@ const normalizeSizes = (
     | ProductSizeInput[]
     | undefined,
   colorName: string
-): ProductSizeInput[] => {
+): IProductSize[] => {
   if (!sizes) {
     return [];
   }
@@ -473,10 +511,19 @@ const normalizeSizes = (
         );
       }
 
+      const pricing =
+        normalizePrice(
+          size.originalPrice,
+          size.showPrice,
+          `${colorName} / ${sizeName}`
+        );
+
       return {
         size: sizeName,
 
         stock,
+
+        ...pricing,
 
         isActive:
           size.isActive ??
@@ -594,6 +641,13 @@ const normalizeColors = (
             color.images
           );
 
+        const pricing =
+          normalizePrice(
+            color.originalPrice,
+            color.showPrice,
+            nameProduct
+          );
+
         return {
           nameProduct,
 
@@ -611,6 +665,8 @@ const normalizeColors = (
           isDefault:
             color.isDefault ??
             colorIndex === 0,
+
+          ...pricing,
 
           shortDescription:
             color
@@ -1862,6 +1918,26 @@ export const updateProductSize =
 
       size.stock =
         stock;
+    }
+
+    if (
+      input.originalPrice !== undefined ||
+      input.showPrice !== undefined ||
+      input.discountPrice !== undefined
+    ) {
+      const pricing = normalizePrice(
+        input.originalPrice !== undefined
+          ? input.originalPrice
+          : size.originalPrice,
+        input.showPrice !== undefined
+          ? input.showPrice
+          : size.showPrice,
+        `${color.nameColor} / ${size.size}`
+      );
+
+      size.originalPrice = pricing.originalPrice;
+      size.showPrice = pricing.showPrice;
+      size.discountPrice = pricing.discountPrice;
     }
 
     if (

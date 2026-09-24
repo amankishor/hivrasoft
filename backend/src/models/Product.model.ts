@@ -26,6 +26,12 @@ export interface IProductSize {
 
   stock: number;
 
+  originalPrice: number;
+
+  showPrice: number;
+
+  discountPrice: number;
+
   isActive: boolean;
 }
 
@@ -45,6 +51,12 @@ export interface IProductColor {
   hex?: string;
 
   isDefault: boolean;
+
+  originalPrice: number;
+
+  showPrice: number;
+
+  discountPrice: number;
 
   shortDescription?: string;
 
@@ -184,6 +196,45 @@ const productSizeSchema =
         },
       },
 
+      originalPrice: {
+        type: Number,
+        required: [
+          true,
+          "Original price is required.",
+        ],
+        default: 0,
+        min: [
+          0,
+          "Original price cannot be negative.",
+        ],
+      },
+
+      showPrice: {
+        type: Number,
+        required: [
+          true,
+          "Show price is required.",
+        ],
+        default: 0,
+        min: [
+          0,
+          "Show price cannot be negative.",
+        ],
+      },
+
+      discountPrice: {
+        type: Number,
+        required: [
+          true,
+          "Discount price is required.",
+        ],
+        default: 0,
+        min: [
+          0,
+          "Discount price cannot be negative.",
+        ],
+      },
+
       isActive: {
         type: Boolean,
 
@@ -308,6 +359,49 @@ const productColorSchema =
         type: Boolean,
 
         default: false,
+      },
+
+      /* =====================================================
+         COLOR-LEVEL PRICING
+      ===================================================== */
+
+      originalPrice: {
+        type: Number,
+        required: [
+          true,
+          "Original price is required.",
+        ],
+        default: 0,
+        min: [
+          0,
+          "Original price cannot be negative.",
+        ],
+      },
+
+      showPrice: {
+        type: Number,
+        required: [
+          true,
+          "Show price is required.",
+        ],
+        default: 0,
+        min: [
+          0,
+          "Show price cannot be negative.",
+        ],
+      },
+
+      discountPrice: {
+        type: Number,
+        required: [
+          true,
+          "Discount price is required.",
+        ],
+        default: 0,
+        min: [
+          0,
+          "Discount price cannot be negative.",
+        ],
       },
 
       /* =====================================================
