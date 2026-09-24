@@ -8,6 +8,8 @@ import Cart, {
 } from "../models/Cart.model";
 
 import Product from "../models/Product.model";
+import DiscountCode from "../models/DiscountCode.model";
+import { calculateDiscounts } from "./discount.service";
 
 /* =========================================================
    TYPES
@@ -416,24 +418,43 @@ const buildCartResponse =
         }
       );
 
+    const discountResult = await calculateDiscounts(
+      items
+        .filter((item: any) => item.available && item.product?._id)
+        .map((item: any) => ({
+          productId: String(item.product._id),
+          unitPrice: Number(item.unitPrice || 0),
+          quantity: Number(item.quantity || 0),
+        })),
+      cart.discountCode || null
+    );
+
+    const discountByProduct = new Map(
+      discountResult.itemDiscounts.map((item) => [item.productId, item])
+    );
+
+    const discountedItems = items.map((item: any) => {
+      if (!item.product?._id) return item;
+      const discount = discountByProduct.get(String(item.product._id));
+      return { ...item, discount: discount || null };
+    });
+
+    const total = Math.max(0, subtotal - discountResult.totalDiscount);
+
     return {
-      _id:
-        cart._id,
-
-      user:
-        cart.user,
-
-      items,
-
+      _id: cart._id,
+      user: cart.user,
+      items: discountedItems,
       totalItems,
-
       subtotal,
-
-      createdAt:
-        cart.createdAt,
-
-      updatedAt:
-        cart.updatedAt,
+      automaticDiscount: discountResult.automaticDiscount,
+      codeDiscount: discountResult.codeDiscount,
+      discount: discountResult.totalDiscount,
+      discountSummary: { automatic: discountResult.automatic, code: discountResult.code },
+      appliedDiscountCode: cart.discountCode || "",
+      total,
+      createdAt: cart.createdAt,
+      updatedAt: cart.updatedAt,
     };
   };
 
@@ -484,7 +505,7 @@ export const addItemToCart =
     }
 
     if (
-      product.status !==
+      (product as any).status !==
       "active"
     ) {
       throw new Error(
@@ -704,7 +725,7 @@ export const updateCartItem =
     }
 
     if (
-      product.status !==
+      (product as any).status !==
       "active"
     ) {
       throw new Error(
@@ -829,6 +850,7 @@ export const clearUserCart =
       );
 
     cart.items = [];
+    cart.discountCode = "";
 
     await cart.save();
 
@@ -836,3 +858,41 @@ export const clearUserCart =
       cart
     );
   };
+
+
+/* =========================================================
+   DISCOUNT CODE
+========================================================= */
+
+export const applyCartDiscountCode = async (userId: string, rawCode: string) => {
+  validateObjectId(userId, "user ID");
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code) throw new Error("Enter a discount code.");
+
+  const coupon = await DiscountCode.findOne({ code, isActive: true }).lean();
+  if (!coupon) throw new Error("Discount code is invalid or inactive.");
+
+  const now = new Date();
+  if (coupon.startsAt && new Date(coupon.startsAt) > now) throw new Error("Discount code is not active yet.");
+  if (coupon.endsAt && new Date(coupon.endsAt) < now) throw new Error("Discount code has expired.");
+
+  const cart = await getOrCreateCart(userId);
+  cart.discountCode = code;
+  await cart.save();
+
+  const response = await buildCartResponse(cart);
+  if (response.codeDiscount <= 0) {
+    cart.discountCode = "";
+    await cart.save();
+    throw new Error("This discount code is not valid for products in your cart.");
+  }
+  return response;
+};
+
+export const removeCartDiscountCode = async (userId: string) => {
+  validateObjectId(userId, "user ID");
+  const cart = await getOrCreateCart(userId);
+  cart.discountCode = "";
+  await cart.save();
+  return buildCartResponse(cart);
+};

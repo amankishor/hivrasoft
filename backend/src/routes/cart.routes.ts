@@ -13,6 +13,8 @@ import {
   getCartCountController,
   removeCartItemController,
   updateCartItemController,
+  applyDiscountCodeController,
+  removeDiscountCodeController,
 } from "../controllers/cart.controller";
 
 const router =
@@ -45,6 +47,17 @@ router.get(
   "/",
   getCartController
 );
+
+router.post(
+  "/discount-code",
+  applyDiscountCodeController
+);
+
+router.delete(
+  "/discount-code",
+  removeDiscountCodeController
+);
+
 
 /* =========================================================
    ADD ITEM

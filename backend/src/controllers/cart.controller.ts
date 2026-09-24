@@ -10,6 +10,8 @@ import {
   getUserCart,
   removeCartItem,
   updateCartItem,
+  applyCartDiscountCode,
+  removeCartDiscountCode,
 } from "../services/cart.service";
 
 /* =========================================================
@@ -377,3 +379,24 @@ export const clearCartController =
         });
     }
   };
+
+
+export const applyDiscountCodeController = async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+    const cart = await applyCartDiscountCode(userId, req.body?.code);
+    return res.status(200).json({ success: true, message: "Discount code applied.", cart });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to apply discount code." });
+  }
+};
+
+export const removeDiscountCodeController = async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+    const cart = await removeCartDiscountCode(userId);
+    return res.status(200).json({ success: true, message: "Discount code removed.", cart });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to remove discount code." });
+  }
+};

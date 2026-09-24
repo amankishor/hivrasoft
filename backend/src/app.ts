@@ -13,6 +13,7 @@ import  addressRoutes from "./routes/user/address.routes"
 import bannerRoutes from "./routes/banner.routes";
 import wishlistRoutes from "./routes/wishlist.routes";
 import cartRoutes from "./routes/cart.routes";
+import orderRoutes from "./routes/order.routes";
 
 const app =
   express();
@@ -133,6 +134,10 @@ app.use(
 app.use(
   "/api/cart",
   cartRoutes
+);
+app.use(
+  "/api/orders",
+  orderRoutes
 );
 
 /* =========================================================
