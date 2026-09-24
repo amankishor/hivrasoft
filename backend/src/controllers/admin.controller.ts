@@ -6,6 +6,11 @@ import User from "../models/User.model";
 import Product from "../models/Product.model";
 import Category from "../models/Category.model";
 import Banner from "../models/Banner.model";
+import Order from "../models/Order.model";
+import Cart from "../models/Cart.model";
+import Wishlist from "../models/Wishlist.model";
+import Address from "../models/user/address.model";
+import Account from "../models/user/account.model";
 import { hashPassword, verifyPassword } from "../utils/password";
 
 const dummyHash = hashPassword("invalid-admin-login");
@@ -158,6 +163,232 @@ export async function getAdminCustomers(_req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : "Unable to load customers.",
+    });
+  }
+}
+
+/** GET /api/admin/customers/:id - complete customer 360 view for admin. */
+export async function getAdminCustomerDetails(req: Request, res: Response) {
+  try {
+    const customerId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!customerId || !Types.ObjectId.isValid(customerId)) {
+      return res.status(400).json({ success: false, message: "Invalid customer id." });
+    }
+
+    const userObjectId = new Types.ObjectId(customerId);
+
+    const customer = await User.findOne({ _id: userObjectId, role: "customer" })
+      .select("name username email phone role emailVerified isActive avatar createdAt updatedAt")
+      .lean();
+
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Customer not found." });
+    }
+
+    const [account, addresses, orders, cart, wishlist] = await Promise.all([
+      Account.findOne({ user: userObjectId })
+        .select("role emailVerified phoneVerified isActive isBlocked createdAt updatedAt")
+        .lean(),
+      Address.find({ user: userObjectId }).sort({ isDefault: -1, createdAt: -1 }).lean(),
+      Order.find({ user: userObjectId }).sort({ createdAt: -1 }).lean(),
+      Cart.findOne({ user: userObjectId }).lean(),
+      Wishlist.findOne({ user: userObjectId }).lean(),
+    ]);
+
+    const productIds = Array.from(
+      new Set([
+        ...((cart?.items || []).map((item: any) => String(item.product || ""))),
+        ...((wishlist?.items || []).map((item: any) => String(item.product || ""))),
+      ].filter((id) => Types.ObjectId.isValid(id)))
+    );
+
+    const products = productIds.length
+      ? await Product.find({ _id: { $in: productIds.map((id) => new Types.ObjectId(id)) } })
+          .populate({ path: "categories", select: "name slug" })
+          .lean()
+      : [];
+
+    const productMap = new Map(products.map((product: any) => [String(product._id), product]));
+
+    const pickColor = (product: any, colorId?: unknown) => {
+      const colors = Array.isArray(product?.colors) ? product.colors : [];
+      if (!colors.length) return null;
+
+      const requested = String(colorId || "");
+      const byId = requested
+        ? colors.find((color: any) => String(color?._id || "") === requested)
+        : null;
+
+      return byId || colors.find((color: any) => color?.isDefault === true) || colors[0] || null;
+    };
+
+    const pickSize = (color: any, sizeId?: unknown) => {
+      const sizes = Array.isArray(color?.sizes) ? color.sizes : [];
+      const requested = String(sizeId || "");
+      return (
+        (requested ? sizes.find((size: any) => String(size?._id || "") === requested) : null) ||
+        sizes.find((size: any) => size?.isActive !== false) ||
+        sizes[0] ||
+        null
+      );
+    };
+
+    const productView = (product: any, colorId?: unknown, sizeId?: unknown) => {
+      if (!product) return null;
+
+      const color = pickColor(product, colorId);
+      const size = pickSize(color, sizeId);
+      const images = Array.isArray(color?.images) ? color.images : [];
+      const mainImages = Array.isArray(product?.mainImages) ? product.mainImages : [];
+      const image =
+        images.find((item: any) => item?.isDefault === true) ||
+        images[0] ||
+        mainImages.find((item: any) => item?.isDefault === true) ||
+        mainImages[0] ||
+        null;
+      const categoryList = Array.isArray(product?.categories) ? product.categories : [];
+      const colorStock = (Array.isArray(color?.sizes) ? color.sizes : []).reduce(
+        (sum: number, item: any) => sum + Math.max(0, Number(item?.stock || 0)),
+        0
+      );
+      const stock = color ? colorStock : Math.max(0, Number(product?.stock || 0));
+
+      return {
+        _id: String(product._id),
+        name: String(color?.nameProduct || product?.name || "Product"),
+        slug: String(color?.slugProduct || product?.slug || ""),
+        colorName: String(color?.nameColor || ""),
+        colorHex: String(color?.hex || ""),
+        size: String(size?.size || ""),
+        originalPrice: Number(
+          size?.originalPrice ?? color?.originalPrice ?? product?.compareAtPrice ?? product?.price ?? 0
+        ),
+        showPrice: Number(size?.showPrice ?? color?.showPrice ?? product?.price ?? 0),
+        stock,
+        image: image?.url ? { url: String(image.url), publicId: String(image.publicId || "") } : null,
+        categories: categoryList.map((category: any) => ({
+          _id: String(category?._id || category || ""),
+          name: String(category?.name || ""),
+          slug: String(category?.slug || ""),
+        })),
+        isActive: product?.isActive !== false,
+      };
+    };
+
+    const cartItems = (cart?.items || []).map((item: any) => {
+      const product = productMap.get(String(item.product || ""));
+      const view = productView(product, item.colorId, item.sizeId);
+      const quantity = Math.max(0, Number(item.quantity || 0));
+      const unitPrice = Number(view?.showPrice || 0);
+      return {
+        _id: String(item._id || ""),
+        product: view,
+        quantity,
+        unitPrice,
+        lineTotal: Number((unitPrice * quantity).toFixed(2)),
+        addedAt: item.addedAt || null,
+      };
+    });
+
+    const wishlistItems = (wishlist?.items || []).map((item: any) => {
+      const product = productMap.get(String(item.product || ""));
+      return {
+        product: productView(product),
+        addedAt: item.addedAt || null,
+      };
+    });
+
+    const normalizedOrders = orders.map((order: any) => ({
+      _id: String(order._id),
+      orderNumber: String(order.orderNumber || order._id),
+      status: String(order.status || "pending").toLowerCase(),
+      paymentStatus: String(order.paymentStatus || "pending").toLowerCase(),
+      paymentMethod: String(order.paymentMethod || ""),
+      subtotal: Number(order.subtotal || 0),
+      automaticDiscount: Number(order.automaticDiscount || 0),
+      codeDiscount: Number(order.codeDiscount || 0),
+      discount: Number(order.discount || 0),
+      discountCode: String(order.discountCode || ""),
+      shipping: Number(order.shipping || 0),
+      total: Number(order.total ?? order.grandTotal ?? order.totalAmount ?? 0),
+      items: Array.isArray(order.items) ? order.items : [],
+      shippingAddress: order.shippingAddress || null,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    }));
+
+    const deliveredOrders = normalizedOrders.filter((order) => order.status === "delivered");
+    const cancelledOrders = normalizedOrders.filter((order) => ["cancelled", "canceled"].includes(order.status));
+    const openOrders = normalizedOrders.filter(
+      (order) => order.status !== "delivered" && !["cancelled", "canceled"].includes(order.status)
+    );
+    const paidOrders = normalizedOrders.filter((order) => order.paymentStatus === "paid");
+
+    const cartQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+    const cartSubtotal = cartItems.reduce((sum, item) => sum + item.lineTotal, 0);
+    const totalOrderValue = normalizedOrders
+      .filter((order) => !["cancelled", "canceled"].includes(order.status))
+      .reduce((sum, order) => sum + order.total, 0);
+    const deliveredValue = deliveredOrders.reduce((sum, order) => sum + order.total, 0);
+    const totalDiscount = normalizedOrders.reduce((sum, order) => sum + order.discount, 0);
+
+    return res.status(200).json({
+      success: true,
+      customer: {
+        ...customer,
+        _id: String(customer._id),
+      },
+      account: account
+        ? {
+            ...account,
+            _id: String((account as any)._id),
+          }
+        : null,
+      summary: {
+        totalOrders: normalizedOrders.length,
+        deliveredOrders: deliveredOrders.length,
+        openOrders: openOrders.length,
+        cancelledOrders: cancelledOrders.length,
+        paidOrders: paidOrders.length,
+        totalOrderValue: Number(totalOrderValue.toFixed(2)),
+        deliveredValue: Number(deliveredValue.toFixed(2)),
+        totalDiscount: Number(totalDiscount.toFixed(2)),
+        averageOrderValue:
+          normalizedOrders.length > 0
+            ? Number((totalOrderValue / normalizedOrders.length).toFixed(2))
+            : 0,
+        cartQuantity,
+        cartSubtotal: Number(cartSubtotal.toFixed(2)),
+        wishlistItems: wishlistItems.length,
+        addresses: addresses.length,
+        lastOrderAt: normalizedOrders[0]?.createdAt || null,
+      },
+      cart: {
+        _id: cart?._id ? String(cart._id) : null,
+        discountCode: String(cart?.discountCode || ""),
+        items: cartItems,
+        totalItems: cartQuantity,
+        subtotal: Number(cartSubtotal.toFixed(2)),
+        updatedAt: cart?.updatedAt || null,
+      },
+      wishlist: {
+        _id: wishlist?._id ? String(wishlist._id) : null,
+        items: wishlistItems,
+        count: wishlistItems.length,
+        updatedAt: wishlist?.updatedAt || null,
+      },
+      addresses: addresses.map((address: any) => ({
+        ...address,
+        _id: String(address._id),
+        user: String(address.user || customerId),
+      })),
+      orders: normalizedOrders,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to load customer details.",
     });
   }
 }

@@ -4,6 +4,7 @@ import { rateLimit } from "express-rate-limit";
 import {
   adminLogin,
   getAdminCustomers,
+  getAdminCustomerDetails,
   getAdminDashboard,
   getAdminOrders,
   getAdminSystemStatus,
@@ -92,6 +93,7 @@ router.get("/me", authenticateAdmin, (req: Request, res: Response) => {
 
 router.get("/dashboard", authenticateAdmin, getAdminDashboard);
 router.get("/customers", authenticateAdmin, getAdminCustomers);
+router.get("/customers/:id", authenticateAdmin, getAdminCustomerDetails);
 router.patch("/customers/:id/status", authenticateAdmin, updateAdminCustomerStatus);
 router.get("/orders", authenticateAdmin, getAdminOrders);
 router.patch("/orders/:id/status", authenticateAdmin, updateAdminOrderStatus);

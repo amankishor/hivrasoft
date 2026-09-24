@@ -6,156 +6,87 @@ import mongoose, {
 } from "mongoose";
 
 /* =========================================================
-   CART ITEM
+   DISCOUNT CODE
 ========================================================= */
 
-export interface ICartItem {
-  _id?: Types.ObjectId;
-
-  product: Types.ObjectId;
-
-  colorId: Types.ObjectId;
-
-  sizeId: Types.ObjectId;
-
-  quantity: number;
-
-  addedAt: Date;
-}
-
-/* =========================================================
-   CART
-========================================================= */
-
-export interface ICart
-  extends Document {
-  user: Types.ObjectId;
-
-  items: ICartItem[];
-
-  discountCode?: string;
-
+export interface IDiscountCode extends Document {
+  code: string;
+  percentage: number;
+  isActive: boolean;
+  appliesToAllProducts: boolean;
+  productIds: Types.ObjectId[];
+  startsAt?: Date | null;
+  endsAt?: Date | null;
   createdAt: Date;
-
   updatedAt: Date;
 }
 
-/* =========================================================
-   CART ITEM SCHEMA
-========================================================= */
-
-const cartItemSchema =
-  new Schema<ICartItem>(
-    {
-      product: {
-        type:
-          Schema.Types.ObjectId,
-
-        ref:
-          "Product",
-
-        required:
-          true,
-      },
-
-      colorId: {
-        type:
-          Schema.Types.ObjectId,
-
-        required:
-          true,
-      },
-
-      sizeId: {
-        type:
-          Schema.Types.ObjectId,
-
-        required:
-          true,
-      },
-
-      quantity: {
-        type: Number,
-        required: true,
-        min: 1,
-        max: 99,
-        default: 1,
-      },
-
-      addedAt: {
-        type: Date,
-        default:
-          Date.now,
-      },
+const discountCodeSchema = new Schema<IDiscountCode>(
+  {
+    code: {
+      type: String,
+      required: [true, "Discount code is required."],
+      unique: true,
+      uppercase: true,
+      trim: true,
+      minlength: 3,
+      maxlength: 40,
+      match: [
+        /^[A-Z0-9_-]+$/,
+        "Code can use only letters, numbers, _ or -.",
+      ],
+      index: true,
     },
-    {
-      _id: true,
-    }
-  );
 
-/* =========================================================
-   CART SCHEMA
-========================================================= */
-
-const cartSchema =
-  new Schema<ICart>(
-    {
-      user: {
-        type:
-          Schema.Types.ObjectId,
-
-        ref:
-          "User",
-
-        required:
-          true,
-
-        unique:
-          true,
-
-        index:
-          true,
-      },
-
-      items: {
-        type: [
-          cartItemSchema,
-        ],
-
-        default: [],
-      },
-
-      discountCode: {
-        type: String,
-        trim: true,
-        uppercase: true,
-        default: "",
-      },
+    percentage: {
+      type: Number,
+      required: [true, "Discount percentage is required."],
+      min: [0.01, "Discount percentage must be greater than 0."],
+      max: [100, "Discount percentage cannot be greater than 100."],
     },
-    {
-      timestamps: true,
-    }
-  );
 
-/* =========================================================
-   INDEXES
-========================================================= */
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
 
-cartSchema.index({
-  "items.product": 1,
-});
+    appliesToAllProducts: {
+      type: Boolean,
+      default: true,
+    },
 
-/* =========================================================
-   MODEL
-========================================================= */
+    productIds: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Product",
+        },
+      ],
+      default: [],
+    },
 
-const Cart: Model<ICart> =
-  (mongoose.models
-    .Cart as
-    Model<ICart>) ||
-  mongoose.model<ICart>(
-    "Cart",
-    cartSchema
-  );
+    startsAt: {
+      type: Date,
+      default: null,
+    },
 
-export default Cart;
+    endsAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    timestamps: true,
+    versionKey: false,
+  }
+);
+
+discountCodeSchema.index({ isActive: 1, createdAt: -1 });
+discountCodeSchema.index({ productIds: 1 });
+
+const DiscountCode: Model<IDiscountCode> =
+  (mongoose.models.DiscountCode as Model<IDiscountCode>) ||
+  mongoose.model<IDiscountCode>("DiscountCode", discountCodeSchema);
+
+export default DiscountCode;
