@@ -2,9 +2,9 @@ import {
   notFound,
 } from "next/navigation";
 
-import Header from "@/components/Header/Header";
+import Header from "@/src/components/Header/Header";
 
-import WomenCatalog from "@/components/Women/WomenCatalog";
+import WomenCatalog from "@/src/components/Women/WomenCatalog";
 
 import {
   getWomenBanners,
@@ -12,7 +12,7 @@ import {
   getWomenPageTitle,
   isValidWomenPath,
   type WomenProduct,
-} from "@/data/women";
+} from "@/src/data/women";
 
 /* =========================================================
    API

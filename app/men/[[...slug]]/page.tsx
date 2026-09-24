@@ -1,551 +1,369 @@
-import Header from "@/components/Header/Header";
-import MenCatalog from "@/components/Men/MenCatalog";
+import {
+  notFound,
+} from "next/navigation";
+
+import Header from "@/src/components/Header/Header";
+
+import MenCatalog from "@/src/components/Men/MenCatalog";
+
+import {
+  getMenBanners,
+  getMenPageDescription,
+  getMenPageTitle,
+  isValidMenPath,
+  type MenProduct,
+} from "@/src/data/men";
+
+import {
+  getActiveProducts,
+  normalizeStoreProduct,
+  type ApiProduct,
+} from "@/src/services/products";
 
 /* =========================================================
-   API
+   DYNAMIC
 ========================================================= */
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
-
-export const dynamic = "force-dynamic";
+export const dynamic =
+  "force-dynamic";
 
 /* =========================================================
    TYPES
 ========================================================= */
 
-type MediaImage = {
-  url?: string;
-  secure_url?: string;
-  src?: string;
-  imageUrl?: string;
-
-  publicId?: string;
-  public_id?: string;
-
-  alt?: string;
-  name?: string;
-};
-
-type ProductImage = {
-  url: string;
-  publicId?: string;
-};
-
-type ProductCategory = {
-  _id?: string;
-  id?: string;
-
-  name?: string;
-  slug?: string;
-};
-
-type ProductColor = {
-  name?: string;
-  hex?: string;
-
-  images?: ProductImage[];
-
-  isActive?: boolean;
-};
-
-type ApiProduct = {
-  _id?: string;
-  id?: string;
-
-  name?: string;
-  slug?: string;
-
-  shortDescription?: string;
-
-  price?: number;
-  compareAtPrice?: number;
-
-  mainImages?: ProductImage[];
-
-  colors?: ProductColor[];
-
-  categories?: ProductCategory[];
-
-  status?: string;
-};
-
-type ApiCategory = {
-  _id?: string;
-  id?: string;
-
-  name?: string;
-  slug?: string;
-
-  description?: string;
-
-  images?: Array<
-    string | MediaImage
-  >;
-
-  categoryImages?: Array<
-    string | MediaImage
-  >;
-
-  image?:
-    | string
-    | MediaImage;
-
-  bannerImage?:
-    | string
-    | MediaImage;
-
-  desktopImage?:
-    | string
-    | MediaImage;
-
-  thumbnail?:
-    | string
-    | MediaImage;
-
-  isActive?: boolean;
+type MenPageProps = {
+  params: Promise<{
+    slug?: string[];
+  }>;
 };
 
 /* =========================================================
-   HELPERS
+   MEN ROOT CATEGORY ALIASES
 ========================================================= */
 
-function normalize(
-  value?: string
-) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-");
-}
-
-function getImageUrl(
-  image?:
-    | string
-    | MediaImage
-    | null
-) {
-  if (!image) {
-    return "";
-  }
-
-  if (
-    typeof image === "string"
-  ) {
-    return image;
-  }
-
-  return (
-    image.url ||
-    image.secure_url ||
-    image.imageUrl ||
-    image.src ||
-    ""
-  );
-}
+const MEN_ROOT_SLUGS =
+  new Set([
+    "men",
+    "mens",
+    "menswear",
+    "male",
+  ]);
 
 /* =========================================================
-   CATEGORY BANNER
-========================================================= */
-
-function getCategoryBannerUrl(
-  category: ApiCategory | null
-) {
-  if (!category) {
-    return "";
-  }
-
-  if (
-    Array.isArray(
-      category.images
-    ) &&
-    category.images.length > 0
-  ) {
-    const url =
-      getImageUrl(
-        category.images[0]
-      );
-
-    if (url) {
-      return url;
-    }
-  }
-
-  if (
-    Array.isArray(
-      category.categoryImages
-    ) &&
-    category.categoryImages.length > 0
-  ) {
-    const url =
-      getImageUrl(
-        category.categoryImages[0]
-      );
-
-    if (url) {
-      return url;
-    }
-  }
-
-  return (
-    getImageUrl(
-      category.bannerImage
-    ) ||
-    getImageUrl(
-      category.desktopImage
-    ) ||
-    getImageUrl(
-      category.image
-    ) ||
-    getImageUrl(
-      category.thumbnail
-    ) ||
-    ""
-  );
-}
-
-/* =========================================================
-   EXTRACT CATEGORY
-========================================================= */
-
-function extractCategory(
-  result: unknown
-): ApiCategory | null {
-  if (
-    !result ||
-    typeof result !== "object"
-  ) {
-    return null;
-  }
-
-  const object =
-    result as Record<
-      string,
-      unknown
-    >;
-
-  if (
-    object.category &&
-    typeof object.category ===
-      "object" &&
-    !Array.isArray(
-      object.category
-    )
-  ) {
-    return object.category as ApiCategory;
-  }
-
-  if (
-    object.data &&
-    typeof object.data ===
-      "object" &&
-    !Array.isArray(
-      object.data
-    )
-  ) {
-    const data =
-      object.data as Record<
-        string,
-        unknown
-      >;
-
-    if (
-      data.category &&
-      typeof data.category ===
-        "object" &&
-      !Array.isArray(
-        data.category
-      )
-    ) {
-      return data.category as ApiCategory;
-    }
-
-    return object.data as ApiCategory;
-  }
-
-  return result as ApiCategory;
-}
-
-/* =========================================================
-   FETCH MEN CATEGORY
-========================================================= */
-
-async function getMenCategory(): Promise<
-  ApiCategory | null
-> {
-  try {
-    const response =
-      await fetch(
-        `${API_URL}/api/categories/slug/men`,
-        {
-          cache: "no-store",
-        }
-      );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const result: unknown =
-      await response.json();
-
-    return extractCategory(
-      result
-    );
-  } catch (error) {
-    console.error(
-      "Men category fetch error:",
-      error
-    );
-
-    return null;
-  }
-}
-
-/* =========================================================
-   CHECK MEN PRODUCT
+   IS MEN PRODUCT
 ========================================================= */
 
 function isMenProduct(
   product: ApiProduct
-) {
+): boolean {
+  const normalized =
+    normalizeStoreProduct(
+      product
+    );
+
+  return normalized
+    .categorySlugs
+    .some(
+      (slug) =>
+        MEN_ROOT_SLUGS.has(
+          slug
+        )
+    );
+}
+
+/* =========================================================
+   MATCH CURRENT ROUTE
+========================================================= */
+
+function matchesMenRoute(
+  product: ApiProduct,
+  category?: string,
+  subcategory?: string
+): boolean {
+  const normalized =
+    normalizeStoreProduct(
+      product
+    );
+
+  const categorySlugs =
+    normalized.categorySlugs;
+
+  /* =======================================================
+     MUST BELONG TO MEN
+  ======================================================= */
+
+  const belongsToMen =
+    categorySlugs.some(
+      (slug) =>
+        MEN_ROOT_SLUGS.has(
+          slug
+        )
+    );
+
+  if (!belongsToMen) {
+    return false;
+  }
+
+  /* =======================================================
+     /men
+  ======================================================= */
+
+  if (!category) {
+    return true;
+  }
+
+  /* =======================================================
+     /men/offers
+  ======================================================= */
+
   if (
-    !Array.isArray(
-      product.categories
+    category === "offers"
+  ) {
+    return (
+      normalized.actualPrice >
+      normalized.sellingPrice
+    );
+  }
+
+  /* =======================================================
+     CATEGORY
+  ======================================================= */
+
+  if (
+    !categorySlugs.includes(
+      category
     )
   ) {
     return false;
   }
 
-  return product.categories.some(
-    (category) => {
-      const slug =
-        normalize(
-          category.slug
-        );
+  /* =======================================================
+     NO SUBCATEGORY
+  ======================================================= */
 
-      const name =
-        normalize(
-          category.name
-        );
+  if (!subcategory) {
+    return true;
+  }
 
-      return (
-        slug === "men" ||
-        name === "men"
-      );
-    }
+  /* =======================================================
+     SUBCATEGORY
+  ======================================================= */
+
+  return categorySlugs.includes(
+    subcategory
   );
 }
 
 /* =========================================================
-   FETCH PRODUCTS
+   API PRODUCT -> MEN PRODUCT
 ========================================================= */
 
-async function getProducts(): Promise<
-  ApiProduct[]
-> {
-  try {
-    const response =
-      await fetch(
-        `${API_URL}/api/products/active`,
-        {
-          cache: "no-store",
-        }
-      );
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const result: unknown =
-      await response.json();
-
-    if (
-      Array.isArray(result)
-    ) {
-      return result as ApiProduct[];
-    }
-
-    if (
-      result &&
-      typeof result === "object"
-    ) {
-      const object =
-        result as Record<
-          string,
-          unknown
-        >;
-
-      if (
-        Array.isArray(
-          object.products
-        )
-      ) {
-        return object.products as ApiProduct[];
-      }
-
-      if (
-        Array.isArray(
-          object.data
-        )
-      ) {
-        return object.data as ApiProduct[];
-      }
-
-      if (
-        object.data &&
-        typeof object.data ===
-          "object"
-      ) {
-        const nested =
-          object.data as Record<
-            string,
-            unknown
-          >;
-
-        if (
-          Array.isArray(
-            nested.products
-          )
-        ) {
-          return nested.products as ApiProduct[];
-        }
-      }
-    }
-
-    return [];
-  } catch (error) {
-    console.error(
-      "Men products fetch error:",
-      error
+function mapProductToMenProduct(
+  product: ApiProduct
+): MenProduct {
+  const normalized =
+    normalizeStoreProduct(
+      product
     );
 
-    return [];
-  }
+  const hierarchy =
+    normalized
+      .categorySlugs
+      .filter(
+        (slug) =>
+          !MEN_ROOT_SLUGS.has(
+            slug
+          )
+      );
+
+  const mainCategory =
+    hierarchy[0] ||
+    "men";
+
+  const subcategories =
+    hierarchy.slice(1);
+
+  return {
+    id:
+      normalized.id,
+
+    name:
+      normalized.name,
+
+    slug:
+      normalized.slug,
+
+    image1:
+      normalized.image1,
+
+    image2:
+      normalized.image2,
+
+    actualPrice:
+      normalized.actualPrice,
+
+    discountedPrice:
+      normalized.sellingPrice,
+
+    category:
+      mainCategory,
+
+    subcategories,
+
+    onOffer:
+      normalized.actualPrice >
+      normalized.sellingPrice,
+
+    isFeatured:
+      normalized.isFeatured,
+
+    isNewLaunch:
+      normalized.isNewLaunch,
+  };
 }
 
 /* =========================================================
-   PAGE
+   MEN PAGE
 ========================================================= */
 
-export default async function MenPage() {
-  const [
-    products,
-    category,
-  ] =
-    await Promise.all([
-      getProducts(),
-      getMenCategory(),
-    ]);
+export default async function MenPage({
+  params,
+}: MenPageProps) {
+  const resolvedParams =
+    await params;
 
-  const menProducts =
-    products.filter(
+  const slugParts =
+    resolvedParams.slug ??
+    [];
+
+  /* =======================================================
+     MAX:
+
+     /men
+     /men/underwear
+     /men/underwear/trunks
+  ======================================================= */
+
+  if (
+    slugParts.length >
+    2
+  ) {
+    notFound();
+  }
+
+  const category =
+    slugParts[0];
+
+  const subcategory =
+    slugParts[1];
+
+  /* =======================================================
+     URL VALIDATION
+  ======================================================= */
+
+  if (
+    !isValidMenPath(
+      category,
+      subcategory
+    )
+  ) {
+    notFound();
+  }
+
+  /* =======================================================
+     FETCH ACTIVE PRODUCTS
+  ======================================================= */
+
+  const apiProducts =
+    await getActiveProducts();
+
+  /* =======================================================
+     DEBUG
+
+     Terminal me count show hoga.
+     Isse pata chalega API data aa raha hai ya nahi.
+  ======================================================= */
+
+  console.log(
+    "[MEN PAGE] Active products:",
+    apiProducts.length
+  );
+
+  /* =======================================================
+     ONLY MEN PRODUCTS
+  ======================================================= */
+
+  const menApiProducts =
+    apiProducts.filter(
       isMenProduct
     );
 
-  const bannerUrl =
-    getCategoryBannerUrl(
-      category
+  console.log(
+    "[MEN PAGE] Men products:",
+    menApiProducts.length
+  );
+
+  /* =======================================================
+     CURRENT CATEGORY PRODUCTS
+  ======================================================= */
+
+  const products =
+    menApiProducts
+      .filter(
+        (product) =>
+          matchesMenRoute(
+            product,
+            category,
+            subcategory
+          )
+      )
+      .map(
+        mapProductToMenProduct
+      )
+      .filter(
+        (product) =>
+          Boolean(
+            product.id
+          ) &&
+          Boolean(
+            product.slug
+          )
+      );
+
+  console.log(
+    "[MEN PAGE] Visible products:",
+    products.length
+  );
+
+  /* =======================================================
+     BANNER
+  ======================================================= */
+
+  const banners =
+    getMenBanners(
+      category,
+      subcategory
     );
 
-  const mappedProducts =
-    menProducts.map(
-      (
-        product,
-        index
-      ) => {
-        const mainImages =
-          Array.isArray(
-            product.mainImages
-          )
-            ? product.mainImages.filter(
-                (image) =>
-                  Boolean(
-                    image?.url
-                  )
-              )
-            : [];
+  /* =======================================================
+     TEXT
+  ======================================================= */
 
-        const activeColors =
-          Array.isArray(
-            product.colors
-          )
-            ? product.colors.filter(
-                (color) =>
-                  color.isActive !==
-                  false
-              )
-            : [];
-
-        const colorImages =
-          Array.isArray(
-            activeColors[0]
-              ?.images
-          )
-            ? activeColors[0]
-                .images!
-            : [];
-
-        /*
-          IMPORTANT:
-          Color product image ko priority
-          di hai so size-chart first image
-          hone ka issue kam hoga.
-        */
-
-        return {
-          id:
-            product._id ||
-            product.id ||
-            String(index),
-
-          name:
-            product.name ||
-            "Men Product",
-
-          slug:
-            product.slug ||
-            "",
-
-          shortDescription:
-            product.shortDescription ||
-            "",
-
-          price:
-            Number(
-              product.price
-            ) || 0,
-
-          compareAtPrice:
-            Number(
-              product.compareAtPrice ||
-                0
-            ),
-
-          image:
-            colorImages[0]
-              ?.url ||
-            mainImages[0]
-              ?.url ||
-            "",
-
-          hoverImage:
-            colorImages[1]
-              ?.url ||
-            mainImages[1]
-              ?.url ||
-            colorImages[0]
-              ?.url ||
-            mainImages[0]
-              ?.url ||
-            "",
-
-          colorCount:
-            activeColors.length,
-        };
-      }
+  const title =
+    getMenPageTitle(
+      category,
+      subcategory
     );
+
+  const description =
+    getMenPageDescription(
+      category,
+      subcategory
+    );
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <>
@@ -553,14 +371,22 @@ export default async function MenPage() {
 
       <MenCatalog
         products={
-          mappedProducts
+          products
         }
-        bannerUrl={
-          bannerUrl
+        banners={
+          banners
         }
-        categoryName={
-          category?.name ||
-          "Men"
+        title={
+          title
+        }
+        description={
+          description
+        }
+        category={
+          category
+        }
+        subcategory={
+          subcategory
         }
       />
     </>

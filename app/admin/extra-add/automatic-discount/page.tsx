@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import DiscountProductSelector from "@/components/Admin/DiscountProductSelector";
+import DiscountProductSelector from "@/src/components/Admin/DiscountProductSelector";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||

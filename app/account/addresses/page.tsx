@@ -8,7 +8,7 @@ import {
   type FormEvent,
 } from "react";
 
-import Header from "@/components/Header/Header";
+import Header from "@/src/components/Header/Header";
 import AccountSidebar from "../components/AccountSidebar";
 
 import {

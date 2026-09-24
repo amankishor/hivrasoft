@@ -2,11 +2,11 @@ import {
   notFound,
 } from "next/navigation";
 
-import Header from "@/components/Header/Header";
+import Header from "@/src/components/Header/Header";
 
 import ProductDetails, {
   type ProductDetailsData,
-} from "@/components/Product/ProductDetails/ProductDetails";
+} from "@/src/components/Product/ProductDetails/ProductDetails";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||

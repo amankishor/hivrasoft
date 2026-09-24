@@ -17,7 +17,7 @@ import {
   getWomenMenuItem,
   type WomenBanner,
   type WomenProduct,
-} from "@/data/women";
+} from "@/src/data/women";
 
 /* =========================================================
    TYPES
@@ -57,7 +57,7 @@ function WomenBannerSlider({
     }, [banners]);
 
   /* =======================================================
-     AUTO BANNER SLIDER
+     RESET + AUTO SLIDE
   ======================================================= */
 
   useEffect(() => {
@@ -129,7 +129,9 @@ function WomenBannerSlider({
           "1600 / 558",
       }}
     >
-      {/* BANNERS */}
+      {/* ===================================================
+          BANNERS
+      =================================================== */}
 
       {validBanners.map(
         (
@@ -144,7 +146,7 @@ function WomenBannerSlider({
             }
             aria-label={
               banner.alt ||
-              "Hivra Soft Banner"
+              "Hivra Soft Women Banner"
             }
             className={`
               absolute
@@ -159,7 +161,8 @@ function WomenBannerSlider({
               ${
                 active === index
                   ? "translate-x-0 opacity-100"
-                  : index < active
+                  : index <
+                      active
                     ? "-translate-x-full opacity-0"
                     : "translate-x-full opacity-0"
               }
@@ -171,7 +174,7 @@ function WomenBannerSlider({
               }
               alt={
                 banner.alt ||
-                "Hivra Soft Banner"
+                "Hivra Soft Women Banner"
               }
               className="
                 block
@@ -185,7 +188,9 @@ function WomenBannerSlider({
         )
       )}
 
-      {/* PREVIOUS BUTTON */}
+      {/* ===================================================
+          PREVIOUS
+      =================================================== */}
 
       {validBanners.length >
         1 && (
@@ -200,16 +205,20 @@ function WomenBannerSlider({
             left-4
             top-1/2
             z-30
+
             flex
             h-10
             w-10
             -translate-y-1/2
             items-center
             justify-center
+
             rounded-full
             bg-white/90
+
             text-[24px]
             text-[#211A18]
+
             shadow-md
             transition
 
@@ -220,7 +229,9 @@ function WomenBannerSlider({
         </button>
       )}
 
-      {/* NEXT BUTTON */}
+      {/* ===================================================
+          NEXT
+      =================================================== */}
 
       {validBanners.length >
         1 && (
@@ -235,16 +246,20 @@ function WomenBannerSlider({
             right-4
             top-1/2
             z-30
+
             flex
             h-10
             w-10
             -translate-y-1/2
             items-center
             justify-center
+
             rounded-full
             bg-white/90
+
             text-[24px]
             text-[#211A18]
+
             shadow-md
             transition
 
@@ -255,7 +270,9 @@ function WomenBannerSlider({
         </button>
       )}
 
-      {/* DOTS */}
+      {/* ===================================================
+          DOTS
+      =================================================== */}
 
       {validBanners.length >
         1 && (
@@ -265,6 +282,7 @@ function WomenBannerSlider({
             bottom-4
             left-1/2
             z-30
+
             flex
             -translate-x-1/2
             items-center
@@ -333,9 +351,12 @@ function CategoryNavigation({
         w-full
         overflow-hidden
         rounded-[20px]
+
         border
         border-[#211A18]/8
+
         bg-[#EFE5DB]
+
         px-4
         py-5
 
@@ -365,19 +386,20 @@ function CategoryNavigation({
             gap-3
           "
         >
-          {/* ALL WOMEN */}
-
           <Link
             href="/women/"
             className={`
               shrink-0
               rounded-full
+
               px-6
               py-3
+
               text-[9px]
               font-semibold
               uppercase
               tracking-[0.13em]
+
               transition-all
 
               ${
@@ -389,8 +411,6 @@ function CategoryNavigation({
           >
             All Women
           </Link>
-
-          {/* MENU ITEMS */}
 
           {womenMenu.map(
             (item) => (
@@ -404,12 +424,15 @@ function CategoryNavigation({
                 className={`
                   shrink-0
                   rounded-full
+
                   px-6
                   py-3
+
                   text-[9px]
                   font-semibold
                   uppercase
                   tracking-[0.13em]
+
                   transition-all
 
                   ${
@@ -440,12 +463,15 @@ function CategoryNavigation({
         <div
           className="
             mt-5
+
             flex
             w-full
             justify-start
             overflow-x-auto
+
             border-t
             border-[#211A18]/8
+
             pt-4
 
             md:justify-center
@@ -460,20 +486,22 @@ function CategoryNavigation({
               gap-8
             "
           >
-            {/* ALL CURRENT CATEGORY */}
-
             <Link
               href={
                 activeParent.href
               }
               className={`
                 shrink-0
+
                 border-b-2
+
                 pb-2
+
                 text-[8px]
                 font-semibold
                 uppercase
                 tracking-[0.12em]
+
                 transition
 
                 ${
@@ -489,8 +517,6 @@ function CategoryNavigation({
               }
             </Link>
 
-            {/* CHILD CATEGORIES */}
-
             {activeParent.children.map(
               (child) => (
                 <Link
@@ -502,12 +528,16 @@ function CategoryNavigation({
                   }
                   className={`
                     shrink-0
+
                     border-b-2
+
                     pb-2
+
                     text-[8px]
                     font-semibold
                     uppercase
                     tracking-[0.12em]
+
                     transition
 
                     ${
@@ -543,13 +573,25 @@ function ProductCard({
   const productUrl =
     `/product/${product.slug}`;
 
+  const actualPrice =
+    Number(
+      product.actualPrice
+    ) || 0;
+
+  const discountedPrice =
+    Number(
+      product.discountedPrice
+    ) || 0;
+
   const discount =
-    product.actualPrice >
-    product.discountedPrice
+    actualPrice >
+      discountedPrice &&
+    actualPrice >
+      0
       ? Math.round(
-          ((product.actualPrice -
-            product.discountedPrice) /
-            product.actualPrice) *
+          ((actualPrice -
+            discountedPrice) /
+            actualPrice) *
             100
         )
       : 0;
@@ -563,7 +605,7 @@ function ProductCard({
       "
     >
       {/* ===================================================
-          PRODUCT IMAGE
+          IMAGE
       =================================================== */}
 
       <Link
@@ -573,15 +615,19 @@ function ProductCard({
         className="
           relative
           block
+
           aspect-[4/5]
+
           overflow-hidden
+
           rounded-[14px]
+
           bg-[#F2ECE7]
         "
       >
         {product.image1 ? (
           <>
-            {/* NORMAL IMAGE */}
+            {/* NORMAL */}
 
             <img
               src={
@@ -590,14 +636,19 @@ function ProductCard({
               alt={
                 product.name
               }
+              loading="lazy"
               className="
                 absolute
                 inset-0
+
                 h-full
                 w-full
+
                 object-cover
                 object-center
+
                 opacity-100
+
                 transition-all
                 duration-500
 
@@ -606,7 +657,7 @@ function ProductCard({
               "
             />
 
-            {/* HOVER IMAGE */}
+            {/* HOVER */}
 
             <img
               src={
@@ -614,15 +665,21 @@ function ProductCard({
                 product.image1
               }
               alt={`${product.name} alternate`}
+              loading="lazy"
               className="
                 absolute
                 inset-0
+
                 h-full
                 w-full
+
                 scale-[1.02]
+
                 object-cover
                 object-center
+
                 opacity-0
+
                 transition-all
                 duration-500
 
@@ -639,6 +696,7 @@ function ProductCard({
               w-full
               items-center
               justify-center
+
               text-[10px]
               text-black/30
             "
@@ -657,10 +715,14 @@ function ProductCard({
               left-3
               top-3
               z-20
+
               rounded-full
+
               bg-[#9D173E]
+
               px-3
               py-1.5
+
               text-[8px]
               font-semibold
               text-white
@@ -670,7 +732,9 @@ function ProductCard({
           </span>
         )}
 
-        {/* WISHLIST */}
+        {/* WISHLIST DESIGN
+            API baad me connect karenge
+        */}
 
         <span
           className="
@@ -678,15 +742,20 @@ function ProductCard({
             right-3
             top-3
             z-20
+
             flex
             h-9
             w-9
             items-center
             justify-center
+
             rounded-full
+
             bg-white/90
+
             text-[18px]
             text-[#9D173E]
+
             shadow-sm
           "
         >
@@ -695,7 +764,7 @@ function ProductCard({
       </Link>
 
       {/* ===================================================
-          PRODUCT INFORMATION
+          PRODUCT INFO
       =================================================== */}
 
       <div
@@ -711,9 +780,11 @@ function ProductCard({
           className="
             block
             truncate
+
             text-[12px]
             font-medium
             text-[#211A18]
+
             transition
 
             hover:text-[#9D173E]
@@ -722,11 +793,10 @@ function ProductCard({
           {product.name}
         </Link>
 
-        {/* PRICE */}
-
         <div
           className="
             mt-2
+
             flex
             flex-wrap
             items-center
@@ -741,15 +811,13 @@ function ProductCard({
             "
           >
             ₹
-            {Number(
-              product.discountedPrice
-            ).toLocaleString(
+            {discountedPrice.toLocaleString(
               "en-IN"
             )}
           </span>
 
-          {product.actualPrice >
-            product.discountedPrice && (
+          {actualPrice >
+            discountedPrice && (
             <span
               className="
                 text-[10px]
@@ -758,9 +826,7 @@ function ProductCard({
               "
             >
               ₹
-              {Number(
-                product.actualPrice
-              ).toLocaleString(
+              {actualPrice.toLocaleString(
                 "en-IN"
               )}
             </span>
@@ -792,7 +858,7 @@ export default function WomenCatalog({
     );
 
   /* =======================================================
-     SORT PRODUCTS
+     SORT
   ======================================================= */
 
   const sortedProducts =
@@ -810,8 +876,12 @@ export default function WomenCatalog({
             a,
             b
           ) =>
-            a.discountedPrice -
-            b.discountedPrice
+            Number(
+              a.discountedPrice
+            ) -
+            Number(
+              b.discountedPrice
+            )
         );
       }
 
@@ -824,8 +894,12 @@ export default function WomenCatalog({
             a,
             b
           ) =>
-            b.discountedPrice -
-            a.discountedPrice
+            Number(
+              b.discountedPrice
+            ) -
+            Number(
+              a.discountedPrice
+            )
         );
       }
 
@@ -836,7 +910,7 @@ export default function WomenCatalog({
     ]);
 
   /* =======================================================
-     PRODUCT ANIMATION
+     GSAP PRODUCT ANIMATION
   ======================================================= */
 
   useEffect(() => {
@@ -862,31 +936,30 @@ export default function WomenCatalog({
 
               once: true,
 
-              onEnter:
-                (
-                  elements
-                ) => {
-                  gsap.fromTo(
-                    elements,
-                    {
-                      y: 30,
-                      opacity: 0,
-                    },
-                    {
-                      y: 0,
-                      opacity: 1,
+              onEnter: (
+                elements
+              ) => {
+                gsap.fromTo(
+                  elements,
+                  {
+                    y: 30,
+                    opacity: 0,
+                  },
+                  {
+                    y: 0,
+                    opacity: 1,
 
-                      duration:
-                        0.6,
+                    duration:
+                      0.6,
 
-                      stagger:
-                        0.06,
+                    stagger:
+                      0.06,
 
-                      ease:
-                        "power3.out",
-                    }
-                  );
-                },
+                    ease:
+                      "power3.out",
+                  }
+                );
+              },
             }
           );
         },
@@ -916,10 +989,7 @@ export default function WomenCatalog({
       "
     >
       {/* =================================================
-          TOP BANNER
-
-          Existing banner data
-          data/women.ts se aayega.
+          BANNER
       ================================================= */}
 
       <WomenBannerSlider
@@ -929,19 +999,7 @@ export default function WomenCatalog({
       />
 
       {/* =================================================
-          IMPORTANT
-
-          Purana huge:
-          breadcrumb
-          HIVRA SOFT WOMEN
-          Sports Bra title
-          description
-
-          YAHAN NAHI HAI.
-      ================================================= */}
-
-      {/* =================================================
-          PRODUCT AREA
+          PRODUCTS
       ================================================= */}
 
       <section
@@ -959,11 +1017,7 @@ export default function WomenCatalog({
             max-w-[1450px]
           "
         >
-          {/* =============================================
-              CATEGORY NAVIGATION
-
-              Ab ye product section ke andar hai.
-          ============================================= */}
+          {/* CATEGORY */}
 
           <div
             className="
@@ -980,18 +1034,19 @@ export default function WomenCatalog({
             />
           </div>
 
-          {/* =============================================
-              TOOLBAR
-          ============================================= */}
+          {/* TOOLBAR */}
 
           <div
             className="
               mb-8
+
               flex
               flex-col
               gap-4
+
               border-b
               border-[#211A18]/10
+
               pb-5
 
               sm:flex-row
@@ -999,8 +1054,6 @@ export default function WomenCatalog({
               sm:justify-between
             "
           >
-            {/* PRODUCT COUNT */}
-
             <p
               className="
                 text-[9px]
@@ -1019,8 +1072,6 @@ export default function WomenCatalog({
                 : "Products"}
             </p>
 
-            {/* SORT */}
-
             <select
               value={
                 sort
@@ -1035,14 +1086,19 @@ export default function WomenCatalog({
               }
               className="
                 rounded-[8px]
+
                 border
                 border-[#211A18]/15
+
                 bg-white
+
                 px-4
                 py-3
+
                 text-[9px]
                 uppercase
                 tracking-[0.1em]
+
                 outline-none
               "
             >
@@ -1060,9 +1116,7 @@ export default function WomenCatalog({
             </select>
           </div>
 
-          {/* =============================================
-              PRODUCTS
-          ============================================= */}
+          {/* PRODUCTS */}
 
           {sortedProducts.length >
           0 ? (
@@ -1070,6 +1124,7 @@ export default function WomenCatalog({
               className="
                 grid
                 grid-cols-2
+
                 gap-x-4
                 gap-y-9
 
@@ -1097,20 +1152,20 @@ export default function WomenCatalog({
               )}
             </div>
           ) : (
-            /* ===========================================
-               EMPTY STATE
-            =========================================== */
-
             <div
               className="
                 flex
                 min-h-[330px]
                 items-center
                 justify-center
+
                 rounded-[18px]
+
                 border
                 border-[#211A18]/8
+
                 bg-white
+
                 text-center
               "
             >
@@ -1141,10 +1196,14 @@ export default function WomenCatalog({
                   className="
                     mt-6
                     inline-flex
+
                     rounded-full
+
                     bg-[#211A18]
+
                     px-7
                     py-3
+
                     text-[8px]
                     font-semibold
                     uppercase

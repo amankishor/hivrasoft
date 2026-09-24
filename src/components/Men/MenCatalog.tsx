@@ -9,23 +9,28 @@ import {
   useState,
 } from "react";
 
-import { gsap } from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
+import {
+  gsap,
+} from "gsap";
 
 import {
-  womenMenu,
-  getWomenMenuItem,
-  type WomenBanner,
-  type WomenProduct,
-} from "@/src/data/women";
+  ScrollTrigger,
+} from "gsap/ScrollTrigger";
+
+import {
+  menMenu,
+  type MenBanner,
+  type MenProduct,
+} from "@/src/data/men";
 
 /* =========================================================
-   TYPES
+   PROPS
 ========================================================= */
 
-type WomenCatalogProps = {
-  products: WomenProduct[];
-  banners: WomenBanner[];
+type MenCatalogProps = {
+  products: MenProduct[];
+
+  banners: MenBanner[];
 
   title: string;
   description: string;
@@ -35,30 +40,33 @@ type WomenCatalogProps = {
 };
 
 /* =========================================================
-   BANNER SLIDER
+   BANNER
 ========================================================= */
 
-function WomenBannerSlider({
+function MenBannerSlider({
   banners,
 }: {
-  banners: WomenBanner[];
+  banners: MenBanner[];
 }) {
-  const [active, setActive] =
+  const [
+    active,
+    setActive,
+  ] =
     useState(0);
 
   const validBanners =
-    useMemo(() => {
-      return banners.filter(
-        (banner) =>
-          Boolean(
-            banner.image
-          )
-      );
-    }, [banners]);
-
-  /* =======================================================
-     AUTO BANNER SLIDER
-  ======================================================= */
+    useMemo(
+      () =>
+        banners.filter(
+          (banner) =>
+            Boolean(
+              banner?.image
+            )
+        ),
+      [
+        banners,
+      ]
+    );
 
   useEffect(() => {
     setActive(0);
@@ -82,11 +90,10 @@ function WomenBannerSlider({
         4000
       );
 
-    return () => {
+    return () =>
       window.clearInterval(
         timer
       );
-    };
   }, [
     validBanners.length,
   ]);
@@ -97,24 +104,6 @@ function WomenBannerSlider({
   ) {
     return null;
   }
-
-  const previous = () => {
-    setActive(
-      (current) =>
-        current === 0
-          ? validBanners.length -
-            1
-          : current - 1
-    );
-  };
-
-  const next = () => {
-    setActive(
-      (current) =>
-        (current + 1) %
-        validBanners.length
-    );
-  };
 
   return (
     <section
@@ -129,8 +118,6 @@ function WomenBannerSlider({
           "1600 / 558",
       }}
     >
-      {/* BANNERS */}
-
       {validBanners.map(
         (
           banner,
@@ -140,11 +127,8 @@ function WomenBannerSlider({
             key={`${banner.image}-${index}`}
             href={
               banner.redirect ||
+              banner.href ||
               "#"
-            }
-            aria-label={
-              banner.alt ||
-              "Hivra Soft Banner"
             }
             className={`
               absolute
@@ -152,14 +136,15 @@ function WomenBannerSlider({
               block
               h-full
               w-full
+
               transition-all
-              duration-1000
-              ease-[cubic-bezier(.22,1,.36,1)]
+              duration-700
 
               ${
                 active === index
                   ? "translate-x-0 opacity-100"
-                  : index < active
+                  : index <
+                      active
                     ? "-translate-x-full opacity-0"
                     : "translate-x-full opacity-0"
               }
@@ -171,10 +156,10 @@ function WomenBannerSlider({
               }
               alt={
                 banner.alt ||
-                "Hivra Soft Banner"
+                banner.title ||
+                "Men Banner"
               }
               className="
-                block
                 h-full
                 w-full
                 object-cover
@@ -185,127 +170,84 @@ function WomenBannerSlider({
         )
       )}
 
-      {/* PREVIOUS BUTTON */}
-
       {validBanners.length >
         1 && (
-        <button
-          type="button"
-          aria-label="Previous banner"
-          onClick={
-            previous
-          }
-          className="
-            absolute
-            left-4
-            top-1/2
-            z-30
-            flex
-            h-10
-            w-10
-            -translate-y-1/2
-            items-center
-            justify-center
-            rounded-full
-            bg-white/90
-            text-[24px]
-            text-[#211A18]
-            shadow-md
-            transition
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              setActive(
+                (
+                  current
+                ) =>
+                  current ===
+                  0
+                    ? validBanners.length -
+                      1
+                    : current -
+                      1
+              )
+            }
+            className="
+              absolute
+              left-4
+              top-1/2
+              z-20
 
-            hover:scale-110
-          "
-        >
-          ‹
-        </button>
-      )}
+              flex
+              h-10
+              w-10
+              -translate-y-1/2
+              items-center
+              justify-center
 
-      {/* NEXT BUTTON */}
+              rounded-full
+              bg-white/90
 
-      {validBanners.length >
-        1 && (
-        <button
-          type="button"
-          aria-label="Next banner"
-          onClick={
-            next
-          }
-          className="
-            absolute
-            right-4
-            top-1/2
-            z-30
-            flex
-            h-10
-            w-10
-            -translate-y-1/2
-            items-center
-            justify-center
-            rounded-full
-            bg-white/90
-            text-[24px]
-            text-[#211A18]
-            shadow-md
-            transition
+              text-[22px]
 
-            hover:scale-110
-          "
-        >
-          ›
-        </button>
-      )}
+              shadow
+            "
+          >
+            ‹
+          </button>
 
-      {/* DOTS */}
+          <button
+            type="button"
+            onClick={() =>
+              setActive(
+                (
+                  current
+                ) =>
+                  (current +
+                    1) %
+                  validBanners.length
+              )
+            }
+            className="
+              absolute
+              right-4
+              top-1/2
+              z-20
 
-      {validBanners.length >
-        1 && (
-        <div
-          className="
-            absolute
-            bottom-4
-            left-1/2
-            z-30
-            flex
-            -translate-x-1/2
-            items-center
-            gap-2
-          "
-        >
-          {validBanners.map(
-            (
-              _,
-              index
-            ) => (
-              <button
-                key={
-                  index
-                }
-                type="button"
-                aria-label={`Banner ${
-                  index + 1
-                }`}
-                onClick={() =>
-                  setActive(
-                    index
-                  )
-                }
-                className={`
-                  h-[6px]
-                  rounded-full
-                  transition-all
-                  duration-300
+              flex
+              h-10
+              w-10
+              -translate-y-1/2
+              items-center
+              justify-center
 
-                  ${
-                    active ===
-                    index
-                      ? "w-8 bg-[#9D173E]"
-                      : "w-[6px] bg-white shadow"
-                  }
-                `}
-              />
-            )
-          )}
-        </div>
+              rounded-full
+              bg-white/90
+
+              text-[22px]
+
+              shadow
+            "
+          >
+            ›
+          </button>
+        </>
       )}
     </section>
   );
@@ -315,7 +257,7 @@ function WomenBannerSlider({
    CATEGORY NAVIGATION
 ========================================================= */
 
-function CategoryNavigation({
+function MenNavigation({
   category,
   subcategory,
 }: {
@@ -323,8 +265,16 @@ function CategoryNavigation({
   subcategory?: string;
 }) {
   const activeParent =
-    getWomenMenuItem(
-      category
+    useMemo(
+      () =>
+        menMenu.find(
+          (item) =>
+            item.slug ===
+            category
+        ),
+      [
+        category,
+      ]
     );
 
   return (
@@ -332,32 +282,32 @@ function CategoryNavigation({
       className="
         w-full
         overflow-hidden
+
         rounded-[20px]
+
         border
-        border-[#211A18]/8
+        border-[#211A18]/10
+
         bg-[#EFE5DB]
+
         px-4
         py-5
 
         md:px-6
       "
     >
-      {/* ===================================================
-          MAIN CATEGORY ROW
-      =================================================== */}
+      {/* MAIN */}
 
       <div
         className="
-          flex
           w-full
-          justify-start
           overflow-x-auto
-
-          md:justify-center
         "
       >
         <div
           className="
+            mx-auto
+
             flex
             min-w-max
             items-center
@@ -365,34 +315,34 @@ function CategoryNavigation({
             gap-3
           "
         >
-          {/* ALL WOMEN */}
-
           <Link
-            href="/women/"
+            href="/men"
             className={`
               shrink-0
+
               rounded-full
+
               px-6
               py-3
+
               text-[9px]
               font-semibold
               uppercase
               tracking-[0.13em]
+
               transition-all
 
               ${
                 !category
-                  ? "bg-[#9D173E] text-white"
-                  : "bg-white text-[#211A18] hover:bg-[#9D173E] hover:text-white"
+                  ? "bg-[#A91543] text-white"
+                  : "bg-white text-[#211A18] hover:bg-[#A91543] hover:text-white"
               }
             `}
           >
-            All Women
+            All Men
           </Link>
 
-          {/* MENU ITEMS */}
-
-          {womenMenu.map(
+          {menMenu.map(
             (item) => (
               <Link
                 key={
@@ -403,20 +353,24 @@ function CategoryNavigation({
                 }
                 className={`
                   shrink-0
+
                   rounded-full
+
                   px-6
                   py-3
+
                   text-[9px]
                   font-semibold
                   uppercase
                   tracking-[0.13em]
+
                   transition-all
 
                   ${
                     category ===
                     item.slug
-                      ? "bg-[#9D173E] text-white"
-                      : "bg-white text-[#211A18] hover:bg-[#9D173E] hover:text-white"
+                      ? "bg-[#A91543] text-white"
+                      : "bg-white text-[#211A18] hover:bg-[#A91543] hover:text-white"
                   }
                 `}
               >
@@ -429,9 +383,7 @@ function CategoryNavigation({
         </div>
       </div>
 
-      {/* ===================================================
-          SUBCATEGORY ROW
-      =================================================== */}
+      {/* CHILDREN */}
 
       {activeParent &&
         activeParent.children
@@ -440,19 +392,18 @@ function CategoryNavigation({
         <div
           className="
             mt-5
-            flex
-            w-full
-            justify-start
             overflow-x-auto
-            border-t
-            border-[#211A18]/8
-            pt-4
 
-            md:justify-center
+            border-t
+            border-[#211A18]/10
+
+            pt-4
           "
         >
           <div
             className="
+              mx-auto
+
               flex
               min-w-max
               items-center
@@ -460,26 +411,23 @@ function CategoryNavigation({
               gap-8
             "
           >
-            {/* ALL CURRENT CATEGORY */}
-
             <Link
               href={
                 activeParent.href
               }
               className={`
-                shrink-0
                 border-b-2
                 pb-2
+
                 text-[8px]
                 font-semibold
                 uppercase
                 tracking-[0.12em]
-                transition
 
                 ${
                   !subcategory
-                    ? "border-[#9D173E] text-[#9D173E]"
-                    : "border-transparent text-[#6F5A4C] hover:text-[#9D173E]"
+                    ? "border-[#A91543] text-[#A91543]"
+                    : "border-transparent text-[#6F5A4C]"
                 }
               `}
             >
@@ -488,8 +436,6 @@ function CategoryNavigation({
                 activeParent.name
               }
             </Link>
-
-            {/* CHILD CATEGORIES */}
 
             {activeParent.children.map(
               (child) => (
@@ -501,20 +447,19 @@ function CategoryNavigation({
                     child.href
                   }
                   className={`
-                    shrink-0
                     border-b-2
                     pb-2
+
                     text-[8px]
                     font-semibold
                     uppercase
                     tracking-[0.12em]
-                    transition
 
                     ${
                       subcategory ===
                       child.slug
-                        ? "border-[#9D173E] text-[#9D173E]"
-                        : "border-transparent text-[#6F5A4C] hover:text-[#9D173E]"
+                        ? "border-[#A91543] text-[#A91543]"
+                        : "border-transparent text-[#6F5A4C] hover:text-[#A91543]"
                     }
                   `}
                 >
@@ -538,14 +483,16 @@ function CategoryNavigation({
 function ProductCard({
   product,
 }: {
-  product: WomenProduct;
+  product: MenProduct;
 }) {
   const productUrl =
     `/product/${product.slug}`;
 
   const discount =
     product.actualPrice >
-    product.discountedPrice
+      product.discountedPrice &&
+    product.actualPrice >
+      0
       ? Math.round(
           ((product.actualPrice -
             product.discountedPrice) /
@@ -562,10 +509,6 @@ function ProductCard({
         min-w-0
       "
     >
-      {/* ===================================================
-          PRODUCT IMAGE
-      =================================================== */}
-
       <Link
         href={
           productUrl
@@ -573,16 +516,18 @@ function ProductCard({
         className="
           relative
           block
+
           aspect-[4/5]
+
           overflow-hidden
+
           rounded-[14px]
+
           bg-[#F2ECE7]
         "
       >
         {product.image1 ? (
           <>
-            {/* NORMAL IMAGE */}
-
             <img
               src={
                 product.image1
@@ -593,11 +538,13 @@ function ProductCard({
               className="
                 absolute
                 inset-0
+
                 h-full
                 w-full
+
                 object-cover
                 object-center
-                opacity-100
+
                 transition-all
                 duration-500
 
@@ -605,8 +552,6 @@ function ProductCard({
                 group-hover:opacity-0
               "
             />
-
-            {/* HOVER IMAGE */}
 
             <img
               src={
@@ -617,12 +562,17 @@ function ProductCard({
               className="
                 absolute
                 inset-0
+
                 h-full
                 w-full
+
                 scale-[1.02]
+
                 object-cover
                 object-center
+
                 opacity-0
+
                 transition-all
                 duration-500
 
@@ -636,9 +586,9 @@ function ProductCard({
             className="
               flex
               h-full
-              w-full
               items-center
               justify-center
+
               text-[10px]
               text-black/30
             "
@@ -646,8 +596,6 @@ function ProductCard({
             No Image
           </div>
         )}
-
-        {/* DISCOUNT */}
 
         {discount >
           0 && (
@@ -657,10 +605,14 @@ function ProductCard({
               left-3
               top-3
               z-20
+
               rounded-full
-              bg-[#9D173E]
+
+              bg-[#A91543]
+
               px-3
               py-1.5
+
               text-[8px]
               font-semibold
               text-white
@@ -670,33 +622,32 @@ function ProductCard({
           </span>
         )}
 
-        {/* WISHLIST */}
-
         <span
           className="
             absolute
             right-3
             top-3
             z-20
+
             flex
             h-9
             w-9
             items-center
             justify-center
+
             rounded-full
+
             bg-white/90
+
             text-[18px]
-            text-[#9D173E]
+            text-[#A91543]
+
             shadow-sm
           "
         >
           ♡
         </span>
       </Link>
-
-      {/* ===================================================
-          PRODUCT INFORMATION
-      =================================================== */}
 
       <div
         className="
@@ -711,22 +662,23 @@ function ProductCard({
           className="
             block
             truncate
+
             text-[12px]
             font-medium
             text-[#211A18]
-            transition
 
-            hover:text-[#9D173E]
+            hover:text-[#A91543]
           "
         >
-          {product.name}
+          {
+            product.name
+          }
         </Link>
-
-        {/* PRICE */}
 
         <div
           className="
             mt-2
+
             flex
             flex-wrap
             items-center
@@ -772,27 +724,30 @@ function ProductCard({
 }
 
 /* =========================================================
-   WOMEN CATALOG
+   CATALOG
 ========================================================= */
 
-export default function WomenCatalog({
+export default function MenCatalog({
   products,
   banners,
   category,
   subcategory,
-}: WomenCatalogProps) {
+}: MenCatalogProps) {
   const rootRef =
     useRef<HTMLElement>(
       null
     );
 
-  const [sort, setSort] =
+  const [
+    sort,
+    setSort,
+  ] =
     useState(
       "featured"
     );
 
   /* =======================================================
-     SORT PRODUCTS
+     SORT
   ======================================================= */
 
   const sortedProducts =
@@ -829,14 +784,25 @@ export default function WomenCatalog({
         );
       }
 
-      return result;
+      return result.sort(
+        (
+          a,
+          b
+        ) =>
+          Number(
+            b.isFeatured
+          ) -
+          Number(
+            a.isFeatured
+          )
+      );
     }, [
       products,
       sort,
     ]);
 
   /* =======================================================
-     PRODUCT ANIMATION
+     ANIMATION
   ======================================================= */
 
   useEffect(() => {
@@ -864,12 +830,12 @@ export default function WomenCatalog({
 
               onEnter:
                 (
-                  elements
+                  cards
                 ) => {
                   gsap.fromTo(
-                    elements,
+                    cards,
                     {
-                      y: 30,
+                      y: 24,
                       opacity: 0,
                     },
                     {
@@ -877,10 +843,10 @@ export default function WomenCatalog({
                       opacity: 1,
 
                       duration:
-                        0.6,
+                        0.55,
 
                       stagger:
-                        0.06,
+                        0.05,
 
                       ease:
                         "power3.out",
@@ -893,16 +859,11 @@ export default function WomenCatalog({
         root
       );
 
-    return () => {
+    return () =>
       context.revert();
-    };
   }, [
-    products,
+    sortedProducts,
   ]);
-
-  /* =======================================================
-     RENDER
-  ======================================================= */
 
   return (
     <main
@@ -911,46 +872,24 @@ export default function WomenCatalog({
       }
       className="
         min-h-screen
+
         bg-[#F8F5F2]
+
         text-[#211A18]
       "
     >
-      {/* =================================================
-          TOP BANNER
-
-          Existing banner data
-          data/women.ts se aayega.
-      ================================================= */}
-
-      <WomenBannerSlider
+      <MenBannerSlider
         banners={
           banners
         }
       />
 
-      {/* =================================================
-          IMPORTANT
-
-          Purana huge:
-          breadcrumb
-          HIVRA SOFT WOMEN
-          Sports Bra title
-          description
-
-          YAHAN NAHI HAI.
-      ================================================= */}
-
-      {/* =================================================
-          PRODUCT AREA
-      ================================================= */}
-
       <section
         className="
           px-4
-          py-10
+          py-12
 
           md:px-8
-          md:py-12
         "
       >
         <div
@@ -959,48 +898,34 @@ export default function WomenCatalog({
             max-w-[1450px]
           "
         >
-          {/* =============================================
-              CATEGORY NAVIGATION
+          {/* NAVIGATION */}
 
-              Ab ye product section ke andar hai.
-          ============================================= */}
+          <MenNavigation
+            category={
+              category
+            }
+            subcategory={
+              subcategory
+            }
+          />
 
-          <div
-            className="
-              mb-9
-            "
-          >
-            <CategoryNavigation
-              category={
-                category
-              }
-              subcategory={
-                subcategory
-              }
-            />
-          </div>
-
-          {/* =============================================
-              TOOLBAR
-          ============================================= */}
+          {/* TOOLBAR */}
 
           <div
             className="
               mb-8
+              mt-9
+
               flex
-              flex-col
-              gap-4
+              items-center
+              justify-between
+
               border-b
               border-[#211A18]/10
-              pb-5
 
-              sm:flex-row
-              sm:items-center
-              sm:justify-between
+              pb-5
             "
           >
-            {/* PRODUCT COUNT */}
-
             <p
               className="
                 text-[9px]
@@ -1019,8 +944,6 @@ export default function WomenCatalog({
                 : "Products"}
             </p>
 
-            {/* SORT */}
-
             <select
               value={
                 sort
@@ -1034,15 +957,23 @@ export default function WomenCatalog({
                 )
               }
               className="
+                min-w-[160px]
+
                 rounded-[8px]
+
                 border
                 border-[#211A18]/15
+
                 bg-white
+
                 px-4
                 py-3
+
                 text-[9px]
+                font-medium
                 uppercase
                 tracking-[0.1em]
+
                 outline-none
               "
             >
@@ -1060,20 +991,18 @@ export default function WomenCatalog({
             </select>
           </div>
 
-          {/* =============================================
-              PRODUCTS
-          ============================================= */}
+          {/* PRODUCTS */}
 
           {sortedProducts.length >
           0 ? (
             <div
               className="
                 grid
+
                 grid-cols-2
+
                 gap-x-4
                 gap-y-9
-
-                sm:gap-x-5
 
                 md:grid-cols-3
                 md:gap-x-6
@@ -1083,11 +1012,14 @@ export default function WomenCatalog({
             >
               {sortedProducts.map(
                 (
-                  product
+                  product,
+                  index
                 ) => (
                   <ProductCard
                     key={
-                      product.slug
+                      product.id ||
+                      product.slug ||
+                      index
                     }
                     product={
                       product
@@ -1097,20 +1029,20 @@ export default function WomenCatalog({
               )}
             </div>
           ) : (
-            /* ===========================================
-               EMPTY STATE
-            =========================================== */
-
             <div
               className="
                 flex
                 min-h-[330px]
                 items-center
                 justify-center
+
                 rounded-[18px]
+
                 border
                 border-[#211A18]/8
+
                 bg-white
+
                 text-center
               "
             >
@@ -1129,6 +1061,7 @@ export default function WomenCatalog({
                 <h2
                   className="
                     mt-4
+
                     text-[25px]
                     font-medium
                   "
@@ -1136,15 +1069,33 @@ export default function WomenCatalog({
                   No products found.
                 </h2>
 
+                <p
+                  className="
+                    mt-2
+
+                    text-[10px]
+                    text-[#211A18]/45
+                  "
+                >
+                  Is category me abhi
+                  koi active product
+                  available nahi hai.
+                </p>
+
                 <Link
-                  href="/women/"
+                  href="/men"
                   className="
                     mt-6
+
                     inline-flex
+
                     rounded-full
+
                     bg-[#211A18]
+
                     px-7
                     py-3
+
                     text-[8px]
                     font-semibold
                     uppercase
@@ -1152,7 +1103,7 @@ export default function WomenCatalog({
                     text-white
                   "
                 >
-                  View All Women
+                  View All Men
                 </Link>
               </div>
             </div>

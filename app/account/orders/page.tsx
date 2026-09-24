@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import Header from "@/components/Header/Header";
+import Header from "@/src/components/Header/Header";
 import AccountSidebar from "../components/AccountSidebar";
 import {
   ArrowRight,

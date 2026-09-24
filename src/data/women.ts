@@ -1239,4 +1239,4 @@ function formatSlug(
         word.slice(1)
     )
     .join(" ");
-}
+} 

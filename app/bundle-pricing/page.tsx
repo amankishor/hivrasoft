@@ -1,5 +1,5 @@
-import Header from "@/components/Header/Header";
-import BundlePricingCatalog from "@/components/BundlePricing/BundlePricingCatalog";
+import Header from "@/src/components/Header/Header";
+import BundlePricingCatalog from "@/src/components/BundlePricing/BundlePricingCatalog";
 
 /* =========================================================
    API

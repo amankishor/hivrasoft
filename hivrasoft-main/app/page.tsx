@@ -10,7 +10,7 @@ import {
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
-import Header from "@/components/Header/Header";
+import Header from "@/src/components/Header/Header";
 
 import {
   bannerImages,
@@ -19,7 +19,7 @@ import {
   menWomenProducts,
   styleComfortConfidence,
   findYourFit,
-} from "@/data/home";
+} from "@/src/data/home";
 
 
 /* =========================================================
