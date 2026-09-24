@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import Order from "../models/Order.model";
 import { clearUserCart, getUserCart } from "./cart.service";
+import { trackUserActivity } from "./activity.service";
 
 function orderNumber() {
   return `HIVRA-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -47,6 +48,19 @@ export async function createOrderFromCart(userId: string, payload: any) {
   });
 
   await clearUserCart(userId);
+
+  await trackUserActivity({
+    userId,
+    type: "order_created",
+    orderId: String(order._id),
+    metadata: {
+      orderNumber: order.orderNumber,
+      total: Number(order.total || 0),
+      itemCount: items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0),
+      paymentMethod: order.paymentMethod,
+    },
+  });
+
   return order;
 }
 

@@ -15,6 +15,7 @@ import wishlistRoutes from "./routes/wishlist.routes";
 import cartRoutes from "./routes/cart.routes";
 import orderRoutes from "./routes/order.routes";
 import searchRoutes from "./routes/search.routes";
+import notificationRoutes from "./routes/notification.routes";
 
 const app =
   express();
@@ -148,6 +149,11 @@ app.use(
 app.use(
   "/api/orders",
   orderRoutes
+);
+
+app.use(
+  "/api/notifications",
+  notificationRoutes
 );
 
 /* =========================================================

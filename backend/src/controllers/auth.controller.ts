@@ -11,6 +11,7 @@ import {
 } from "../services/auth.service";
 
 import User from "../models/User.model";
+import { trackUserActivity } from "../services/activity.service";
 
 
 
@@ -154,6 +155,11 @@ export const registerVerifyOtp =
         result.token
       );
 
+      await trackUserActivity({
+        userId: String(result.user._id),
+        type: "register",
+      });
+
       return res
         .status(201)
         .json({
@@ -288,6 +294,11 @@ export const loginVerifyOtp =
         res,
         result.token
       );
+
+      await trackUserActivity({
+        userId: String(result.user._id),
+        type: "login",
+      });
 
       return res
         .status(200)

@@ -12,6 +12,8 @@ import Wishlist from "../models/Wishlist.model";
 import Address from "../models/user/address.model";
 import Account from "../models/user/account.model";
 import { hashPassword, verifyPassword } from "../utils/password";
+import { getUserActivities, trackUserActivity } from "../services/activity.service";
+import Notification from "../models/Notification.model";
 
 const dummyHash = hashPassword("invalid-admin-login");
 
@@ -186,7 +188,7 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
       return res.status(404).json({ success: false, message: "Customer not found." });
     }
 
-    const [account, addresses, orders, cart, wishlist] = await Promise.all([
+    const [account, addresses, orders, cart, wishlist, activities, notificationCount] = await Promise.all([
       Account.findOne({ user: userObjectId })
         .select("role emailVerified phoneVerified isActive isBlocked createdAt updatedAt")
         .lean(),
@@ -194,6 +196,14 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
       Order.find({ user: userObjectId }).sort({ createdAt: -1 }).lean(),
       Cart.findOne({ user: userObjectId }).lean(),
       Wishlist.findOne({ user: userObjectId }).lean(),
+      getUserActivities(customerId, 100),
+      Notification.countDocuments({
+        isActive: true,
+        $or: [
+          { audience: "all" },
+          { audience: "selected", userIds: userObjectId },
+        ],
+      }),
     ]);
 
     const productIds = Array.from(
@@ -288,6 +298,7 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
         unitPrice,
         lineTotal: Number((unitPrice * quantity).toFixed(2)),
         addedAt: item.addedAt || null,
+        ageMs: item.addedAt ? Math.max(0, Date.now() - new Date(item.addedAt).getTime()) : 0,
       };
     });
 
@@ -296,6 +307,7 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
       return {
         product: productView(product),
         addedAt: item.addedAt || null,
+        ageMs: item.addedAt ? Math.max(0, Date.now() - new Date(item.addedAt).getTime()) : 0,
       };
     });
 
@@ -363,6 +375,9 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
         wishlistItems: wishlistItems.length,
         addresses: addresses.length,
         lastOrderAt: normalizedOrders[0]?.createdAt || null,
+        notifications: notificationCount,
+        activities: activities.length,
+        lastActivityAt: activities[0]?.createdAt || null,
       },
       cart: {
         _id: cart?._id ? String(cart._id) : null,
@@ -383,12 +398,68 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
         _id: String(address._id),
         user: String(address.user || customerId),
       })),
+      activities: activities.map((activity: any) => ({
+        ...activity,
+        _id: String(activity._id),
+        user: String(activity.user || customerId),
+        product: activity.product
+          ? {
+              _id: String(activity.product._id),
+              name: String(
+                activity.product?.colors?.find((color: any) => color?.isDefault)?.nameProduct ||
+                activity.product?.colors?.[0]?.nameProduct ||
+                "Product"
+              ),
+            }
+          : null,
+        order: activity.order
+          ? {
+              _id: String(activity.order._id),
+              orderNumber: String(activity.order.orderNumber || activity.order._id),
+              status: String(activity.order.status || ""),
+              total: Number(activity.order.total || 0),
+            }
+          : null,
+      })),
       orders: normalizedOrders,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : "Unable to load customer details.",
+    });
+  }
+}
+
+/** GET /api/admin/customers/:id/activity */
+export async function getAdminCustomerActivity(req: Request, res: Response) {
+  try {
+    const customerId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!customerId || !Types.ObjectId.isValid(customerId)) {
+      return res.status(400).json({ success: false, message: "Invalid customer id." });
+    }
+
+    const customer = await User.findOne({ _id: customerId, role: "customer" })
+      .select("_id name email phone")
+      .lean();
+
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Customer not found." });
+    }
+
+    const limit = Math.min(250, Math.max(1, Number(req.query.limit || 100)));
+    const activities = await getUserActivities(customerId, limit);
+
+    return res.json({
+      success: true,
+      customer,
+      count: activities.length,
+      activities,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to load customer activity.",
     });
   }
 }
@@ -458,8 +529,46 @@ export async function updateAdminOrderStatus(req: Request, res: Response) {
       { returnDocument: "after" }
     );
 
-    const order = (result as unknown as { value?: unknown })?.value ?? result;
+    const order: any = (result as unknown as { value?: unknown })?.value ?? result;
     if (!order) return res.status(404).json({ success: false, message: "Order not found." });
+
+    const normalizedStatus = status.trim().toLowerCase();
+    if (order.user && ["delivered", "cancelled", "canceled"].includes(normalizedStatus)) {
+      await trackUserActivity({
+        userId: String(order.user),
+        type: normalizedStatus === "delivered" ? "order_delivered" : "order_cancelled",
+        orderId: String(order._id),
+        metadata: {
+          orderNumber: String(order.orderNumber || order._id),
+          status: normalizedStatus,
+          total: Number(order.total || 0),
+        },
+      });
+    }
+
+    if (order.user && ["confirmed", "processing", "shipped", "delivered", "cancelled", "canceled"].includes(normalizedStatus)) {
+      const orderNumber = String(order.orderNumber || order._id);
+      const statusTitle: Record<string, string> = {
+        confirmed: "Order Confirmed",
+        processing: "Order Processing",
+        shipped: "Order Shipped",
+        delivered: "Order Delivered",
+        cancelled: "Order Cancelled",
+        canceled: "Order Cancelled",
+      };
+
+      await Notification.create({
+        title: statusTitle[normalizedStatus] || "Order Update",
+        message: `Your order ${orderNumber} is now ${normalizedStatus === "canceled" ? "cancelled" : normalizedStatus}.`,
+        type: "order",
+        audience: "selected",
+        userIds: [order.user],
+        link: "/account/orders",
+        isActive: true,
+        createdBy: req.user?._id || null,
+      });
+    }
+
     return res.status(200).json({ success: true, order });
   } catch (error) {
     return res.status(400).json({

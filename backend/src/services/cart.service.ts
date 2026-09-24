@@ -10,6 +10,7 @@ import Cart, {
 import Product from "../models/Product.model";
 import DiscountCode from "../models/DiscountCode.model";
 import { calculateDiscounts } from "./discount.service";
+import { trackUserActivity } from "./activity.service";
 
 /* =========================================================
    TYPES
@@ -601,6 +602,18 @@ export const addItemToCart =
 
     await cart.save();
 
+    await trackUserActivity({
+      userId,
+      type: "cart_add",
+      productId: data.productId,
+      metadata: {
+        colorId: data.colorId,
+        sizeId: data.sizeId,
+        quantity,
+        finalQuantity: nextQuantity,
+      },
+    });
+
     return buildCartResponse(
       cart
     );
@@ -760,10 +773,23 @@ export const updateCartItem =
       );
     }
 
+    const previousQuantity = Number(item.quantity || 0);
     item.quantity =
       quantity;
 
     await cart.save();
+
+    await trackUserActivity({
+      userId,
+      type: "cart_update",
+      productId: String(item.product),
+      metadata: {
+        colorId: String(item.colorId),
+        sizeId: String(item.sizeId),
+        previousQuantity,
+        quantity,
+      },
+    });
 
     return buildCartResponse(
       cart
@@ -800,14 +826,16 @@ export const removeCartItem =
       );
     }
 
-    const itemExists =
-      cart.items.some(
+    const removedItem =
+      cart.items.find(
         item =>
           String(
             item._id
           ) ===
           cartItemId
       );
+
+    const itemExists = Boolean(removedItem);
 
     if (!itemExists) {
       throw new Error(
@@ -825,6 +853,20 @@ export const removeCartItem =
       );
 
     await cart.save();
+
+    if (removedItem) {
+      await trackUserActivity({
+        userId,
+        type: "cart_remove",
+        productId: String(removedItem.product),
+        metadata: {
+          colorId: String(removedItem.colorId),
+          sizeId: String(removedItem.sizeId),
+          quantity: Number(removedItem.quantity || 0),
+          addedAt: removedItem.addedAt,
+        },
+      });
+    }
 
     return buildCartResponse(
       cart
@@ -849,10 +891,19 @@ export const clearUserCart =
         userId
       );
 
+    const clearedItems = cart.items.length;
     cart.items = [];
     cart.discountCode = "";
 
     await cart.save();
+
+    if (clearedItems > 0) {
+      await trackUserActivity({
+        userId,
+        type: "cart_clear",
+        metadata: { clearedItems },
+      });
+    }
 
     return buildCartResponse(
       cart

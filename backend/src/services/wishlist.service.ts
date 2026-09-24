@@ -4,6 +4,7 @@ import {
 
 import Wishlist from "../models/Wishlist.model";
 import Product from "../models/Product.model";
+import { trackUserActivity } from "./activity.service";
 
 /* =========================================================
    POPULATE CONFIG
@@ -95,7 +96,7 @@ export const addProductToWishlist =
     const product =
       await Product.findOne({
         _id: productId,
-        status: "active",
+        isActive: true,
       })
         .select("_id")
         .lean();
@@ -140,6 +141,12 @@ export const addProductToWishlist =
             },
           ],
         });
+
+      await trackUserActivity({
+        userId,
+        type: "wishlist_add",
+        productId,
+      });
 
       return {
         wishlist:
@@ -188,6 +195,12 @@ export const addProductToWishlist =
     });
 
     await wishlist.save();
+
+    await trackUserActivity({
+      userId,
+      type: "wishlist_add",
+      productId,
+    });
 
     return {
       wishlist:
@@ -328,6 +341,12 @@ export const removeProductFromWishlist =
 
     await wishlist.save();
 
+    await trackUserActivity({
+      userId,
+      type: "wishlist_remove",
+      productId,
+    });
+
     return populateWishlistById(
       wishlist._id
     );
@@ -360,9 +379,18 @@ export const clearUserWishlist =
       );
     }
 
+    const clearedItems = wishlist.items.length;
     wishlist.items = [];
 
     await wishlist.save();
+
+    if (clearedItems > 0) {
+      await trackUserActivity({
+        userId,
+        type: "wishlist_clear",
+        metadata: { clearedItems },
+      });
+    }
 
     return populateWishlistById(
       wishlist._id
