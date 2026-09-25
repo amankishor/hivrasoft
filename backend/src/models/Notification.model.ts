@@ -5,9 +5,12 @@ export type NotificationType =
   | "promotion"
   | "order"
   | "account"
-  | "system";
+  | "system"
+  | "cart_reminder"
+  | "wishlist_reminder";
 
 export type NotificationAudience = "all" | "selected";
+export type NotificationSource = "admin" | "system";
 
 export interface INotification extends Document {
   title: string;
@@ -19,6 +22,11 @@ export interface INotification extends Document {
   isActive: boolean;
   readBy: Types.ObjectId[];
   createdBy?: Types.ObjectId | null;
+  source: NotificationSource;
+  dedupeKey?: string | null;
+  product?: Types.ObjectId | null;
+  reminderStageDays?: number | null;
+  metadata: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,7 +47,15 @@ const notificationSchema = new Schema<INotification>(
     },
     type: {
       type: String,
-      enum: ["general", "promotion", "order", "account", "system"],
+      enum: [
+        "general",
+        "promotion",
+        "order",
+        "account",
+        "system",
+        "cart_reminder",
+        "wishlist_reminder",
+      ],
       default: "general",
       index: true,
     },
@@ -74,6 +90,32 @@ const notificationSchema = new Schema<INotification>(
       ref: "User",
       default: null,
     },
+    source: {
+      type: String,
+      enum: ["admin", "system"],
+      default: "admin",
+      index: true,
+    },
+    dedupeKey: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    product: {
+      type: Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
+      index: true,
+    },
+    reminderStageDays: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    metadata: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
   },
   {
     timestamps: true,
@@ -83,6 +125,13 @@ const notificationSchema = new Schema<INotification>(
 
 notificationSchema.index({ createdAt: -1, isActive: 1 });
 notificationSchema.index({ audience: 1, userIds: 1, createdAt: -1 });
+notificationSchema.index(
+  { dedupeKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { dedupeKey: { $type: "string" } },
+  }
+);
 
 const Notification: Model<INotification> =
   (mongoose.models.Notification as Model<INotification>) ||

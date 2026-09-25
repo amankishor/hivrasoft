@@ -172,7 +172,8 @@ export async function getAdminCustomers(_req: Request, res: Response) {
 /** GET /api/admin/customers/:id - complete customer 360 view for admin. */
 export async function getAdminCustomerDetails(req: Request, res: Response) {
   try {
-    const customerId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const rawCustomerId = req.params.userId ?? req.params.id;
+    const customerId = Array.isArray(rawCustomerId) ? rawCustomerId[0] : rawCustomerId;
 
     if (!customerId || !Types.ObjectId.isValid(customerId)) {
       return res.status(400).json({ success: false, message: "Invalid customer id." });
@@ -286,6 +287,22 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
       };
     };
 
+    const purchasedAfter = (productId: string, addedAt?: unknown) => {
+      if (!productId || !addedAt) return false;
+      const addedTime = new Date(addedAt as any).getTime();
+      if (!Number.isFinite(addedTime)) return false;
+
+      return orders.some((order: any) => {
+        const status = String(order?.status || "").toLowerCase();
+        if (["cancelled", "canceled"].includes(status)) return false;
+        const orderTime = new Date(order?.createdAt || 0).getTime();
+        if (!Number.isFinite(orderTime) || orderTime < addedTime) return false;
+        return (Array.isArray(order?.items) ? order.items : []).some(
+          (orderItem: any) => String(orderItem?.product?._id || orderItem?.product || "") === productId
+        );
+      });
+    };
+
     const cartItems = (cart?.items || []).map((item: any) => {
       const product = productMap.get(String(item.product || ""));
       const view = productView(product, item.colorId, item.sizeId);
@@ -299,15 +316,22 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
         lineTotal: Number((unitPrice * quantity).toFixed(2)),
         addedAt: item.addedAt || null,
         ageMs: item.addedAt ? Math.max(0, Date.now() - new Date(item.addedAt).getTime()) : 0,
+        updatedAt: item.updatedAt || item.addedAt || null,
+        purchasedAfterAdded: purchasedAfter(String(item.product || ""), item.addedAt),
       };
     });
 
     const wishlistItems = (wishlist?.items || []).map((item: any) => {
       const product = productMap.get(String(item.product || ""));
       return {
-        product: productView(product),
+        _id: String(item._id || ""),
+        product: productView(product, item.colorId, item.sizeId),
+        colorId: item.colorId ? String(item.colorId) : null,
+        sizeId: item.sizeId ? String(item.sizeId) : null,
         addedAt: item.addedAt || null,
+        updatedAt: item.updatedAt || item.addedAt || null,
         ageMs: item.addedAt ? Math.max(0, Date.now() - new Date(item.addedAt).getTime()) : 0,
+        purchasedAfterAdded: purchasedAfter(String(item.product || ""), item.addedAt),
       };
     });
 
@@ -323,6 +347,9 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
       discount: Number(order.discount || 0),
       discountCode: String(order.discountCode || ""),
       shipping: Number(order.shipping || 0),
+      tax: Number(order.tax || 0),
+      taxName: String(order.taxName || ""),
+      taxPercentage: Number(order.taxPercentage || 0),
       total: Number(order.total ?? order.grandTotal ?? order.totalAmount ?? 0),
       items: Array.isArray(order.items) ? order.items : [],
       shippingAddress: order.shippingAddress || null,
@@ -434,7 +461,8 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
 /** GET /api/admin/customers/:id/activity */
 export async function getAdminCustomerActivity(req: Request, res: Response) {
   try {
-    const customerId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const rawCustomerId = req.params.userId ?? req.params.id;
+    const customerId = Array.isArray(rawCustomerId) ? rawCustomerId[0] : rawCustomerId;
     if (!customerId || !Types.ObjectId.isValid(customerId)) {
       return res.status(400).json({ success: false, message: "Invalid customer id." });
     }
@@ -647,5 +675,142 @@ export async function getAdminSystemStatus(_req: Request, res: Response) {
       success: false,
       message: error instanceof Error ? error.message : "Unable to load system status.",
     });
+  }
+}
+
+
+/* =========================================================
+   ADMIN USER RESOURCE APIS
+   GET /api/admin/users/:userId/...
+========================================================= */
+
+function adminUserId(req: Request) {
+  const raw = req.params.userId ?? req.params.id;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value || !Types.ObjectId.isValid(value)) {
+    throw new Error("Invalid customer id.");
+  }
+  return value;
+}
+
+async function ensureCustomer(userId: string) {
+  const customer = await User.findOne({ _id: userId, role: "customer" })
+    .select("_id name email phone isActive")
+    .lean();
+  if (!customer) throw new Error("Customer not found.");
+  return customer;
+}
+
+export async function getAdminUserCart(req: Request, res: Response) {
+  try {
+    const userId = adminUserId(req);
+    const customer = await ensureCustomer(userId);
+    const cart = await Cart.findOne({ user: userId })
+      .populate({ path: "items.product", select: "colors isColor isActive categories" })
+      .lean();
+
+    const now = Date.now();
+    const items = (cart?.items || []).map((item: any) => ({
+      ...item,
+      _id: String(item._id || ""),
+      colorId: item.colorId ? String(item.colorId) : null,
+      sizeId: item.sizeId ? String(item.sizeId) : null,
+      addedAt: item.addedAt || null,
+      updatedAt: item.updatedAt || item.addedAt || null,
+      ageMs: item.addedAt ? Math.max(0, now - new Date(item.addedAt).getTime()) : 0,
+    }));
+
+    return res.json({
+      success: true,
+      customer,
+      cart: {
+        _id: cart?._id ? String(cart._id) : null,
+        items,
+        count: items.length,
+        totalQuantity: items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0),
+        updatedAt: cart?.updatedAt || null,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to load customer cart.";
+    return res.status(message === "Customer not found." ? 404 : 400).json({ success: false, message });
+  }
+}
+
+export async function getAdminUserWishlist(req: Request, res: Response) {
+  try {
+    const userId = adminUserId(req);
+    const customer = await ensureCustomer(userId);
+    const wishlist = await Wishlist.findOne({ user: userId })
+      .populate({ path: "items.product", select: "colors isColor isActive categories" })
+      .lean();
+
+    const now = Date.now();
+    const items = (wishlist?.items || []).map((item: any) => ({
+      ...item,
+      _id: String(item._id || ""),
+      colorId: item.colorId ? String(item.colorId) : null,
+      sizeId: item.sizeId ? String(item.sizeId) : null,
+      addedAt: item.addedAt || null,
+      updatedAt: item.updatedAt || item.addedAt || null,
+      ageMs: item.addedAt ? Math.max(0, now - new Date(item.addedAt).getTime()) : 0,
+    }));
+
+    return res.json({
+      success: true,
+      customer,
+      wishlist: {
+        _id: wishlist?._id ? String(wishlist._id) : null,
+        items,
+        count: items.length,
+        updatedAt: wishlist?.updatedAt || null,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to load customer wishlist.";
+    return res.status(message === "Customer not found." ? 404 : 400).json({ success: false, message });
+  }
+}
+
+export async function getAdminUserOrders(req: Request, res: Response) {
+  try {
+    const userId = adminUserId(req);
+    const customer = await ensureCustomer(userId);
+    const orders = await Order.find({ user: userId }).sort({ createdAt: -1 }).lean();
+    return res.json({ success: true, customer, count: orders.length, orders });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to load customer orders.";
+    return res.status(message === "Customer not found." ? 404 : 400).json({ success: false, message });
+  }
+}
+
+export async function getAdminUserNotifications(req: Request, res: Response) {
+  try {
+    const userId = adminUserId(req);
+    const customer = await ensureCustomer(userId);
+    const userObjectId = new Types.ObjectId(userId);
+    const notifications = await Notification.find({
+      isActive: true,
+      $or: [
+        { audience: "all" },
+        { audience: "selected", userIds: userObjectId },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .limit(250)
+      .lean();
+
+    const items = notifications.map((notification: any) => ({
+      ...notification,
+      _id: String(notification._id),
+      isRead: Array.isArray(notification.readBy)
+        ? notification.readBy.some((id: any) => String(id) === userId)
+        : false,
+    }));
+
+    return res.json({ success: true, customer, count: items.length, notifications: items });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to load customer notifications.";
+    return res.status(message === "Customer not found." ? 404 : 400).json({ success: false, message });
   }
 }

@@ -40,6 +40,8 @@ export interface IProductSize {
 ========================================================= */
 
 export interface IProductColor {
+  _id?: Types.ObjectId;
+
   nameProduct: string;
 
   slugProduct: string;
@@ -501,12 +503,10 @@ const productColorSchema =
     },
     {
       /*
-       * Color object ke andar _id nahi chahiye.
-       *
-       * nameProduct / slugProduct ko use karke
-       * color product identify hoga.
+       * Stable color ID is required by cart/wishlist tracking.
+       * Existing products are migrated once at backend startup.
        */
-      _id: false,
+      _id: true,
     }
   );
 

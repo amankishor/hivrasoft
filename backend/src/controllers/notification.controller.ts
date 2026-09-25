@@ -82,6 +82,8 @@ export async function createAdminNotification(req: Request, res: Response) {
       link,
       isActive: req.body?.isActive !== false,
       createdBy: req.user?._id || null,
+      source: "admin",
+      metadata: {},
     });
 
     return res.status(201).json({
@@ -99,6 +101,27 @@ export async function createAdminNotification(req: Request, res: Response) {
   }
 }
 
+
+/* =========================================================
+   ADMIN - CONVENIENCE SEND ENDPOINTS
+========================================================= */
+
+export async function sendAdminNotificationToOne(req: Request, res: Response) {
+  const userId = String(req.body?.userId || "").trim();
+  req.body = { ...req.body, audience: "selected", userIds: userId ? [userId] : [] };
+  return createAdminNotification(req, res);
+}
+
+export async function sendAdminNotificationBulk(req: Request, res: Response) {
+  req.body = { ...req.body, audience: "selected", userIds: req.body?.userIds || [] };
+  return createAdminNotification(req, res);
+}
+
+export async function broadcastAdminNotification(req: Request, res: Response) {
+  req.body = { ...req.body, audience: "all", userIds: [] };
+  return createAdminNotification(req, res);
+}
+
 /* =========================================================
    ADMIN - LIST NOTIFICATIONS
 ========================================================= */
@@ -108,6 +131,7 @@ export async function listAdminNotifications(_req: Request, res: Response) {
     const notifications = await Notification.find({})
       .populate({ path: "userIds", select: "name email phone isActive" })
       .populate({ path: "createdBy", select: "name email role" })
+      .populate({ path: "product", select: "colors isActive" })
       .sort({ createdAt: -1 })
       .limit(250)
       .lean();

@@ -2145,6 +2145,9 @@ export const toCatalogProduct = (
             (
               color: any
             ) => ({
+              _id:
+                color._id,
+
               nameProduct:
                 color.nameProduct,
 

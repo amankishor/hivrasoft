@@ -23,3 +23,8 @@ export const updateDiscountCode = (id: string, payload: unknown) =>
   request(`/api/admin/discounts/codes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) });
 export const deleteDiscountCode = (id: string) =>
   request(`/api/admin/discounts/codes/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+
+export const getTaxSetting = () => request("/api/admin/tax");
+export const saveTaxSetting = (payload: unknown) =>
+  request("/api/admin/tax", { method: "PUT", body: JSON.stringify(payload) });

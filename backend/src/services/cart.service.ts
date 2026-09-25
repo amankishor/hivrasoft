@@ -11,6 +11,7 @@ import Product from "../models/Product.model";
 import DiscountCode from "../models/DiscountCode.model";
 import { calculateDiscounts } from "./discount.service";
 import { trackUserActivity } from "./activity.service";
+import { calculateTax } from "./tax.service";
 
 /* =========================================================
    TYPES
@@ -96,12 +97,6 @@ const getVariant = (
     );
   }
 
-  if (!color.isActive) {
-    throw new Error(
-      "Selected product color is inactive."
-    );
-  }
-
   const size =
     color.sizes?.find(
       (item: any) =>
@@ -129,26 +124,10 @@ const getVariant = (
 };
 
 const getAvailableStock = (
-  product: any,
+  _product: any,
   size: any
 ) => {
-  const productStock =
-    Number(
-      product.stock ?? 0
-    );
-
-  const sizeStock =
-    Number(
-      size.stock ?? 0
-    );
-
-  return Math.max(
-    0,
-    Math.min(
-      productStock,
-      sizeStock
-    )
-  );
+  return Math.max(0, Number(size?.stock ?? 0));
 };
 
 const getOrCreateCart =
@@ -261,6 +240,12 @@ const buildCartResponse =
 
               addedAt:
                 item.addedAt,
+
+              updatedAt:
+                item.updatedAt || item.addedAt,
+
+              ageMs:
+                item.addedAt ? Math.max(0, Date.now() - new Date(item.addedAt).getTime()) : 0,
             };
           }
 
@@ -295,21 +280,15 @@ const buildCartResponse =
               : 0;
 
           const available =
-            product.status ===
-              "active" &&
-            Boolean(
-              color?.isActive
-            ) &&
-            Boolean(
-              size?.isActive
-            ) &&
-            availableStock >=
-              quantity;
+            product.isActive !== false &&
+            Boolean(size?.isActive) &&
+            availableStock >= quantity;
 
           const unitPrice =
             Number(
-              product.price ??
-                0
+              size?.showPrice ??
+              color?.showPrice ??
+              0
             );
 
           const itemSubtotal =
@@ -330,26 +309,26 @@ const buildCartResponse =
                 product._id,
 
               name:
-                product.name,
+                color?.nameProduct || "Product",
 
               slug:
-                product.slug,
+                color?.slugProduct || "",
 
               price:
-                product.price,
+                unitPrice,
 
               compareAtPrice:
-                product.compareAtPrice,
+                Number(size?.originalPrice ?? color?.originalPrice ?? unitPrice),
 
               stock:
-                product.stock,
+                availableStock,
 
               mainImages:
-                product.mainImages ||
+                color?.images ||
                 [],
 
               status:
-                product.status,
+                product.isActive !== false ? "active" : "inactive",
             },
 
             selectedColor:
@@ -359,10 +338,10 @@ const buildCartResponse =
                       color._id,
 
                     name:
-                      color.name,
+                      color.nameColor,
 
                     slug:
-                      color.slug,
+                      color.slugColor,
 
                     hex:
                       color.hex,
@@ -372,7 +351,7 @@ const buildCartResponse =
                       [],
 
                     isActive:
-                      color.isActive,
+                      true,
                   }
                 : null,
 
@@ -415,6 +394,12 @@ const buildCartResponse =
 
             addedAt:
               item.addedAt,
+
+            updatedAt:
+              item.updatedAt || item.addedAt,
+
+            ageMs:
+              item.addedAt ? Math.max(0, Date.now() - new Date(item.addedAt).getTime()) : 0,
           };
         }
       );
@@ -440,7 +425,9 @@ const buildCartResponse =
       return { ...item, discount: discount || null };
     });
 
-    const total = Math.max(0, subtotal - discountResult.totalDiscount);
+    const discountedSubtotal = Math.max(0, subtotal - discountResult.totalDiscount);
+    const taxResult = await calculateTax(discountedSubtotal);
+    const total = Math.max(0, discountedSubtotal + taxResult.amount);
 
     return {
       _id: cart._id,
@@ -453,6 +440,9 @@ const buildCartResponse =
       discount: discountResult.totalDiscount,
       discountSummary: { automatic: discountResult.automatic, code: discountResult.code },
       appliedDiscountCode: cart.discountCode || "",
+      taxableAmount: taxResult.taxableAmount,
+      tax: taxResult.amount,
+      taxSummary: taxResult,
       total,
       createdAt: cart.createdAt,
       updatedAt: cart.updatedAt,
@@ -506,8 +496,7 @@ export const addItemToCart =
     }
 
     if (
-      (product as any).status !==
-      "active"
+      (product as any).isActive === false
     ) {
       throw new Error(
         "Product is not available for purchase."
@@ -576,6 +565,8 @@ export const addItemToCart =
     if (existingItem) {
       existingItem.quantity =
         nextQuantity;
+      existingItem.updatedAt =
+        new Date();
     } else {
       cart.items.push({
         product:
@@ -596,6 +587,9 @@ export const addItemToCart =
         quantity,
 
         addedAt:
+          new Date(),
+
+        updatedAt:
           new Date(),
       });
     }
@@ -738,8 +732,7 @@ export const updateCartItem =
     }
 
     if (
-      (product as any).status !==
-      "active"
+      (product as any).isActive === false
     ) {
       throw new Error(
         "Product is not available for purchase."
@@ -776,6 +769,8 @@ export const updateCartItem =
     const previousQuantity = Number(item.quantity || 0);
     item.quantity =
       quantity;
+    item.updatedAt =
+      new Date();
 
     await cart.save();
 

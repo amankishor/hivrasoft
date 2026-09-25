@@ -11,6 +11,10 @@ import {
   getAdminSystemStatus,
   updateAdminCustomerStatus,
   updateAdminOrderStatus,
+  getAdminUserCart,
+  getAdminUserWishlist,
+  getAdminUserOrders,
+  getAdminUserNotifications,
 } from "../controllers/admin.controller";
 import User from "../models/User.model";
 import { verifyToken } from "../utils/jwt";
@@ -19,6 +23,9 @@ import {
   createAdminNotification,
   listAdminNotifications,
   deleteAdminNotification,
+  sendAdminNotificationToOne,
+  sendAdminNotificationBulk,
+  broadcastAdminNotification,
 } from "../controllers/notification.controller";
 
 import {
@@ -30,6 +37,11 @@ import {
   updateDiscountCode,
   deleteDiscountCode,
 } from "../controllers/discount.controller";
+
+import {
+  getTaxSettingAdmin,
+  saveTaxSettingAdmin,
+} from "../controllers/tax.controller";
 
 
 const router = Router();
@@ -104,12 +116,24 @@ router.get("/customers", authenticateAdmin, getAdminCustomers);
 router.get("/customers/:id", authenticateAdmin, getAdminCustomerDetails);
 router.get("/customers/:id/activity", authenticateAdmin, getAdminCustomerActivity);
 router.patch("/customers/:id/status", authenticateAdmin, updateAdminCustomerStatus);
+
+// User tracking aliases used by the admin customer intelligence screens.
+router.get("/users/:userId", authenticateAdmin, getAdminCustomerDetails);
+router.get("/users/:userId/cart", authenticateAdmin, getAdminUserCart);
+router.get("/users/:userId/wishlist", authenticateAdmin, getAdminUserWishlist);
+router.get("/users/:userId/orders", authenticateAdmin, getAdminUserOrders);
+router.get("/users/:userId/activity", authenticateAdmin, getAdminCustomerActivity);
+router.get("/users/:userId/notifications", authenticateAdmin, getAdminUserNotifications);
+
 router.get("/orders", authenticateAdmin, getAdminOrders);
 router.patch("/orders/:id/status", authenticateAdmin, updateAdminOrderStatus);
 router.get("/system-status", authenticateAdmin, getAdminSystemStatus);
 
 router.get("/notifications", authenticateAdmin, listAdminNotifications);
 router.post("/notifications", authenticateAdmin, createAdminNotification);
+router.post("/notifications/send", authenticateAdmin, sendAdminNotificationToOne);
+router.post("/notifications/bulk-send", authenticateAdmin, sendAdminNotificationBulk);
+router.post("/notifications/broadcast", authenticateAdmin, broadcastAdminNotification);
 router.delete("/notifications/:id", authenticateAdmin, deleteAdminNotification);
 
 router.get("/discounts/products", authenticateAdmin, getDiscountProducts);
@@ -119,5 +143,8 @@ router.get("/discounts/codes", authenticateAdmin, listDiscountCodes);
 router.post("/discounts/codes", authenticateAdmin, createDiscountCode);
 router.patch("/discounts/codes/:id", authenticateAdmin, updateDiscountCode);
 router.delete("/discounts/codes/:id", authenticateAdmin, deleteDiscountCode);
+
+router.get("/tax", authenticateAdmin, getTaxSettingAdmin);
+router.put("/tax", authenticateAdmin, saveTaxSettingAdmin);
 
 export default router;

@@ -1,392 +1,142 @@
 "use client";
 
 import Link from "next/link";
-
+import { useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import {
-  useState,
-} from "react";
-
-import {
-  usePathname,
-} from "next/navigation";
+  Bell,
+  ChevronDown,
+  LayoutDashboard,
+  Package,
+  Percent,
+  ReceiptText,
+  Tag,
+  UsersRound,
+} from "lucide-react";
 
 export default function AdminSidebar() {
-  const pathname =
-    usePathname();
+  const pathname = usePathname();
 
-  const productRoute =
-    pathname.startsWith(
-      "/admin/products",
-    );
+  const productRoute = pathname.startsWith("/admin/products");
+  const userRoute =
+    pathname.startsWith("/admin/customers") ||
+    pathname.startsWith("/admin/notifications");
+  const extraRoute = pathname.startsWith("/admin/extra-add");
 
-  const [
-    productsOpen,
-    setProductsOpen,
-  ] = useState(
-    productRoute,
-  );
+  const [productsOpen, setProductsOpen] = useState(productRoute);
+  const [usersOpen, setUsersOpen] = useState(userRoute);
+  const [extraOpen, setExtraOpen] = useState(extraRoute);
 
   return (
-    <aside
-      className="
-        flex
-        max-h-[calc(100dvh-4rem)]
-        w-full
-        lg:h-dvh
-        lg:max-h-none
-        flex-col
-        bg-[#211A18]
-        text-white
-      "
-    >
-      {/* LOGO */}
-
-      <div
-        className="
-          flex
-          h-[82px]
-          shrink-0
-          items-center
-          border-b
-          border-white/10
-          px-7
-        "
-      >
-        <Link
-          href="/admin"
-          className="
-            text-[20px]
-            font-semibold
-            tracking-[0.2em]
-          "
-        >
+    <aside className="flex max-h-[calc(100dvh-4rem)] w-full flex-col bg-[#211A18] text-white lg:h-dvh lg:max-h-none">
+      <div className="flex h-[82px] shrink-0 items-center border-b border-white/10 px-7">
+        <Link href="/admin" className="text-[20px] font-semibold tracking-[0.2em]">
           HIVRASOFT
         </Link>
       </div>
 
-      <div
-        className="
-          flex-1
-          min-h-0
-          overflow-y-auto
-          px-4
-          py-7
-        "
-      >
-        <p
-          className="
-            px-3
-            text-[8px]
-            font-semibold
-            uppercase
-            tracking-[0.28em]
-            text-white/35
-          "
-        >
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-7">
+        <p className="px-3 text-[8px] font-semibold uppercase tracking-[0.28em] text-white/35">
           Management
         </p>
 
-        <nav
-          className="
-            mt-5
-            space-y-2
-          "
-        >
-          {/* DASHBOARD */}
-
-          <Link
-            href="/admin"
-            className={`
-              flex
-              h-[48px]
-              items-center
-              gap-3
-              rounded-[12px]
-              px-4
-              text-[11px]
-              transition
-
-              ${
-                pathname ===
-                "/admin"
-                  ? "bg-[#A51D45] text-white"
-                  : "text-white/65 hover:bg-white/5 hover:text-white"
-              }
-            `}
-          >
-            <DashboardIcon />
-
+        <nav className="mt-5 space-y-2">
+          <MenuLink href="/admin" active={pathname === "/admin"} icon={<LayoutDashboard size={17} />}>
             Dashboard
-          </Link>
+          </MenuLink>
 
-          {/* PRODUCTS */}
-
-          <div>
-            <button
-              type="button"
-              aria-expanded={productsOpen}
-              aria-controls="admin-products-menu"
-              onClick={() =>
-                setProductsOpen(
-                  (current) =>
-                    !current,
-                )
-              }
-              className={`
-                flex
-                h-[48px]
-                w-full
-                items-center
-                justify-between
-                rounded-[12px]
-                px-4
-                text-[11px]
-                transition
-
-                ${
-                  productRoute
-                    ? "bg-[#A51D45] text-white"
-                    : "text-white/65 hover:bg-white/5 hover:text-white"
-                }
-              `}
-            >
-              <span
-                className="
-                  flex
-                  items-center
-                  gap-3
-                "
-              >
-                <ProductIcon />
-
-                Products
-              </span>
-
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className={`
-                  transition-transform
-
-                  ${
-                    productsOpen
-                      ? "rotate-180"
-                      : ""
-                  }
-                `}
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-
-            {/* SUB MENU */}
-
-            {productsOpen && (
-              <div
-                id="admin-products-menu"
-                className="
-                  mt-2
-                  space-y-2
-                  pl-3
-                "
-              >
-                <Link
-                  href="/admin/products"
-                  className={`
-                    flex
-                    h-[44px]
-                    items-center
-                    gap-3
-                    rounded-[11px]
-                    px-4
-                    text-[10px]
-                    transition
-
-                    ${
-                      pathname ===
-                      "/admin/products"
-                        ? "bg-[#A51D45] text-white"
-                        : "text-white/55 hover:bg-white/5 hover:text-white"
-                    }
-                  `}
-                >
-                  <span
-                    className="
-                      h-1.5
-                      w-1.5
-                      rounded-full
-                      bg-current
-                    "
-                  />
-
-                  All Products
-                </Link>
-
-                <Link
-                  href="/admin/products/new"
-                  className={`
-                    flex
-                    h-[44px]
-                    items-center
-                    gap-3
-                    rounded-[11px]
-                    px-4
-                    text-[10px]
-                    transition
-
-                    ${
-                      pathname ===
-                      "/admin/products/new"
-                        ? "bg-[#A51D45] text-white"
-                        : "text-white/55 hover:bg-white/5 hover:text-white"
-                    }
-                  `}
-                >
-                  <span
-                    className="
-                      flex
-                      h-4
-                      w-4
-                      items-center
-                      justify-center
-                      rounded-full
-                      border
-                      border-current
-                      text-[11px]
-                    "
-                  >
-                    +
-                  </span>
-
-                  Add Product
-                </Link>
-              </div>
-            )}
-          </div>
+          <DropdownMenu
+            label="Products"
+            active={productRoute}
+            open={productsOpen}
+            onToggle={() => setProductsOpen((current) => !current)}
+            icon={<Package size={17} />}
+          >
+            <SubMenuLink href="/admin/products" active={pathname === "/admin/products"}>
+              All Products
+            </SubMenuLink>
+            <SubMenuLink href="/admin/products/new" active={pathname === "/admin/products/new"} plus>
+              Add Product
+            </SubMenuLink>
+          </DropdownMenu>
 
           <MenuLink
             href="/admin/categories"
-            active={
-              pathname.startsWith(
-                "/admin/categories",
-              )
-            }
+            active={pathname.startsWith("/admin/categories")}
           >
             Categories
           </MenuLink>
 
-          <MenuLink
-            href="/admin/pages"
-            active={
-              pathname.startsWith(
-                "/admin/pages",
-              )
-            }
-          >
-            Pages
-          </MenuLink>
-
-          <MenuLink
-            href="/admin/banners"
-            active={
-              pathname.startsWith(
-                "/admin/banners",
-              )
-            }
-          >
+          <MenuLink href="/admin/banners" active={pathname.startsWith("/admin/banners")}>
             Banners
           </MenuLink>
 
-          <MenuLink
-            href="/admin/orders"
-            active={
-              pathname.startsWith(
-                "/admin/orders",
-              )
-            }
-          >
+          <MenuLink href="/admin/orders" active={pathname.startsWith("/admin/orders")}>
             Orders
           </MenuLink>
 
-          <MenuLink
-            href="/admin/customers"
-            active={
-              pathname.startsWith(
-                "/admin/customers",
-              )
-            }
+          <DropdownMenu
+            label="Users"
+            active={userRoute}
+            open={usersOpen}
+            onToggle={() => setUsersOpen((current) => !current)}
+            icon={<UsersRound size={17} />}
           >
-            Customers
-          </MenuLink>
+            <SubMenuLink
+              href="/admin/customers"
+              active={pathname.startsWith("/admin/customers")}
+            >
+              Customers
+            </SubMenuLink>
+            <SubMenuLink
+              href="/admin/notifications"
+              active={pathname.startsWith("/admin/notifications")}
+              icon={<Bell size={13} />}
+            >
+              Notifications
+            </SubMenuLink>
+          </DropdownMenu>
 
-          <MenuLink
-            href="/admin/notifications"
-            active={
-              pathname.startsWith(
-                "/admin/notifications",
-              )
-            }
+          <DropdownMenu
+            label="Extra Add"
+            active={extraRoute}
+            open={extraOpen}
+            onToggle={() => setExtraOpen((current) => !current)}
+            icon={<Percent size={17} />}
           >
-            Notifications
-          </MenuLink>
+            <SubMenuLink
+              href="/admin/extra-add/automatic-discount"
+              active={pathname === "/admin/extra-add/automatic-discount"}
+              icon={<Percent size={13} />}
+            >
+              Automatic Discount
+            </SubMenuLink>
+            <SubMenuLink
+              href="/admin/extra-add/discount-code"
+              active={pathname === "/admin/extra-add/discount-code"}
+              icon={<Tag size={13} />}
+            >
+              Discount Code
+            </SubMenuLink>
+            <SubMenuLink
+              href="/admin/extra-add/tax"
+              active={pathname === "/admin/extra-add/tax"}
+              icon={<ReceiptText size={13} />}
+            >
+              Tax Settings
+            </SubMenuLink>
+          </DropdownMenu>
 
-          <MenuLink
-            href="/admin/coupons"
-            active={
-              pathname.startsWith(
-                "/admin/coupons",
-              )
-            }
-          >
-            Coupons
-          </MenuLink>
-
-          <MenuLink
-            href="/admin/settings"
-            active={
-              pathname.startsWith(
-                "/admin/settings",
-              )
-            }
-          >
+          <MenuLink href="/admin/settings" active={pathname.startsWith("/admin/settings")}>
             Settings
           </MenuLink>
         </nav>
       </div>
 
-      {/* STORE */}
-
-      <div
-        className="
-          border-t
-          shrink-0
-          border-white/10
-          p-4
-        "
-      >
+      <div className="shrink-0 border-t border-white/10 p-4">
         <Link
           href="/"
-          className="
-            flex
-            h-[48px]
-            items-center
-            justify-center
-            rounded-[13px]
-            border
-            border-white/10
-            text-[9px]
-            font-semibold
-            uppercase
-            tracking-[0.12em]
-            text-white/70
-
-            hover:bg-white
-            hover:text-[#211A18]
-          "
+          className="flex h-[48px] items-center justify-center rounded-[13px] border border-white/10 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/70 hover:bg-white hover:text-[#211A18]"
         >
           View Store
         </Link>
@@ -395,102 +145,110 @@ export default function AdminSidebar() {
   );
 }
 
-function MenuLink({
-  href,
-
+function DropdownMenu({
+  label,
   active,
-
+  open,
+  onToggle,
+  icon,
   children,
 }: {
-  href: string;
-
+  label: string;
   active: boolean;
+  open: boolean;
+  onToggle: () => void;
+  icon?: ReactNode;
+  children: ReactNode;
+}) {
+  const id = `admin-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-menu`;
 
-  children:
-    React.ReactNode;
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={onToggle}
+        className={`flex h-[48px] w-full items-center justify-between rounded-[12px] px-4 text-[11px] transition ${
+          active
+            ? "bg-[#A51D45] text-white"
+            : "text-white/65 hover:bg-white/5 hover:text-white"
+        }`}
+      >
+        <span className="flex items-center gap-3">
+          {icon}
+          {label}
+        </span>
+        <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div id={id} className="mt-2 space-y-2 pl-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubMenuLink({
+  href,
+  active,
+  children,
+  plus = false,
+  icon,
+}: {
+  href: string;
+  active: boolean;
+  children: ReactNode;
+  plus?: boolean;
+  icon?: ReactNode;
 }) {
   return (
     <Link
       href={href}
-      className={`
-        flex
-        h-[48px]
-        items-center
-        rounded-[12px]
-        px-4
-        text-[11px]
-        transition
-
-        ${
-          active
-            ? "bg-[#A51D45] text-white"
-            : "text-white/65 hover:bg-white/5 hover:text-white"
-        }
-      `}
+      className={`flex min-h-[44px] items-center gap-3 rounded-[11px] px-4 py-2 text-[10px] transition ${
+        active
+          ? "bg-[#A51D45] text-white"
+          : "text-white/55 hover:bg-white/5 hover:text-white"
+      }`}
     >
-      {children}
+      {icon ? (
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
+      ) : plus ? (
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-current text-[11px]">
+          +
+        </span>
+      ) : (
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+      )}
+      <span>{children}</span>
     </Link>
   );
 }
 
-function DashboardIcon() {
+function MenuLink({
+  href,
+  active,
+  children,
+  icon,
+}: {
+  href: string;
+  active: boolean;
+  children: ReactNode;
+  icon?: ReactNode;
+}) {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
+    <Link
+      href={href}
+      className={`flex h-[48px] items-center gap-3 rounded-[12px] px-4 text-[11px] transition ${
+        active
+          ? "bg-[#A51D45] text-white"
+          : "text-white/65 hover:bg-white/5 hover:text-white"
+      }`}
     >
-      <rect
-        x="4"
-        y="4"
-        width="6"
-        height="6"
-        rx="1"
-      />
-
-      <rect
-        x="14"
-        y="4"
-        width="6"
-        height="6"
-        rx="1"
-      />
-
-      <rect
-        x="4"
-        y="14"
-        width="6"
-        height="6"
-        rx="1"
-      />
-
-      <rect
-        x="14"
-        y="14"
-        width="6"
-        height="6"
-        rx="1"
-      />
-    </svg>
-  );
-}
-
-function ProductIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <path d="M4 7 12 3l8 4-8 4-8-4Z" />
-
-      <path d="M4 7v10l8 4 8-4V7M12 11v10" />
-    </svg>
+      {icon}
+      {children}
+    </Link>
   );
 }

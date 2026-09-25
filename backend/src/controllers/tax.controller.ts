@@ -1,0 +1,50 @@
+import type { Request, Response } from "express";
+import TaxSetting from "../models/TaxSetting.model";
+
+function normalizePercentage(value: unknown) {
+  const percentage = Number(value);
+  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+    throw new Error("Tax percentage must be between 0 and 100.");
+  }
+  return percentage;
+}
+
+export async function getTaxSettingAdmin(_req: Request, res: Response) {
+  try {
+    const setting = await TaxSetting.findOne({}).lean();
+    return res.json({
+      success: true,
+      tax: setting || {
+        name: "GST",
+        percentage: 0,
+        isActive: false,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to load tax setting.",
+    });
+  }
+}
+
+export async function saveTaxSettingAdmin(req: Request, res: Response) {
+  try {
+    const percentage = normalizePercentage(req.body?.percentage);
+    const name = String(req.body?.name || "GST").trim().slice(0, 100) || "GST";
+    const isActive = Boolean(req.body?.isActive) && percentage > 0;
+
+    const tax = await TaxSetting.findOneAndUpdate(
+      {},
+      { name, percentage, isActive },
+      { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
+    );
+
+    return res.json({ success: true, message: "Tax setting saved.", tax });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to save tax setting.",
+    });
+  }
+}

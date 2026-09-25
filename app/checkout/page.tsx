@@ -82,7 +82,7 @@ export default function CheckoutPage() {
               <CheckCircle2 className="mx-auto text-[#2f8a53]" size={46} />
               <h2 className="mt-4 font-serif text-3xl text-[#211A18]">Order placed</h2>
               <p className="mt-2 text-[12px] text-[#6e625e]">Order {order.orderNumber} • Total {money(order.total)}</p>
-              <p className="mt-1 text-[10px] text-[#6e625e]">Your automatic discount and discount-code savings are saved inside this order.</p>
+              <p className="mt-1 text-[10px] text-[#6e625e]">Discounts and applicable tax are saved inside this order.</p>
               <Link href="/account/orders" className="mt-6 inline-flex h-11 items-center rounded-xl bg-[#a31340] px-6 text-[10px] font-semibold uppercase text-white">View orders</Link>
             </div>
           )}
@@ -126,6 +126,7 @@ export default function CheckoutPage() {
                   <div className="flex justify-between"><span>Subtotal</span><strong>{money(cart.subtotal)}</strong></div>
                   {Number(cart.automaticDiscount || 0) > 0 && <div className="flex justify-between text-[#2f8a53]"><span>Automatic discount ({cart.discountSummary?.automatic?.percentage || 0}%)</span><strong>-{money(cart.automaticDiscount)}</strong></div>}
                   {Number(cart.codeDiscount || 0) > 0 && <div className="flex justify-between text-[#a31340]"><span>Code {cart.appliedDiscountCode}</span><strong>-{money(cart.codeDiscount)}</strong></div>}
+                  {Number(cart.tax || 0) > 0 && <div className="flex justify-between"><span>{cart.taxSummary?.name || "Tax"} ({cart.taxSummary?.percentage || 0}%)</span><strong>+{money(cart.tax)}</strong></div>}
                   <div className="flex justify-between"><span>Shipping</span><strong className="text-[#2f8a53]">FREE</strong></div>
                 </div>
                 <div className="mt-5 flex items-end justify-between border-t border-[#211A18]/10 pt-4"><span className="text-[12px] font-semibold">Total</span><strong className="font-serif text-2xl">{money(cart.total)}</strong></div>
