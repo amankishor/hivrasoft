@@ -16,9 +16,9 @@ import {
 
 import ProductImagesUploader, {
   type ImageValue,
-} from "@/components/Admin/ProductImagesUploader";
+} from "@/src/components/Admin/ProductImagesUploader";
 
-import HtmlDescriptionEditor from "@/components/Admin/HtmlDescriptionEditor";
+import HtmlDescriptionEditor from "@/src/components/Admin/HtmlDescriptionEditor";
 
 type ProductFormProps = {
   mode?: "create" | "edit";

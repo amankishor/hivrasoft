@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import StatCard from "@/components/Admin/StatCard";
+import StatCard from "@/src/components/Admin/StatCard";
 import { getAdminDashboard, type AdminDashboardData } from "@/lib/admin-api";
 
 const EMPTY: AdminDashboardData = {

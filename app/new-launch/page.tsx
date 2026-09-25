@@ -1,5 +1,5 @@
-import Header from "@/components/Header/Header";
-import NewLaunchCatalog from "@/components/NewLaunch/NewLaunchCatalog";
+import Header from "@/src/components/Header/Header";
+import NewLaunchCatalog from "@/src/components/NewLaunch/NewLaunchCatalog";
 
 /* =========================================================
    API

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import StatCard from "@/components/Admin/StatCard";
+import StatCard from "@/src/components/Admin/StatCard";
 
 export default function AdminDashboardPage() {
   return (

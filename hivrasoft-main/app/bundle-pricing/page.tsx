@@ -1,4 +1,4 @@
-import BundlePricingCatalog from "@/components/BundlePricing/BundlePricingCatalog";
+import BundlePricingCatalog from "@/src/components/BundlePricing/BundlePricingCatalog";
 
 /* =========================================================
    TYPES
