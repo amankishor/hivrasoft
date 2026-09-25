@@ -17,6 +17,8 @@ import Notification from "../models/Notification.model";
 import { listAdminCustomers } from "../services/customer-admin.service";
 import { addItemToCart, clearUserCart, removeCartItem, updateCartItem, getUserCart } from "../services/cart.service";
 import { addProductToWishlist, clearUserWishlist, removeProductFromWishlist, getUserWishlist } from "../services/wishlist.service";
+import { buildInvoicePdf, buildInvoicesPdf } from "../services/invoice.service";
+import { createOrderStatusNotification, isAdminTransitionAllowed, restoreOrderInventoryIfNeeded } from "../services/order.service";
 
 const dummyHash = hashPassword("invalid-admin-login");
 
@@ -677,90 +679,184 @@ export async function updateAdminCustomerStatus(req: Request, res: Response) {
   }
 }
 
-/** GET /api/admin/orders - read-only admin list, works with the existing Mongo orders collection. */
-export async function getAdminOrders(_req: Request, res: Response) {
+/** GET /api/admin/orders - paginated order management list. */
+export async function getAdminOrders(req: Request, res: Response) {
   try {
-    if (!(await collectionExists("orders"))) {
-      return res.status(200).json({ success: true, count: 0, orders: [] });
+    const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || "20"), 10) || 20));
+    const search = String(req.query.search || "").trim();
+    const status = String(req.query.status || "").trim().toLowerCase();
+    const paymentStatus = String(req.query.paymentStatus || "").trim().toLowerCase();
+    const paymentMethod = String(req.query.paymentMethod || "").trim().toLowerCase();
+    const dateFrom = String(req.query.dateFrom || "").trim();
+    const dateTo = String(req.query.dateTo || "").trim();
+
+    const filter: Record<string, any> = {};
+    if (status) filter.status = status;
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
+    if (paymentMethod) filter.paymentMethod = paymentMethod;
+
+    if (dateFrom || dateTo) {
+      const createdAt: Record<string, Date> = {};
+      if (dateFrom) {
+        const from = new Date(`${dateFrom}T00:00:00.000Z`);
+        if (!Number.isNaN(from.getTime())) createdAt.$gte = from;
+      }
+      if (dateTo) {
+        const to = new Date(`${dateTo}T23:59:59.999Z`);
+        if (!Number.isNaN(to.getTime())) createdAt.$lte = to;
+      }
+      if (Object.keys(createdAt).length) filter.createdAt = createdAt;
     }
 
-    const orders = await getDb().collection("orders").find({}).sort({ createdAt: -1 }).limit(250).toArray();
-    return res.status(200).json({ success: true, count: orders.length, orders });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error instanceof Error ? error.message : "Unable to load orders.",
+    if (search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rx = new RegExp(escaped, "i");
+      const users = await User.find({ role: "customer", $or: [{ name: rx }, { email: rx }, { phone: rx }] }).select("_id").limit(100).lean();
+      filter.$or = [
+        { orderNumber: rx },
+        { invoiceNumber: rx },
+        { "customer.name": rx },
+        { "customer.email": rx },
+        { "customer.phone": rx },
+        ...(users.length ? [{ user: { $in: users.map((user) => user._id) } }] : []),
+      ];
+    }
+
+    const [total, orders] = await Promise.all([
+      Order.countDocuments(filter),
+      Order.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate("user", "name email phone")
+        .lean(),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      count: orders.length,
+      orders,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
     });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Unable to load orders." });
+  }
+}
+
+/** GET /api/admin/orders/:id */
+export async function getAdminOrderById(req: Request, res: Response) {
+  try {
+    const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!orderId || !Types.ObjectId.isValid(orderId)) return res.status(400).json({ success: false, message: "Invalid order id." });
+    const order = await Order.findById(orderId).populate("user", "name email phone").lean();
+    if (!order) return res.status(404).json({ success: false, message: "Order not found." });
+    return res.json({ success: true, order });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Unable to load order." });
+  }
+}
+
+/** GET /api/admin/orders/:id/invoice */
+export async function downloadAdminOrderInvoice(req: Request, res: Response) {
+  try {
+    const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!orderId || !Types.ObjectId.isValid(orderId)) return res.status(400).json({ success: false, message: "Invalid order id." });
+    const order = await Order.findById(orderId).populate("user", "name email phone").lean();
+    if (!order) return res.status(404).json({ success: false, message: "Order not found." });
+    const pdf = buildInvoicePdf(order as any);
+    const name = String((order as any).invoiceNumber || (order as any).orderNumber || "invoice").replace(/[^A-Za-z0-9_-]/g, "-");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}.pdf"`);
+    res.setHeader("Content-Length", String(pdf.length));
+    return res.send(pdf);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Unable to create invoice." });
+  }
+}
+
+/** GET /api/admin/orders/invoices?ids=id1,id2 - combined PDF. */
+export async function downloadSelectedAdminInvoices(req: Request, res: Response) {
+  try {
+    const ids = String(req.query.ids || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => Types.ObjectId.isValid(id));
+    if (!ids.length) return res.status(400).json({ success: false, message: "Select at least one valid order." });
+    if (ids.length > 50) return res.status(400).json({ success: false, message: "You can download up to 50 invoices at a time." });
+    const orders = await Order.find({ _id: { $in: ids } }).sort({ createdAt: -1 }).lean();
+    if (!orders.length) return res.status(404).json({ success: false, message: "No selected orders were found." });
+    const pdf = buildInvoicesPdf(orders as any[]);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'attachment; filename="selected-invoices.pdf"');
+    res.setHeader("Content-Length", String(pdf.length));
+    return res.send(pdf);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Unable to create selected invoices." });
   }
 }
 
 /** PATCH /api/admin/orders/:id/status */
 export async function updateAdminOrderStatus(req: Request, res: Response) {
   try {
-    const { status } = req.body || {};
-    if (typeof status !== "string" || !status.trim()) {
-      return res.status(400).json({ success: false, message: "Order status is required." });
-    }
+    const requested = String(req.body?.status || "").trim().toLowerCase();
+    const allowedStatuses = ["pending_payment", "confirmed", "processing", "shipped", "out_for_delivery", "delivered", "cancelled", "returned", "refunded"];
+    if (!allowedStatuses.includes(requested)) return res.status(400).json({ success: false, message: "Invalid order status." });
+
     const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    if (!orderId || !Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({ success: false, message: "Invalid order id." });
-    }
-    if (!(await collectionExists("orders"))) {
-      return res.status(404).json({ success: false, message: "Order not found." });
-    }
-
-    const result = await getDb().collection("orders").findOneAndUpdate(
-      { _id: new Types.ObjectId(orderId) },
-      { $set: { status: status.trim().toLowerCase(), updatedAt: new Date() } },
-      { returnDocument: "after" }
-    );
-
-    const order: any = (result as unknown as { value?: unknown })?.value ?? result;
+    if (!orderId || !Types.ObjectId.isValid(orderId)) return res.status(400).json({ success: false, message: "Invalid order id." });
+    const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ success: false, message: "Order not found." });
 
-    const normalizedStatus = status.trim().toLowerCase();
-    if (order.user && ["delivered", "cancelled", "canceled"].includes(normalizedStatus)) {
-      await trackUserActivity({
-        userId: String(order.user),
-        type: normalizedStatus === "delivered" ? "order_delivered" : "order_cancelled",
-        orderId: String(order._id),
-        metadata: {
-          orderNumber: String(order.orderNumber || order._id),
-          status: normalizedStatus,
-          total: Number(order.total || 0),
-        },
-      });
+    const current = String(order.status || "");
+    if (!isAdminTransitionAllowed(current, requested)) {
+      return res.status(409).json({ success: false, message: `Cannot change order from ${current} to ${requested}.` });
+    }
+    if (current === "pending_payment" && requested === "confirmed" && order.paymentMethod === "razorpay" && order.paymentStatus !== "paid") {
+      return res.status(409).json({ success: false, message: "Razorpay order cannot be confirmed until payment is verified." });
     }
 
-    if (order.user && ["confirmed", "processing", "shipped", "delivered", "cancelled", "canceled"].includes(normalizedStatus)) {
-      const orderNumber = String(order.orderNumber || order._id);
-      const statusTitle: Record<string, string> = {
-        confirmed: "Order Confirmed",
-        processing: "Order Processing",
-        shipped: "Order Shipped",
-        delivered: "Order Delivered",
-        cancelled: "Order Cancelled",
-        canceled: "Order Cancelled",
-      };
-
-      await Notification.create({
-        title: statusTitle[normalizedStatus] || "Order Update",
-        message: `Your order ${orderNumber} is now ${normalizedStatus === "canceled" ? "cancelled" : normalizedStatus}.`,
-        type: "order",
-        audience: "selected",
-        userIds: [order.user],
-        link: "/account/orders",
-        isActive: true,
-        createdBy: req.user?._id || null,
-      });
+    if (requested === "cancelled" && order.inventoryCommitted) {
+      await restoreOrderInventoryIfNeeded(order.toObject());
+      order.inventoryCommitted = false;
+      order.fulfillmentState = "cancelled";
+      order.cancelledAt = new Date();
+      order.cancellationReason = String(req.body?.message || "Cancelled by admin").trim();
     }
 
-    return res.status(200).json({ success: true, order });
+    if (current !== requested) {
+      order.status = requested as any;
+      order.statusHistory.push({
+        status: requested,
+        message: String(req.body?.message || `Status changed to ${requested.replaceAll("_", " ")}.`).trim(),
+        at: new Date(),
+        by: req.user?._id || null,
+      } as any);
+      if (requested === "refunded") order.paymentStatus = "refunded";
+      await order.save();
+    }
+
+    if (order.user && current !== requested) {
+      await createOrderStatusNotification(order.toObject(), requested, req.user?._id || null).catch(() => undefined);
+      if (["delivered", "cancelled"].includes(requested)) {
+        await trackUserActivity({
+          userId: String(order.user),
+          type: requested === "delivered" ? "order_delivered" : "order_cancelled",
+          orderId: String(order._id),
+          metadata: { orderNumber: order.orderNumber, status: requested, total: Number(order.total || 0) },
+        }).catch(() => undefined);
+      }
+    }
+
+    const populated = await Order.findById(order._id).populate("user", "name email phone").lean();
+    return res.status(200).json({ success: true, order: populated });
   } catch (error) {
-    return res.status(400).json({
-      success: false,
-      message: error instanceof Error ? error.message : "Unable to update order.",
-    });
+    return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to update order." });
   }
 }
 

@@ -16,6 +16,7 @@ import cartRoutes from "./routes/cart.routes";
 import orderRoutes from "./routes/order.routes";
 import searchRoutes from "./routes/search.routes";
 import notificationRoutes from "./routes/notification.routes";
+import { razorpayWebhookController } from "./controllers/order.controller";
 
 const app =
   express();
@@ -39,6 +40,12 @@ app.use(
 /* =========================================================
    BODY PARSER
 ========================================================= */
+
+app.post(
+  "/api/payments/razorpay/webhook",
+  express.raw({ type: "application/json", limit: "2mb" }),
+  razorpayWebhookController
+);
 
 app.use(
   express.json({

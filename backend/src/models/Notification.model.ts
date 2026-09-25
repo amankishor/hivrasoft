@@ -21,6 +21,7 @@ export interface INotification extends Document {
   filters: Record<string, unknown>;
   recipientCount: number;
   link: string;
+  imageUrl: string;
   isActive: boolean;
   readBy: Types.ObjectId[];
   createdBy?: Types.ObjectId | null;
@@ -86,6 +87,12 @@ const notificationSchema = new Schema<INotification>(
       trim: true,
       default: "",
       maxlength: 500,
+    },
+    imageUrl: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: 1500,
     },
     isActive: {
       type: Boolean,

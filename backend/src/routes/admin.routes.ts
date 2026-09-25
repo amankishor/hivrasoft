@@ -8,6 +8,9 @@ import {
   getAdminCustomerActivity,
   getAdminDashboard,
   getAdminOrders,
+  getAdminOrderById,
+  downloadAdminOrderInvoice,
+  downloadSelectedAdminInvoices,
   getAdminSystemStatus,
   updateAdminCustomerStatus,
   createAdminCustomer,
@@ -150,6 +153,9 @@ router.get("/users/:userId/activity", authenticateAdmin, getAdminCustomerActivit
 router.get("/users/:userId/notifications", authenticateAdmin, getAdminUserNotifications);
 
 router.get("/orders", authenticateAdmin, getAdminOrders);
+router.get("/orders/invoices", authenticateAdmin, downloadSelectedAdminInvoices);
+router.get("/orders/:id/invoice", authenticateAdmin, downloadAdminOrderInvoice);
+router.get("/orders/:id", authenticateAdmin, getAdminOrderById);
 router.patch("/orders/:id/status", authenticateAdmin, updateAdminOrderStatus);
 router.get("/system-status", authenticateAdmin, getAdminSystemStatus);
 
