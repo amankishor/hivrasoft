@@ -14,6 +14,9 @@ import Account from "../models/user/account.model";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { getUserActivities, trackUserActivity } from "../services/activity.service";
 import Notification from "../models/Notification.model";
+import { listAdminCustomers } from "../services/customer-admin.service";
+import { addItemToCart, clearUserCart, removeCartItem, updateCartItem, getUserCart } from "../services/cart.service";
+import { addProductToWishlist, clearUserWishlist, removeProductFromWishlist, getUserWishlist } from "../services/wishlist.service";
 
 const dummyHash = hashPassword("invalid-admin-login");
 
@@ -152,21 +155,167 @@ export async function getAdminDashboard(_req: Request, res: Response) {
   }
 }
 
-/** GET /api/admin/customers */
-export async function getAdminCustomers(_req: Request, res: Response) {
+/** GET /api/admin/customers - backend-driven search, filters and pagination. */
+export async function getAdminCustomers(req: Request, res: Response) {
   try {
-    const customers = await User.find({ role: "customer" })
-      .select("name email phone emailVerified isActive createdAt updatedAt")
-      .sort({ createdAt: -1 })
-      .lean();
-
-    return res.status(200).json({ success: true, count: customers.length, customers });
+    const result = await listAdminCustomers(req.query as Record<string, unknown>);
+    return res.status(200).json({
+      success: true,
+      count: result.customers.length,
+      customers: result.customers,
+      pagination: result.pagination,
+    });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : "Unable to load customers.",
     });
   }
+}
+
+
+/** POST /api/admin/customers - create a customer for Postman/admin testing. */
+export async function createAdminCustomer(req: Request, res: Response) {
+  try {
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const phone = String(req.body?.phone || "").trim();
+    if (!name || !email || !phone) {
+      return res.status(400).json({ success: false, message: "name, email and phone are required." });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, message: "Enter a valid email address." });
+    }
+    const existing = await User.findOne({ $or: [{ email }, { phone }] }).select("_id").lean();
+    if (existing) return res.status(409).json({ success: false, message: "Email or phone is already in use." });
+
+    const requestedStatus = String(req.body?.accountStatus || "active").toLowerCase();
+    const accountStatus = (["active", "inactive", "blocked"].includes(requestedStatus) ? requestedStatus : "active") as "active" | "inactive" | "blocked";
+    const customer: any = await User.create({
+      name, email, phone, role: "customer", emailVerified: Boolean(req.body?.emailVerified),
+      isActive: accountStatus === "active", accountStatus, lastActiveAt: req.body?.lastActiveAt || null,
+    });
+    await Account.updateOne(
+      { user: customer._id },
+      { $setOnInsert: { user: customer._id, role: "customer", emailVerified: customer.emailVerified }, $set: { isActive: accountStatus === "active", isBlocked: accountStatus === "blocked" } },
+      { upsert: true }
+    );
+    await trackUserActivity({ userId: String(customer._id), type: "register", metadata: { source: "admin_postman" } });
+    return res.status(201).json({ success: true, message: "Customer created.", data: customer });
+  } catch (error: any) {
+    const duplicate = error?.code === 11000;
+    return res.status(duplicate ? 409 : 400).json({ success: false, message: duplicate ? "Email or phone is already in use." : (error instanceof Error ? error.message : "Unable to create customer.") });
+  }
+}
+
+/** PATCH /api/admin/customers/:id - update basic customer fields. */
+export async function updateAdminCustomer(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id || "");
+    if (!Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: "Invalid customer id." });
+    const update: Record<string, unknown> = {};
+    if (req.body?.name !== undefined) update.name = String(req.body.name).trim();
+    if (req.body?.email !== undefined) update.email = String(req.body.email).trim().toLowerCase();
+    if (req.body?.phone !== undefined) update.phone = String(req.body.phone).trim();
+    if (req.body?.emailVerified !== undefined) update.emailVerified = Boolean(req.body.emailVerified);
+    if (Object.values(update).some((value) => value === "")) return res.status(400).json({ success: false, message: "Updated fields cannot be empty." });
+    const customer = await User.findOneAndUpdate({ _id: id, role: "customer" }, { $set: update }, { new: true, runValidators: true })
+      .select("name email phone emailVerified isActive accountStatus lastActiveAt createdAt updatedAt");
+    if (!customer) return res.status(404).json({ success: false, message: "Customer not found." });
+    return res.json({ success: true, message: "Customer updated.", data: customer });
+  } catch (error: any) {
+    return res.status(error?.code === 11000 ? 409 : 400).json({ success: false, message: error?.code === 11000 ? "Email or phone is already in use." : (error instanceof Error ? error.message : "Unable to update customer.") });
+  }
+}
+
+/** PATCH /api/admin/customers/:id/last-active */
+export async function updateAdminCustomerLastActive(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id || "");
+    if (!Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: "Invalid customer id." });
+    const value = req.body?.lastActiveAt ? new Date(req.body.lastActiveAt) : new Date();
+    if (Number.isNaN(value.getTime())) return res.status(400).json({ success: false, message: "Invalid lastActiveAt date." });
+    const customer = await User.findOneAndUpdate({ _id: id, role: "customer" }, { $set: { lastActiveAt: value } }, { new: true })
+      .select("name email phone lastActiveAt");
+    if (!customer) return res.status(404).json({ success: false, message: "Customer not found." });
+    return res.json({ success: true, message: "Last active updated.", data: customer });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to update last active." });
+  }
+}
+
+/** Admin/Postman cart mutation helpers. */
+export async function adminAddCustomerCartItem(req: Request, res: Response) {
+  try {
+    const userId = String(req.params.id || "");
+    let cart = await addItemToCart(userId, { productId: String(req.body?.productId || ""), colorId: String(req.body?.colorId || req.body?.variantId || ""), sizeId: String(req.body?.sizeId || ""), quantity: req.body?.quantity });
+    if (req.body?.addedAt) {
+      const addedAt = new Date(req.body.addedAt);
+      if (Number.isNaN(addedAt.getTime())) return res.status(400).json({ success: false, message: "Invalid addedAt date." });
+      await Cart.updateOne(
+        { user: userId, items: { $elemMatch: { product: req.body.productId, colorId: req.body?.colorId || req.body?.variantId, sizeId: req.body?.sizeId } } },
+        { $set: { "items.$.addedAt": addedAt, "items.$.updatedAt": addedAt } }
+      );
+      cart = await getUserCart(userId);
+    }
+    return res.status(201).json({ success: true, message: "Product added to cart", data: cart });
+  } catch (error) { return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to add cart item." }); }
+}
+
+export async function adminUpdateCustomerCartItem(req: Request, res: Response) {
+  try {
+    const cart = await updateCartItem(String(req.params.id || ""), String(req.params.itemId || ""), { quantity: Number(req.body?.quantity) });
+    return res.json({ success: true, message: "Cart quantity updated", data: cart });
+  } catch (error) { return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to update cart item." }); }
+}
+
+export async function adminRemoveCustomerCartItem(req: Request, res: Response) {
+  try {
+    const cart = await removeCartItem(String(req.params.id || ""), String(req.params.itemId || ""));
+    return res.json({ success: true, message: "Cart item removed", data: cart });
+  } catch (error) { return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to remove cart item." }); }
+}
+
+export async function adminClearCustomerCart(req: Request, res: Response) {
+  try {
+    const cart = await clearUserCart(String(req.params.id || ""));
+    return res.json({ success: true, message: "Cart cleared", data: cart });
+  } catch (error) { return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to clear cart." }); }
+}
+
+export async function adminAddCustomerWishlistItem(req: Request, res: Response) {
+  try {
+    const userId = String(req.params.id || "");
+    const productId = String(req.body?.productId || "");
+    const colorId = req.body?.colorId || req.body?.variantId || null;
+    const sizeId = req.body?.sizeId || null;
+    const result = await addProductToWishlist(userId, productId, { colorId, sizeId });
+    let wishlist: any = result.wishlist;
+    if (req.body?.addedAt) {
+      const addedAt = new Date(req.body.addedAt);
+      if (Number.isNaN(addedAt.getTime())) return res.status(400).json({ success: false, message: "Invalid addedAt date." });
+      await Wishlist.updateOne(
+        { user: userId, items: { $elemMatch: { product: productId, colorId: colorId || null, sizeId: sizeId || null } } },
+        { $set: { "items.$.addedAt": addedAt, "items.$.updatedAt": addedAt } }
+      );
+      wishlist = await getUserWishlist(userId);
+    }
+    return res.status(result.alreadyExists ? 200 : 201).json({ success: true, message: result.alreadyExists ? "Product already in wishlist" : "Product added to wishlist", data: wishlist });
+  } catch (error) { return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to add wishlist item." }); }
+}
+
+export async function adminRemoveCustomerWishlistItem(req: Request, res: Response) {
+  try {
+    const wishlist = await removeProductFromWishlist(String(req.params.id || ""), String(req.params.itemId || ""));
+    return res.json({ success: true, message: "Wishlist item removed", data: wishlist });
+  } catch (error) { return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to remove wishlist item." }); }
+}
+
+export async function adminClearCustomerWishlist(req: Request, res: Response) {
+  try {
+    const wishlist = await clearUserWishlist(String(req.params.id || ""));
+    return res.json({ success: true, message: "Wishlist cleared", data: wishlist });
+  } catch (error) { return res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Unable to clear wishlist." }); }
 }
 
 /** GET /api/admin/customers/:id - complete customer 360 view for admin. */
@@ -182,7 +331,7 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
     const userObjectId = new Types.ObjectId(customerId);
 
     const customer = await User.findOne({ _id: userObjectId, role: "customer" })
-      .select("name username email phone role emailVerified isActive avatar createdAt updatedAt")
+      .select("name username email phone role emailVerified isActive accountStatus lastActiveAt avatar createdAt updatedAt")
       .lean();
 
     if (!customer) {
@@ -202,7 +351,7 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
         isActive: true,
         $or: [
           { audience: "all" },
-          { audience: "selected", userIds: userObjectId },
+          { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
         ],
       }),
     ]);
@@ -495,22 +644,31 @@ export async function getAdminCustomerActivity(req: Request, res: Response) {
 /** PATCH /api/admin/customers/:id/status */
 export async function updateAdminCustomerStatus(req: Request, res: Response) {
   try {
-    const { isActive } = req.body || {};
-    if (typeof isActive !== "boolean") {
-      return res.status(400).json({ success: false, message: "isActive must be boolean." });
-    }
+    const id = String(req.params.id || "");
+    if (!Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: "Invalid customer id." });
 
+    const rawStatus = req.body?.accountStatus !== undefined
+      ? String(req.body.accountStatus).toLowerCase()
+      : (typeof req.body?.isActive === "boolean" ? (req.body.isActive ? "active" : "inactive") : "");
+    if (!["active", "inactive", "blocked"].includes(rawStatus)) {
+      return res.status(400).json({ success: false, message: "accountStatus must be active, inactive or blocked." });
+    }
+    const isActive = rawStatus === "active";
     const customer = await User.findOneAndUpdate(
-      { _id: req.params.id, role: "customer" },
-      { isActive },
+      { _id: id, role: "customer" },
+      { $set: { isActive, accountStatus: rawStatus } },
       { new: true }
-    ).select("name email phone emailVerified isActive createdAt updatedAt");
+    ).select("name email phone emailVerified isActive accountStatus lastActiveAt createdAt updatedAt");
 
-    if (!customer) {
-      return res.status(404).json({ success: false, message: "Customer not found." });
-    }
+    if (!customer) return res.status(404).json({ success: false, message: "Customer not found." });
 
-    return res.status(200).json({ success: true, customer });
+    await Account.updateOne(
+      { user: customer._id },
+      { $set: { isActive, isBlocked: rawStatus === "blocked" }, $setOnInsert: { user: customer._id, role: "customer", emailVerified: customer.emailVerified } },
+      { upsert: true }
+    );
+
+    return res.status(200).json({ success: true, message: "Customer status updated.", customer });
   } catch (error) {
     return res.status(400).json({
       success: false,
@@ -793,7 +951,7 @@ export async function getAdminUserNotifications(req: Request, res: Response) {
       isActive: true,
       $or: [
         { audience: "all" },
-        { audience: "selected", userIds: userObjectId },
+        { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
       ],
     })
       .sort({ createdAt: -1 })

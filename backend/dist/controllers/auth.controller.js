@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateAccountInfo = exports.getAccountInfo = exports.logout = exports.getMe = exports.loginVerifyOtp = exports.loginSendOtp = exports.registerVerifyOtp = exports.registerSendOtp = void 0;
 const auth_service_1 = require("../services/auth.service");
 const User_model_1 = __importDefault(require("../models/User.model"));
+const activity_service_1 = require("../services/activity.service");
 const ONE_YEAR_MS = 365 *
     24 *
     60 *
@@ -88,6 +89,10 @@ const registerVerifyOtp = async (req, res) => {
             otp,
         });
         setAuthCookie(res, result.token);
+        await Promise.all([
+            (0, activity_service_1.trackUserActivity)({ userId: String(result.user._id), type: "register" }),
+            result.user.updateOne({ $set: { lastActiveAt: new Date(), accountStatus: "active", isActive: true } }),
+        ]);
         return res
             .status(201)
             .json({
@@ -172,6 +177,10 @@ const loginVerifyOtp = async (req, res) => {
             otp,
         });
         setAuthCookie(res, result.token);
+        await Promise.all([
+            (0, activity_service_1.trackUserActivity)({ userId: String(result.user._id), type: "login" }),
+            result.user.updateOne({ $set: { lastActiveAt: new Date() } }),
+        ]);
         return res
             .status(200)
             .json({

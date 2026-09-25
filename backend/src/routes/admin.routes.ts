@@ -10,6 +10,16 @@ import {
   getAdminOrders,
   getAdminSystemStatus,
   updateAdminCustomerStatus,
+  createAdminCustomer,
+  updateAdminCustomer,
+  updateAdminCustomerLastActive,
+  adminAddCustomerCartItem,
+  adminUpdateCustomerCartItem,
+  adminRemoveCustomerCartItem,
+  adminClearCustomerCart,
+  adminAddCustomerWishlistItem,
+  adminRemoveCustomerWishlistItem,
+  adminClearCustomerWishlist,
   updateAdminOrderStatus,
   getAdminUserCart,
   getAdminUserWishlist,
@@ -21,6 +31,7 @@ import { verifyToken } from "../utils/jwt";
 
 import {
   createAdminNotification,
+  previewAdminNotificationAudience,
   listAdminNotifications,
   deleteAdminNotification,
   sendAdminNotificationToOne,
@@ -113,9 +124,22 @@ router.get("/me", authenticateAdmin, (req: Request, res: Response) => {
 
 router.get("/dashboard", authenticateAdmin, getAdminDashboard);
 router.get("/customers", authenticateAdmin, getAdminCustomers);
+router.post("/customers", authenticateAdmin, createAdminCustomer);
 router.get("/customers/:id", authenticateAdmin, getAdminCustomerDetails);
-router.get("/customers/:id/activity", authenticateAdmin, getAdminCustomerActivity);
+router.patch("/customers/:id", authenticateAdmin, updateAdminCustomer);
 router.patch("/customers/:id/status", authenticateAdmin, updateAdminCustomerStatus);
+router.patch("/customers/:id/last-active", authenticateAdmin, updateAdminCustomerLastActive);
+router.get("/customers/:id/cart", authenticateAdmin, getAdminUserCart);
+router.post("/customers/:id/cart", authenticateAdmin, adminAddCustomerCartItem);
+router.patch("/customers/:id/cart/:itemId", authenticateAdmin, adminUpdateCustomerCartItem);
+router.delete("/customers/:id/cart/:itemId", authenticateAdmin, adminRemoveCustomerCartItem);
+router.delete("/customers/:id/cart", authenticateAdmin, adminClearCustomerCart);
+router.get("/customers/:id/wishlist", authenticateAdmin, getAdminUserWishlist);
+router.post("/customers/:id/wishlist", authenticateAdmin, adminAddCustomerWishlistItem);
+router.delete("/customers/:id/wishlist/:itemId", authenticateAdmin, adminRemoveCustomerWishlistItem);
+router.delete("/customers/:id/wishlist", authenticateAdmin, adminClearCustomerWishlist);
+router.get("/customers/:id/orders", authenticateAdmin, getAdminUserOrders);
+router.get("/customers/:id/activity", authenticateAdmin, getAdminCustomerActivity);
 
 // User tracking aliases used by the admin customer intelligence screens.
 router.get("/users/:userId", authenticateAdmin, getAdminCustomerDetails);
@@ -131,6 +155,7 @@ router.get("/system-status", authenticateAdmin, getAdminSystemStatus);
 
 router.get("/notifications", authenticateAdmin, listAdminNotifications);
 router.post("/notifications", authenticateAdmin, createAdminNotification);
+router.post("/notifications/preview", authenticateAdmin, previewAdminNotificationAudience);
 router.post("/notifications/send", authenticateAdmin, sendAdminNotificationToOne);
 router.post("/notifications/bulk-send", authenticateAdmin, sendAdminNotificationBulk);
 router.post("/notifications/broadcast", authenticateAdmin, broadcastAdminNotification);

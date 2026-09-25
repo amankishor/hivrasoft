@@ -52,7 +52,7 @@ export default function TaxSettingsPage() {
         setPercentage(String(data?.tax?.percentage ?? 0));
         setIsActive(data?.tax?.isActive === true);
         setExcludedProducts(excluded);
-        setApplyToAllProducts(excluded.length === 0);
+        setApplyToAllProducts(data?.tax?.applyToAllProducts !== undefined ? data.tax.applyToAllProducts === true : excluded.length === 0);
       } catch (loadError) {
         if (!cancelled) {
           setError(

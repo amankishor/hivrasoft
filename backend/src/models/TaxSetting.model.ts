@@ -4,6 +4,7 @@ export interface ITaxSetting extends Document {
   name: string;
   percentage: number;
   isActive: boolean;
+  applyToAllProducts: boolean;
   excludedProducts: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
@@ -14,6 +15,7 @@ const taxSettingSchema = new Schema<ITaxSetting>(
     name: { type: String, trim: true, default: "GST", maxlength: 100 },
     percentage: { type: Number, required: true, min: 0, max: 100, default: 0 },
     isActive: { type: Boolean, default: false },
+    applyToAllProducts: { type: Boolean, default: true },
     excludedProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }],
   },
   { timestamps: true, versionKey: false }

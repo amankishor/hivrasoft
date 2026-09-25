@@ -426,7 +426,14 @@ const buildCartResponse =
     });
 
     const discountedSubtotal = Math.max(0, subtotal - discountResult.totalDiscount);
-    const taxResult = await calculateTax(discountedSubtotal);
+    const taxResult = await calculateTax(
+      discountedItems
+        .filter((item: any) => item.available && item.product?._id)
+        .map((item: any) => ({
+          productId: String(item.product._id),
+          amount: Number(item.discount?.finalLineTotal ?? item.subtotal ?? 0),
+        }))
+    );
     const total = Math.max(0, discountedSubtotal + taxResult.amount);
 
     return {

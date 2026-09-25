@@ -155,10 +155,10 @@ export const registerVerifyOtp =
         result.token
       );
 
-      await trackUserActivity({
-        userId: String(result.user._id),
-        type: "register",
-      });
+      await Promise.all([
+        trackUserActivity({ userId: String(result.user._id), type: "register" }),
+        result.user.updateOne({ $set: { lastActiveAt: new Date(), accountStatus: "active", isActive: true } }),
+      ]);
 
       return res
         .status(201)
@@ -295,10 +295,10 @@ export const loginVerifyOtp =
         result.token
       );
 
-      await trackUserActivity({
-        userId: String(result.user._id),
-        type: "login",
-      });
+      await Promise.all([
+        trackUserActivity({ userId: String(result.user._id), type: "login" }),
+        result.user.updateOne({ $set: { lastActiveAt: new Date() } }),
+      ]);
 
       return res
         .status(200)

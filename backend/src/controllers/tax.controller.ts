@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
 import TaxSetting from "../models/TaxSetting.model";
+import Product from "../models/Product.model";
+import { normalizeExcludedProductIds } from "../services/tax.service";
 
 function normalizePercentage(value: unknown) {
   const percentage = Number(value);
@@ -18,6 +20,8 @@ export async function getTaxSettingAdmin(_req: Request, res: Response) {
         name: "GST",
         percentage: 0,
         isActive: false,
+        applyToAllProducts: true,
+        excludedProducts: [],
       },
     });
   } catch (error) {
@@ -33,10 +37,18 @@ export async function saveTaxSettingAdmin(req: Request, res: Response) {
     const percentage = normalizePercentage(req.body?.percentage);
     const name = String(req.body?.name || "GST").trim().slice(0, 100) || "GST";
     const isActive = Boolean(req.body?.isActive) && percentage > 0;
+    const applyToAllProducts = req.body?.applyToAllProducts !== false;
+    let excludedProducts = applyToAllProducts ? [] : normalizeExcludedProductIds(req.body?.excludedProducts);
+
+    if (excludedProducts.length) {
+      const existing = await Product.find({ _id: { $in: excludedProducts } }).select("_id").lean();
+      const allowed = new Set(existing.map((item: any) => String(item._id)));
+      excludedProducts = excludedProducts.filter((id) => allowed.has(String(id)));
+    }
 
     const tax = await TaxSetting.findOneAndUpdate(
       {},
-      { name, percentage, isActive },
+      { name, percentage, isActive, applyToAllProducts, excludedProducts },
       { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
     );
 

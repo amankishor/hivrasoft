@@ -45,6 +45,8 @@ const orderSchema = new Schema<IOrder>(
   { timestamps: true, versionKey: false }
 );
 
+orderSchema.index({ user: 1, createdAt: -1 });
+
 const Order: Model<IOrder> =
   (mongoose.models.Order as Model<IOrder>) || mongoose.model<IOrder>("Order", orderSchema);
 

@@ -66,6 +66,13 @@ const authenticate = async (
 
     req.user = user;
 
+    if (user.role === "customer") {
+      const last = user.lastActiveAt ? new Date(user.lastActiveAt).getTime() : 0;
+      if (!last || Date.now() - last > 5 * 60 * 1000) {
+        void User.updateOne({ _id: user._id }, { $set: { lastActiveAt: new Date() } }).catch(() => undefined);
+      }
+    }
+
     next();
   } catch (error) {
     console.error(

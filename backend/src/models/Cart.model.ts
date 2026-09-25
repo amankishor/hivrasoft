@@ -86,6 +86,7 @@ const cartItemSchema =
 
       addedAt: {
         type: Date,
+        required: true,
         default:
           Date.now,
       },
@@ -152,6 +153,7 @@ const cartSchema =
 cartSchema.index({
   "items.product": 1,
 });
+cartSchema.index({ "items.addedAt": 1 });
 
 /* =========================================================
    MODEL

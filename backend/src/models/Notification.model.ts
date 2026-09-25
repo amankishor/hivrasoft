@@ -9,7 +9,7 @@ export type NotificationType =
   | "cart_reminder"
   | "wishlist_reminder";
 
-export type NotificationAudience = "all" | "selected";
+export type NotificationAudience = "all" | "selected" | "filtered";
 export type NotificationSource = "admin" | "system";
 
 export interface INotification extends Document {
@@ -18,6 +18,8 @@ export interface INotification extends Document {
   type: NotificationType;
   audience: NotificationAudience;
   userIds: Types.ObjectId[];
+  filters: Record<string, unknown>;
+  recipientCount: number;
   link: string;
   isActive: boolean;
   readBy: Types.ObjectId[];
@@ -61,7 +63,7 @@ const notificationSchema = new Schema<INotification>(
     },
     audience: {
       type: String,
-      enum: ["all", "selected"],
+      enum: ["all", "selected", "filtered"],
       required: true,
       default: "all",
       index: true,
@@ -69,6 +71,15 @@ const notificationSchema = new Schema<INotification>(
     userIds: {
       type: [{ type: Schema.Types.ObjectId, ref: "User" }],
       default: [],
+    },
+    filters: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
+    recipientCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     link: {
       type: String,
