@@ -3,7 +3,10 @@ import "dotenv/config";
 import app from "./app";
 import connectDatabase from "./config/database";
 import { startReminderScheduler } from "./services/reminder.service";
-import { ensureProductColorIds } from "./services/product-migration.service";
+import {
+  ensureProductColorIds,
+  removeLegacyProductSlugIndex,
+} from "./services/product-migration.service";
 
 const PORT = Number(process.env.PORT || 5000);
 
@@ -12,6 +15,13 @@ const startServer = async () => {
     console.log("🚀 Backend starting...");
 
     await connectDatabase();
+
+    const removedLegacySlugIndex = await removeLegacyProductSlugIndex();
+    if (removedLegacySlugIndex) {
+      console.log(
+        "✅ Removed obsolete products.slug_1 index; product SEO slugs remain in colors[].slugProduct."
+      );
+    }
 
     const migratedProducts = await ensureProductColorIds();
     if (migratedProducts > 0) {

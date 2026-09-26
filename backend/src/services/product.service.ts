@@ -812,6 +812,49 @@ const normalizeColorsForMode = (
 };
 
 /* =========================================================
+   PRESERVE EXISTING SEO SLUGS DURING UPDATE
+
+   Product names may change for merchandising/SEO copy, but
+   existing URLs should stay stable unless the admin explicitly
+   sends a new slug. If an update payload leaves a slug blank,
+   reuse the currently stored slug instead of regenerating it
+   from the edited name.
+========================================================= */
+
+const preserveExistingSlugsForUpdate = (
+  isColor: boolean,
+  incomingColors: ProductColorInput[],
+  existingColors: IProductColor[]
+): ProductColorInput[] => {
+  return incomingColors.map((color, index) => {
+    const existing = existingColors[index];
+
+    const incomingProductSlug = String(
+      color.slugProduct || ""
+    ).trim();
+
+    const incomingColorSlug = String(
+      color.slugColor || ""
+    ).trim();
+
+    return {
+      ...color,
+
+      slugProduct:
+        incomingProductSlug ||
+        existing?.slugProduct ||
+        color.nameProduct,
+
+      slugColor: !isColor
+        ? "default"
+        : incomingColorSlug ||
+          existing?.slugColor ||
+          color.nameColor,
+    };
+  });
+};
+
+/* =========================================================
    UNIQUE PRODUCT SLUG ACROSS DATABASE
 ========================================================= */
 
@@ -1206,10 +1249,17 @@ export const updateProduct =
         input.colors
       );
 
+      const colorsWithStableSlugs =
+        preserveExistingSlugsForUpdate(
+          nextIsColor,
+          input.colors,
+          product.colors
+        );
+
       const colors =
         normalizeColorsForMode(
           nextIsColor,
-          input.colors
+          colorsWithStableSlugs
         );
 
       await validateUniqueProductSlugs(
