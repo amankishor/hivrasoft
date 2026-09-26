@@ -15,6 +15,7 @@ export interface IUser extends Document {
   passwordHash?: string;
   email: string;
   phone: string;
+  gender: "male" | "female" | "other";
 
   role: UserRole;
 
@@ -55,6 +56,13 @@ const userSchema = new Schema<IUser>(
       type: String,
       required: true,
       trim: true,
+    },
+
+    gender: {
+      type: String,
+      enum: ["male", "female", "other"],
+      default: "other",
+      index: true,
     },
 
     role: {

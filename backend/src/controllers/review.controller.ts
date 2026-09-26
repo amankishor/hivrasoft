@@ -39,7 +39,6 @@ export async function createReview(req: Request, res: Response) {
     if (!order) return res.status(404).json({ success: false, message: "Order not found for this account." });
     const purchased = Array.isArray((order as any).items) && (order as any).items.some((item: any) => String(item.productId || item.product || "") === productId);
     if (!purchased) return res.status(403).json({ success: false, message: "This product was not purchased in the selected order." });
-    if (String((order as any).status) !== "delivered") return res.status(403).json({ success: false, message: "A review can be submitted after the order is delivered." });
     const exists = await Review.exists({ userId: uid, productId, orderId });
     if (exists) return res.status(409).json({ success: false, message: "You already reviewed this product from this order." });
 

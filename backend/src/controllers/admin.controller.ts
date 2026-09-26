@@ -219,10 +219,15 @@ export async function updateAdminCustomer(req: Request, res: Response) {
     if (req.body?.name !== undefined) update.name = String(req.body.name).trim();
     if (req.body?.email !== undefined) update.email = String(req.body.email).trim().toLowerCase();
     if (req.body?.phone !== undefined) update.phone = String(req.body.phone).trim();
+    if (req.body?.gender !== undefined) {
+      const gender = String(req.body.gender).trim().toLowerCase();
+      if (!["male", "female", "other"].includes(gender)) return res.status(400).json({ success: false, message: "Gender must be male, female or other." });
+      update.gender = gender;
+    }
     if (req.body?.emailVerified !== undefined) update.emailVerified = Boolean(req.body.emailVerified);
     if (Object.values(update).some((value) => value === "")) return res.status(400).json({ success: false, message: "Updated fields cannot be empty." });
     const customer = await User.findOneAndUpdate({ _id: id, role: "customer" }, { $set: update }, { new: true, runValidators: true })
-      .select("name email phone emailVerified isActive accountStatus lastActiveAt createdAt updatedAt");
+      .select("name email phone gender emailVerified isActive accountStatus lastActiveAt createdAt updatedAt");
     if (!customer) return res.status(404).json({ success: false, message: "Customer not found." });
     return res.json({ success: true, message: "Customer updated.", data: customer });
   } catch (error: any) {
@@ -333,7 +338,7 @@ export async function getAdminCustomerDetails(req: Request, res: Response) {
     const userObjectId = new Types.ObjectId(customerId);
 
     const customer = await User.findOne({ _id: userObjectId, role: "customer" })
-      .select("name username email phone role emailVerified isActive accountStatus lastActiveAt avatar createdAt updatedAt")
+      .select("name username email phone gender role emailVerified isActive accountStatus lastActiveAt avatar createdAt updatedAt")
       .lean();
 
     if (!customer) {
@@ -660,7 +665,7 @@ export async function updateAdminCustomerStatus(req: Request, res: Response) {
       { _id: id, role: "customer" },
       { $set: { isActive, accountStatus: rawStatus } },
       { new: true }
-    ).select("name email phone emailVerified isActive accountStatus lastActiveAt createdAt updatedAt");
+    ).select("name email phone gender emailVerified isActive accountStatus lastActiveAt createdAt updatedAt");
 
     if (!customer) return res.status(404).json({ success: false, message: "Customer not found." });
 

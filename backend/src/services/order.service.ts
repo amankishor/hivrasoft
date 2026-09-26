@@ -339,8 +339,8 @@ export async function createRazorpayOrderFromCart(userId: string, payload: any) 
     paymentMethod: "razorpay",
     paymentStatus: "pending",
     payment: { gateway: "razorpay", amount: snapshot.total, currency: "INR", paidAt: null },
-    status: "pending_payment",
-    statusHistory: [{ status: "pending_payment", message: "Waiting for Razorpay payment.", at: new Date() }],
+    status: "confirmed",
+    statusHistory: [{ status: "confirmed", message: "Order placed. Razorpay payment is pending.", at: new Date() }],
     inventoryCommitted: false,
     fulfillmentState: "pending",
   });
