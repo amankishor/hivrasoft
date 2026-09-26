@@ -701,16 +701,20 @@ productSchema.pre(
 
     /* =====================================================
        isColor = false
-       colors[] empty hona chahiye
+       One internal default details block is allowed.
+
+       Product name, slug, images, sizes and pricing are
+       stored inside colors[] even for a no-color product.
+       The storefront uses isColor=false to hide the color UI.
     ===================================================== */
 
     if (
       !this.isColor &&
-      this.colors.length > 0
+      this.colors.length > 1
     ) {
       this.invalidate(
         "colors",
-        "Colors are not allowed when isColor is false."
+        "Only one default product details block is allowed when isColor is false."
       );
     }
 

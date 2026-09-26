@@ -746,30 +746,69 @@ const validateColorMode = (
     | ProductColorInput[]
     | undefined
 ) => {
-  const hasColors =
-    Array.isArray(
-      colors
-    ) &&
-    colors.length >
-      0;
+  const colorCount =
+    Array.isArray(colors)
+      ? colors.length
+      : 0;
 
   if (
     isColor &&
-    !hasColors
+    colorCount === 0
   ) {
     throw new Error(
       "At least one color is required when isColor is true."
     );
   }
 
+  /*
+   * No-color products still keep one internal details block
+   * in colors[] because product name, slug, images, sizes,
+   * stock and pricing live in the color subdocument schema.
+   * isColor=false only hides the color selector on storefront.
+   */
   if (
     !isColor &&
-    hasColors
+    colorCount === 0
   ) {
     throw new Error(
-      "Colors are not allowed when isColor is false."
+      "Product details are required when isColor is false."
     );
   }
+
+  if (
+    !isColor &&
+    colorCount > 1
+  ) {
+    throw new Error(
+      "Only one default product details block is allowed when isColor is false."
+    );
+  }
+};
+
+const normalizeColorsForMode = (
+  isColor: boolean,
+  colors:
+    | ProductColorInput[]
+    | undefined
+): IProductColor[] => {
+  const normalized =
+    normalizeColors(colors);
+
+  if (
+    !isColor &&
+    normalized[0]
+  ) {
+    normalized[0].nameColor =
+      "Default";
+    normalized[0].slugColor =
+      "default";
+    normalized[0].hex =
+      "";
+    normalized[0].isDefault =
+      true;
+  }
+
+  return normalized;
 };
 
 /* =========================================================
@@ -920,11 +959,10 @@ export const createProduct =
     );
 
     const colors =
-      isColor
-        ? normalizeColors(
-            input.colors
-          )
-        : [];
+      normalizeColorsForMode(
+        isColor,
+        input.colors
+      );
 
     await validateUniqueProductSlugs(
       colors
@@ -1169,11 +1207,10 @@ export const updateProduct =
       );
 
       const colors =
-        nextIsColor
-          ? normalizeColors(
-              input.colors
-            )
-          : [];
+        normalizeColorsForMode(
+          nextIsColor,
+          input.colors
+        );
 
       await validateUniqueProductSlugs(
         colors,
@@ -1183,10 +1220,33 @@ export const updateProduct =
       product.colors =
         colors;
     } else if (
-      !nextIsColor
+      input.isColor !== undefined &&
+      nextIsColor !== product.isColor
     ) {
-      product.colors =
-        [];
+      if (
+        product.colors.length === 0
+      ) {
+        throw new Error(
+          "Product details are required before changing color mode."
+        );
+      }
+
+      if (!nextIsColor) {
+        product.colors =
+          product.colors.slice(
+            0,
+            1
+          );
+
+        product.colors[0].nameColor =
+          "Default";
+        product.colors[0].slugColor =
+          "default";
+        product.colors[0].hex =
+          "";
+        product.colors[0].isDefault =
+          true;
+      }
     }
 
     product.isColor =
