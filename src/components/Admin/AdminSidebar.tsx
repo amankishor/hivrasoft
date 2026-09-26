@@ -11,6 +11,7 @@ import {
   Percent,
   ReceiptText,
   Tag,
+  Star,
   UsersRound,
 } from "lucide-react";
 
@@ -20,7 +21,8 @@ export default function AdminSidebar() {
   const productRoute = pathname.startsWith("/admin/products");
   const userRoute =
     pathname.startsWith("/admin/customers") ||
-    pathname.startsWith("/admin/notifications");
+    pathname.startsWith("/admin/notifications") ||
+    pathname.startsWith("/admin/reviews");
   const extraRoute = pathname.startsWith("/admin/extra-add");
 
   const [productsOpen, setProductsOpen] = useState(productRoute);
@@ -87,6 +89,9 @@ export default function AdminSidebar() {
               active={pathname.startsWith("/admin/customers")}
             >
               Customers
+            </SubMenuLink>
+            <SubMenuLink href="/admin/reviews" active={pathname.startsWith("/admin/reviews")} icon={<Star size={13} />}>
+              Ratings & Reviews
             </SubMenuLink>
             <SubMenuLink
               href="/admin/notifications"

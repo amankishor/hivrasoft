@@ -3,6 +3,17 @@ import mongoose from "mongoose";
 import Notification from "../models/Notification.model";
 import User from "../models/User.model";
 import { matchingCustomerIds } from "../services/customer-admin.service";
+import sanitizeHtml from "sanitize-html";
+
+function sanitizeNotificationHtml(value: string) {
+  return sanitizeHtml(value, {
+    allowedTags: ["div","p","span","strong","b","em","i","u","br","h1","h2","h3","h4","ul","ol","li","a","table","thead","tbody","tr","td","th","img"],
+    allowedAttributes: { "*": ["style"], a: ["href","target","rel","style"], img: ["src","alt","style"] },
+    allowedSchemes: ["http","https","mailto"],
+    allowedStyles: { "*": { "color": [/^#[0-9a-fA-F]{3,8}$/, /^rgb\(/, /^[a-zA-Z]+$/], "background": [/^#[0-9a-fA-F]{3,8}$/, /^rgb\(/, /^[a-zA-Z]+$/], "background-color": [/^#[0-9a-fA-F]{3,8}$/, /^rgb\(/, /^[a-zA-Z]+$/], "font-size": [/^\d+(px|rem|em|%)$/], "font-weight": [/^(normal|bold|[1-9]00)$/], "text-align": [/^(left|right|center|justify)$/], "margin": [/^[0-9 .%a-zA-Z-]+$/], "padding": [/^[0-9 .%a-zA-Z-]+$/], "border": [/^[0-9 .#a-zA-Z(),-]+$/], "border-radius": [/^[0-9 .%a-zA-Z-]+$/], "display": [/^(block|inline|inline-block|flex|grid)$/], "line-height": [/^[0-9.]+(px|rem|em|%)?$/] } },
+    transformTags: { a: sanitizeHtml.simpleTransform("a", { rel: "noopener noreferrer" }) },
+  });
+}
 
 function currentUserId(req: Request) {
   if (!req.user?._id) throw new Error("Not authenticated.");
@@ -28,7 +39,8 @@ function normalizeUserIds(value: unknown) {
 export async function createAdminNotification(req: Request, res: Response) {
   try {
     const title = String(req.body?.title || "").trim();
-    const message = String(req.body?.message || "").trim();
+    const rawMessage = String(req.body?.message || "").trim();
+    const message = sanitizeNotificationHtml(rawMessage);
     const rawType = String(req.body?.type || "general").trim().toLowerCase();
     const rawAudience = String(req.body?.audienceType || req.body?.audience || "all").trim().toLowerCase();
     const link = String(req.body?.link || "").trim();

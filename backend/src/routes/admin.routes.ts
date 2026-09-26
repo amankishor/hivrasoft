@@ -52,6 +52,8 @@ import {
   deleteDiscountCode,
 } from "../controllers/discount.controller";
 
+import { listAdminReviews, getAdminReview, addAdminReply, getAdminUserReviews } from "../controllers/review.controller";
+
 import {
   getTaxSettingAdmin,
   saveTaxSettingAdmin,
@@ -78,7 +80,9 @@ const authenticateAdmin = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const token = req.cookies?.accessToken;
+    const authorization = String(req.headers.authorization || "");
+    const bearerToken = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+    const token = req.cookies?.accessToken || bearerToken;
     if (!token) {
       res.status(401).json({ success: false, message: "Not authenticated" });
       return;
@@ -151,6 +155,7 @@ router.get("/users/:userId/wishlist", authenticateAdmin, getAdminUserWishlist);
 router.get("/users/:userId/orders", authenticateAdmin, getAdminUserOrders);
 router.get("/users/:userId/activity", authenticateAdmin, getAdminCustomerActivity);
 router.get("/users/:userId/notifications", authenticateAdmin, getAdminUserNotifications);
+router.get("/users/:userId/reviews", authenticateAdmin, getAdminUserReviews);
 
 router.get("/orders", authenticateAdmin, getAdminOrders);
 router.get("/orders/invoices", authenticateAdmin, downloadSelectedAdminInvoices);
@@ -158,6 +163,10 @@ router.get("/orders/:id/invoice", authenticateAdmin, downloadAdminOrderInvoice);
 router.get("/orders/:id", authenticateAdmin, getAdminOrderById);
 router.patch("/orders/:id/status", authenticateAdmin, updateAdminOrderStatus);
 router.get("/system-status", authenticateAdmin, getAdminSystemStatus);
+
+router.get("/reviews", authenticateAdmin, listAdminReviews);
+router.get("/reviews/:id", authenticateAdmin, getAdminReview);
+router.post("/reviews/:id/reply", authenticateAdmin, addAdminReply);
 
 router.get("/notifications", authenticateAdmin, listAdminNotifications);
 router.post("/notifications", authenticateAdmin, createAdminNotification);

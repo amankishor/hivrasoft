@@ -16,6 +16,7 @@ import cartRoutes from "./routes/cart.routes";
 import orderRoutes from "./routes/order.routes";
 import searchRoutes from "./routes/search.routes";
 import notificationRoutes from "./routes/notification.routes";
+import reviewRoutes from "./routes/review.routes";
 import { razorpayWebhookController } from "./controllers/order.controller";
 
 const app =
@@ -162,6 +163,8 @@ app.use(
   "/api/notifications",
   notificationRoutes
 );
+
+app.use("/api/reviews", reviewRoutes);
 
 /* =========================================================
    404
