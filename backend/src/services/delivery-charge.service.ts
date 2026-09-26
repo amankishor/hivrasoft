@@ -20,6 +20,7 @@ export async function calculateDeliveryCharge(baseAmount: number, paymentMethod:
   const rule = await DeliveryChargeRule.findOne({
     paymentMethod: normalizedMethod,
     isActive: true,
+    isDeleted: { $ne: true },
     minAmount: { $lte: amount },
     $or: [{ maxAmount: null }, { maxAmount: { $gte: amount } }],
   })

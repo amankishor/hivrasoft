@@ -28,7 +28,7 @@ async function ensureNoActiveOverlap(input: {
   maxAmount: number | null;
   excludeId?: string;
 }) {
-  const query: any = { paymentMethod: input.paymentMethod, isActive: true };
+  const query: any = { paymentMethod: input.paymentMethod, isActive: true, isDeleted: { $ne: true } };
   if (input.excludeId && mongoose.Types.ObjectId.isValid(input.excludeId)) {
     query._id = { $ne: input.excludeId };
   }
@@ -49,7 +49,7 @@ async function ensureNoActiveOverlap(input: {
 }
 
 function historySnapshot(
-  action: "created" | "updated" | "status_changed",
+  action: "created" | "updated" | "status_changed" | "deleted",
   values: { paymentMethod: DeliveryPaymentMethod; minAmount: number; maxAmount: number | null; charge: number; isActive: boolean },
   req: Request
 ) {
@@ -67,8 +67,18 @@ function historySnapshot(
 
 export async function listDeliveryChargeRules(_req: Request, res: Response) {
   try {
-    const rules = await DeliveryChargeRule.find({}).sort({ paymentMethod: 1, minAmount: 1, createdAt: -1 }).lean();
-    return res.json({ success: true, rules });
+    const all = await DeliveryChargeRule.find({}).sort({ paymentMethod: 1, minAmount: 1, createdAt: -1 }).lean();
+    const rules = all.filter((item: any) => item.isDeleted !== true);
+    const history = all
+      .flatMap((rule: any) =>
+        (Array.isArray(rule.history) ? rule.history : []).map((item: any) => ({
+          ...item,
+          ruleId: String(rule._id),
+        }))
+      )
+      .sort((a: any, b: any) => new Date(b.changedAt || 0).getTime() - new Date(a.changedAt || 0).getTime())
+      .slice(0, 100);
+    return res.json({ success: true, rules, history });
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -115,7 +125,7 @@ export async function updateDeliveryChargeRule(req: Request, res: Response) {
       return res.status(400).json({ success: false, message: "Invalid delivery charge rule ID." });
     }
 
-    const rule = await DeliveryChargeRule.findById(id);
+    const rule = await DeliveryChargeRule.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!rule) return res.status(404).json({ success: false, message: "Delivery charge rule not found." });
 
     const oldActive = rule.isActive;
@@ -170,8 +180,21 @@ export async function deleteDeliveryChargeRule(req: Request, res: Response) {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ success: false, message: "Invalid delivery charge rule ID." });
     }
-    const deleted = await DeliveryChargeRule.findByIdAndDelete(id);
-    if (!deleted) return res.status(404).json({ success: false, message: "Delivery charge rule not found." });
+    const rule = await DeliveryChargeRule.findOne({ _id: id, isDeleted: { $ne: true } });
+    if (!rule) return res.status(404).json({ success: false, message: "Delivery charge rule not found." });
+
+    const values = {
+      paymentMethod: rule.paymentMethod,
+      minAmount: Number(rule.minAmount || 0),
+      maxAmount: rule.maxAmount === null || rule.maxAmount === undefined ? null : Number(rule.maxAmount),
+      charge: Number(rule.charge || 0),
+      isActive: false,
+    };
+    rule.isActive = false;
+    rule.isDeleted = true;
+    rule.history.push(historySnapshot("deleted", values, req) as any);
+    if (rule.history.length > 100) rule.history.splice(0, rule.history.length - 100);
+    await rule.save();
     return res.json({ success: true, message: "Delivery charge rule deleted." });
   } catch (error) {
     return res.status(400).json({

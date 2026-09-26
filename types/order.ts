@@ -41,12 +41,15 @@ export type Order = {
   items: OrderItem[];
   subtotal: number;
   automaticDiscount?: number;
+  automaticDiscountDetails?: Record<string, unknown>;
   codeDiscount?: number;
+  codeDiscountDetails?: Record<string, unknown>;
   discount: number;
   discountCode?: string;
   tax?: number;
   taxName?: string;
   taxPercentage?: number;
+  taxDetails?: Record<string, unknown>;
   shipping: number;
   total: number;
   shippingAddress?: ShippingAddress;

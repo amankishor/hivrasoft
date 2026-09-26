@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Truck } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -9,6 +9,7 @@ type PaymentMethod = "cod" | "online";
 
 type HistoryItem = {
   _id?: string;
+  ruleId?: string;
   action?: string;
   paymentMethod: PaymentMethod;
   minAmount: number;
@@ -60,6 +61,7 @@ function dateTime(value?: string) {
 
 export default function DeliveryChargePage() {
   const [rules, setRules] = useState<DeliveryRule[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [editingId, setEditingId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [minAmount, setMinAmount] = useState("0");
@@ -82,6 +84,7 @@ export default function DeliveryChargePage() {
       const data = await readJson(response);
       if (!response.ok) throw new Error(data?.message || "Unable to load delivery charges.");
       setRules(Array.isArray(data?.rules) ? data.rules : []);
+      setHistory(Array.isArray(data?.history) ? data.history : []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load delivery charges.");
     } finally {
@@ -208,17 +211,7 @@ export default function DeliveryChargePage() {
     }
   }
 
-  const history = useMemo(() => {
-    return rules
-      .flatMap((rule) =>
-        (Array.isArray(rule.history) ? rule.history : []).map((item) => ({
-          ...item,
-          ruleId: rule._id,
-        }))
-      )
-      .sort((a, b) => new Date(b.changedAt || 0).getTime() - new Date(a.changedAt || 0).getTime())
-      .slice(0, 50);
-  }, [rules]);
+
 
   return (
     <div className="mx-auto w-full max-w-[1500px]">
@@ -378,7 +371,7 @@ export default function DeliveryChargePage() {
         <div className="flex items-center justify-between gap-3 border-b border-[#211A18]/8 pb-5">
           <div>
             <h3 className="text-[18px] font-semibold text-[#211A18]">Delivery Charge History</h3>
-            <p className="mt-1 text-[11px] text-[#211A18]/40">Latest create, edit and active/inactive changes are kept here.</p>
+            <p className="mt-1 text-[11px] text-[#211A18]/40">Latest create, edit, active/inactive and delete changes are kept here.</p>
           </div>
           <span className="rounded-full bg-[#F2EEEA] px-3 py-1.5 text-[10px] font-semibold text-[#211A18]/55">Last {history.length}</span>
         </div>

@@ -45,6 +45,9 @@ import {
 import {
   getDiscountProducts,
   getAutomaticDiscount,
+  createAutomaticDiscount,
+  updateAutomaticDiscount,
+  deleteAutomaticDiscount,
   saveAutomaticDiscount,
   listDiscountCodes,
   createDiscountCode,
@@ -56,6 +59,9 @@ import { listAdminReviews, getAdminReview, addAdminReply, getAdminUserReviews } 
 
 import {
   getTaxSettingAdmin,
+  createTaxSettingAdmin,
+  updateTaxSettingAdmin,
+  deleteTaxSettingAdmin,
   saveTaxSettingAdmin,
 } from "../controllers/tax.controller";
 
@@ -185,14 +191,20 @@ router.delete("/notifications/:id", authenticateAdmin, deleteAdminNotification);
 
 router.get("/discounts/products", authenticateAdmin, getDiscountProducts);
 router.get("/discounts/automatic", authenticateAdmin, getAutomaticDiscount);
+router.post("/discounts/automatic", authenticateAdmin, createAutomaticDiscount);
 router.put("/discounts/automatic", authenticateAdmin, saveAutomaticDiscount);
+router.patch("/discounts/automatic/:id", authenticateAdmin, updateAutomaticDiscount);
+router.delete("/discounts/automatic/:id", authenticateAdmin, deleteAutomaticDiscount);
 router.get("/discounts/codes", authenticateAdmin, listDiscountCodes);
 router.post("/discounts/codes", authenticateAdmin, createDiscountCode);
 router.patch("/discounts/codes/:id", authenticateAdmin, updateDiscountCode);
 router.delete("/discounts/codes/:id", authenticateAdmin, deleteDiscountCode);
 
 router.get("/tax", authenticateAdmin, getTaxSettingAdmin);
+router.post("/tax", authenticateAdmin, createTaxSettingAdmin);
 router.put("/tax", authenticateAdmin, saveTaxSettingAdmin);
+router.patch("/tax/:id", authenticateAdmin, updateTaxSettingAdmin);
+router.delete("/tax/:id", authenticateAdmin, deleteTaxSettingAdmin);
 
 router.get("/delivery-charges", authenticateAdmin, listDeliveryChargeRules);
 router.post("/delivery-charges", authenticateAdmin, createDeliveryChargeRule);

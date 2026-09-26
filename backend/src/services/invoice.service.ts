@@ -320,6 +320,8 @@ function buildInvoicePage(
     const couponDiscount = amount(order.codeDiscount);
     const taxAmount = amount(order.tax);
     const taxPercentage = amount(order.taxPercentage);
+    const taxDetails = order.taxDetails && typeof order.taxDetails === "object" ? order.taxDetails : {};
+    const taxValueType = String(taxDetails.valueType || "percentage").toLowerCase();
     const shipping = amount(order.shipping);
 
     if (automaticDiscount > 0) {
@@ -340,7 +342,7 @@ function buildInvoicePage(
 
     if (taxAmount > 0) {
       const taxLabel = `${order.taxName || "Tax"}${
-        taxPercentage > 0 ? ` (${taxPercentage}%)` : ""
+        taxValueType === "fixed" ? " (Custom Price)" : taxPercentage > 0 ? ` (${taxPercentage}%)` : ""
       }`;
       summaryRows.push([taxLabel, money(taxAmount), false]);
     }

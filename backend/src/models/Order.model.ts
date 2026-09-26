@@ -23,12 +23,15 @@ export interface IOrder extends Document {
   items: any[];
   subtotal: number;
   automaticDiscount: number;
+  automaticDiscountDetails?: Record<string, unknown>;
   codeDiscount: number;
+  codeDiscountDetails?: Record<string, unknown>;
   discount: number;
   discountCode?: string;
   tax: number;
   taxName?: string;
   taxPercentage: number;
+  taxDetails?: Record<string, unknown>;
   shipping: number;
   deliveryCharge?: Record<string, unknown>;
   total: number;
@@ -65,12 +68,15 @@ const orderSchema = new Schema<IOrder>(
     items: { type: [Schema.Types.Mixed] as any, default: [] },
     subtotal: { type: Number, required: true, min: 0 },
     automaticDiscount: { type: Number, default: 0, min: 0 },
+    automaticDiscountDetails: { type: Schema.Types.Mixed, default: {} },
     codeDiscount: { type: Number, default: 0, min: 0 },
+    codeDiscountDetails: { type: Schema.Types.Mixed, default: {} },
     discount: { type: Number, default: 0, min: 0 },
     discountCode: { type: String, uppercase: true, trim: true, default: "" },
     tax: { type: Number, default: 0, min: 0 },
     taxName: { type: String, trim: true, default: "GST" },
     taxPercentage: { type: Number, default: 0, min: 0, max: 100 },
+    taxDetails: { type: Schema.Types.Mixed, default: {} },
     shipping: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },
     status: {

@@ -374,6 +374,9 @@ export default function AdminOrderDetailsPage() {
       order.taxPercentage
     );
 
+  const taxDetails = record(order.taxDetails);
+  const taxValueType = text(taxDetails.valueType, "percentage").toLowerCase();
+
   const shippingAmount =
     numberValue(
       order.shipping ??
@@ -1115,10 +1118,11 @@ export default function AdminOrderDetailsPage() {
                       order.taxName,
                       "Tax"
                     )}
-                    {taxPercentage >
-                    0
-                      ? ` (${taxPercentage}%)`
-                      : ""}
+                    {taxValueType === "fixed"
+                      ? " (Custom Price)"
+                      : taxPercentage > 0
+                        ? ` (${taxPercentage}%)`
+                        : ""}
                   </span>
 
                   <span className="text-[11px] font-semibold text-[#241C19]">
