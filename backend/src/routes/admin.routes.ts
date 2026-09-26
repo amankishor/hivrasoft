@@ -59,6 +59,13 @@ import {
   saveTaxSettingAdmin,
 } from "../controllers/tax.controller";
 
+import {
+  listDeliveryChargeRules,
+  createDeliveryChargeRule,
+  updateDeliveryChargeRule,
+  deleteDeliveryChargeRule,
+} from "../controllers/delivery-charge.controller";
+
 
 const router = Router();
 
@@ -186,5 +193,10 @@ router.delete("/discounts/codes/:id", authenticateAdmin, deleteDiscountCode);
 
 router.get("/tax", authenticateAdmin, getTaxSettingAdmin);
 router.put("/tax", authenticateAdmin, saveTaxSettingAdmin);
+
+router.get("/delivery-charges", authenticateAdmin, listDeliveryChargeRules);
+router.post("/delivery-charges", authenticateAdmin, createDeliveryChargeRule);
+router.patch("/delivery-charges/:id", authenticateAdmin, updateDeliveryChargeRule);
+router.delete("/delivery-charges/:id", authenticateAdmin, deleteDeliveryChargeRule);
 
 export default router;

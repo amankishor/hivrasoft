@@ -14,12 +14,31 @@ async function readJson(response: Response) {
   }
 }
 
+type TaxHistoryItem = {
+  _id?: string;
+  name: string;
+  percentage: number;
+  isActive: boolean;
+  applyToAllProducts: boolean;
+  excludedProductCount?: number;
+  changedAt?: string;
+};
+
+function dateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
 export default function TaxSettingsPage() {
   const [name, setName] = useState("GST");
   const [percentage, setPercentage] = useState("0");
   const [isActive, setIsActive] = useState(false);
   const [applyToAllProducts, setApplyToAllProducts] = useState(true);
   const [excludedProducts, setExcludedProducts] = useState<string[]>([]);
+  const [history, setHistory] = useState<TaxHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -52,6 +71,7 @@ export default function TaxSettingsPage() {
         setPercentage(String(data?.tax?.percentage ?? 0));
         setIsActive(data?.tax?.isActive === true);
         setExcludedProducts(excluded);
+        setHistory(Array.isArray(data?.tax?.history) ? data.tax.history : []);
         setApplyToAllProducts(data?.tax?.applyToAllProducts !== undefined ? data.tax.applyToAllProducts === true : excluded.length === 0);
       } catch (loadError) {
         if (!cancelled) {
@@ -102,6 +122,7 @@ export default function TaxSettingsPage() {
       }
 
       setSuccess(data?.message || "Tax settings saved.");
+      if (Array.isArray(data?.tax?.history)) setHistory(data.tax.history);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -250,6 +271,38 @@ export default function TaxSettingsPage() {
           emptySelectionText="No products are tax-exempt."
         />
       </div>
+
+      <section className="mt-6 rounded-[24px] border border-[#211A18]/10 bg-white p-5 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#211A18]/8 pb-5">
+          <div>
+            <h3 className="text-[18px] font-semibold text-[#211A18]">GST / Tax History</h3>
+            <p className="mt-1 text-[11px] text-[#211A18]/40">Every saved tax rate, product scope and active/inactive state is recorded.</p>
+          </div>
+          <span className="rounded-full bg-[#F2EEEA] px-3 py-1.5 text-[10px] font-semibold text-[#211A18]/55">{history.length} entries</span>
+        </div>
+        {history.length === 0 ? (
+          <div className="py-10 text-center text-[12px] text-[#211A18]/40">No tax history yet.</div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-[11px]">
+              <thead className="text-[9px] uppercase tracking-[0.08em] text-[#211A18]/40">
+                <tr><th className="px-3 py-3">Saved</th><th className="px-3 py-3">Tax</th><th className="px-3 py-3">Rate</th><th className="px-3 py-3">Product Scope</th><th className="px-3 py-3">Status</th></tr>
+              </thead>
+              <tbody>
+                {[...history].reverse().map((item, index) => (
+                  <tr key={item._id || `${item.changedAt}-${index}`} className="border-t border-[#211A18]/6 text-[#211A18]/65">
+                    <td className="px-3 py-3">{dateTime(item.changedAt)}</td>
+                    <td className="px-3 py-3 font-semibold text-[#211A18]">{item.name || "GST"}</td>
+                    <td className="px-3 py-3">{item.percentage}%</td>
+                    <td className="px-3 py-3">{item.applyToAllProducts ? "All Products" : `${Number(item.excludedProductCount || 0)} tax-exempt`}</td>
+                    <td className="px-3 py-3">{item.isActive ? "Active" : "Inactive"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

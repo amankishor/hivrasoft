@@ -7,6 +7,7 @@ import {
   downloadMyInvoiceController,
   getMyOrderController,
   getMyOrdersController,
+  previewDeliveryChargeController,
   verifyRazorpayOrderController,
 } from "../controllers/order.controller";
 
@@ -17,6 +18,7 @@ router.get("/", getMyOrdersController);
 router.post("/", createOrderController);
 router.post("/razorpay/create", createRazorpayOrderController);
 router.post("/razorpay/verify", verifyRazorpayOrderController);
+router.post("/delivery-charge/preview", previewDeliveryChargeController);
 router.get("/:id/invoice", downloadMyInvoiceController);
 router.get("/:id", getMyOrderController);
 router.patch("/:id/cancel", cancelMyOrderController);

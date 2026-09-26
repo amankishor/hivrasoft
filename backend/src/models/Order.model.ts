@@ -30,6 +30,7 @@ export interface IOrder extends Document {
   taxName?: string;
   taxPercentage: number;
   shipping: number;
+  deliveryCharge?: Record<string, unknown>;
   total: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;

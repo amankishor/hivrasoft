@@ -4,6 +4,7 @@ import {
   createOrderFromCart,
   createRazorpayOrderFromCart,
   finalizeRazorpayWebhookPayment,
+  getDeliveryChargePreview,
   getUserOrderById,
   getUserOrders,
   markRazorpayPaymentFailed,
@@ -53,6 +54,15 @@ export async function verifyRazorpayOrderController(req: Request, res: Response)
     return res.json({ success: true, message: "Payment verified and order confirmed.", order });
   } catch (error) {
     return errorResponse(res, error, "Unable to verify Razorpay payment.");
+  }
+}
+
+export async function previewDeliveryChargeController(req: Request, res: Response) {
+  try {
+    const preview = await getDeliveryChargePreview(userId(req), req.body?.paymentMethod);
+    return res.json({ success: true, preview });
+  } catch (error) {
+    return errorResponse(res, error, "Unable to calculate delivery charge.");
   }
 }
 

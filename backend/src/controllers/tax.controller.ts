@@ -22,6 +22,7 @@ export async function getTaxSettingAdmin(_req: Request, res: Response) {
         isActive: false,
         applyToAllProducts: true,
         excludedProducts: [],
+        history: [],
       },
     });
   } catch (error) {
@@ -46,11 +47,27 @@ export async function saveTaxSettingAdmin(req: Request, res: Response) {
       excludedProducts = excludedProducts.filter((id) => allowed.has(String(id)));
     }
 
-    const tax = await TaxSetting.findOneAndUpdate(
-      {},
-      { name, percentage, isActive, applyToAllProducts, excludedProducts },
-      { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
-    );
+    let tax = await TaxSetting.findOne({});
+    if (!tax) {
+      tax = new TaxSetting({ name, percentage, isActive, applyToAllProducts, excludedProducts });
+    } else {
+      tax.name = name;
+      tax.percentage = percentage;
+      tax.isActive = isActive;
+      tax.applyToAllProducts = applyToAllProducts;
+      tax.excludedProducts = excludedProducts;
+    }
+
+    tax.history.push({
+      name,
+      percentage,
+      isActive,
+      applyToAllProducts,
+      excludedProductCount: excludedProducts.length,
+      changedAt: new Date(),
+    } as any);
+    if (tax.history.length > 50) tax.history.splice(0, tax.history.length - 50);
+    await tax.save();
 
     return res.json({ success: true, message: "Tax setting saved.", tax });
   } catch (error) {

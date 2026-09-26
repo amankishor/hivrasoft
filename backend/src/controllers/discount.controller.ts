@@ -140,7 +140,10 @@ export async function getAutomaticDiscount(_req: Request, res: Response) {
       name: "Automatic Discount",
       percentage: 0,
       isActive: false,
+      minAmount: 0,
+      maxAmount: null,
       excludedProducts: [],
+      history: [],
     },
   });
 }
@@ -151,19 +154,50 @@ export async function saveAutomaticDiscount(req: Request, res: Response) {
     const excludedProducts = req.body?.applyToAllProducts === true
       ? []
       : ids(req.body?.excludedProducts);
+    const minAmount = Number(req.body?.minAmount ?? 0);
+    const maxAmount = req.body?.maxAmount === "" || req.body?.maxAmount === null || req.body?.maxAmount === undefined
+      ? null
+      : Number(req.body.maxAmount);
 
-    const setting = await DiscountSetting.findOneAndUpdate(
-      {},
-      {
-        name: String(req.body?.name || "Automatic Discount")
-          .trim()
-          .slice(0, 100),
-        percentage,
-        isActive: Boolean(req.body?.isActive) && percentage > 0,
-        excludedProducts,
-      },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
+    if (!Number.isFinite(minAmount) || minAmount < 0) {
+      throw new Error("Minimum base price must be 0 or greater.");
+    }
+    if (maxAmount !== null && (!Number.isFinite(maxAmount) || maxAmount < minAmount)) {
+      throw new Error("Maximum base price must be greater than or equal to minimum base price.");
+    }
+
+    const values = {
+      name: String(req.body?.name || "Automatic Discount").trim().slice(0, 100),
+      percentage,
+      isActive: Boolean(req.body?.isActive) && percentage > 0,
+      minAmount: Math.round((minAmount + Number.EPSILON) * 100) / 100,
+      maxAmount: maxAmount === null ? null : Math.round((maxAmount + Number.EPSILON) * 100) / 100,
+      excludedProducts,
+    };
+
+    let setting = await DiscountSetting.findOne({});
+    if (!setting) {
+      setting = new DiscountSetting(values);
+    } else {
+      setting.name = values.name;
+      setting.percentage = values.percentage;
+      setting.isActive = values.isActive;
+      setting.minAmount = values.minAmount;
+      setting.maxAmount = values.maxAmount;
+      setting.excludedProducts = values.excludedProducts.map((id) => new mongoose.Types.ObjectId(id));
+    }
+
+    setting.history.push({
+      name: values.name,
+      percentage: values.percentage,
+      isActive: values.isActive,
+      minAmount: values.minAmount,
+      maxAmount: values.maxAmount,
+      excludedProductCount: values.excludedProducts.length,
+      changedAt: new Date(),
+    } as any);
+    if (setting.history.length > 50) setting.history.splice(0, setting.history.length - 50);
+    await setting.save();
 
     return res.json({
       success: true,

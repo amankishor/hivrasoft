@@ -11,6 +11,8 @@ type DiscountCodeItem = {
   _id: string;
   code: string;
   percentage: number;
+  minAmount?: number;
+  maxAmount?: number | null;
   isActive: boolean;
   appliesToAllProducts: boolean;
   productIds: string[];
@@ -28,6 +30,8 @@ async function readJson(response: Response) {
 export default function DiscountCodePage() {
   const [code, setCode] = useState("");
   const [percentage, setPercentage] = useState("10");
+  const [minAmount, setMinAmount] = useState("0");
+  const [maxAmount, setMaxAmount] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [appliesToAllProducts, setAppliesToAllProducts] = useState(true);
   const [productIds, setProductIds] = useState<string[]>([]);
@@ -107,6 +111,22 @@ export default function DiscountCodePage() {
         );
       }
 
+      const minimum = Number(minAmount);
+      const maximum = maxAmount.trim() === "" ? null : Number(maxAmount);
+
+      if (!Number.isFinite(minimum) || minimum < 0) {
+        throw new Error("Minimum base price must be 0 or greater.");
+      }
+
+      if (
+        maximum !== null &&
+        (!Number.isFinite(maximum) || maximum < minimum)
+      ) {
+        throw new Error(
+          "Maximum base price must be greater than or equal to minimum base price."
+        );
+      }
+
       if (
         !appliesToAllProducts &&
         productIds.length === 0
@@ -127,6 +147,8 @@ export default function DiscountCodePage() {
           body: JSON.stringify({
             code: normalizedCode,
             percentage: number,
+            minAmount: minimum,
+            maxAmount: maximum,
             isActive,
             appliesToAllProducts,
             productIds: appliesToAllProducts
@@ -151,6 +173,8 @@ export default function DiscountCodePage() {
       );
       setCode("");
       setPercentage("10");
+      setMinAmount("0");
+      setMaxAmount("");
       setIsActive(true);
       setAppliesToAllProducts(true);
       setProductIds([]);
@@ -264,7 +288,7 @@ export default function DiscountCodePage() {
           Discount Code
         </h2>
         <p className="mt-3 max-w-3xl text-[13px] leading-6 text-white/65">
-          Create a code, set its percentage, then use All Products or choose exact products using the category dropdown.
+          Create a code, set its percentage and base-price range, then use All Products or choose exact products using the category dropdown.
         </p>
       </section>
 
@@ -326,6 +350,52 @@ export default function DiscountCodePage() {
             </label>
           </div>
 
+          <div className="mt-5">
+            <p className="text-[12px] font-semibold text-[#211A18]">
+              Base price range
+            </p>
+            <p className="mt-1 text-[10px] leading-4 text-[#211A18]/45">
+              This code applies only when the cart base subtotal is inside this range. Leave Maximum blank for no upper limit.
+            </p>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-[10px] font-medium text-[#211A18]/55">
+                  Minimum
+                </span>
+                <div className="mt-2 flex h-12 items-center rounded-[14px] border border-[#211A18]/10 bg-[#FAF8F6] px-4">
+                  <span className="mr-2 text-[12px] font-semibold text-[#211A18]/45">₹</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={minAmount}
+                    onChange={(event) => setMinAmount(event.target.value)}
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-[#211A18] outline-none"
+                  />
+                </div>
+              </label>
+
+              <label className="block">
+                <span className="text-[10px] font-medium text-[#211A18]/55">
+                  Maximum
+                </span>
+                <div className="mt-2 flex h-12 items-center rounded-[14px] border border-[#211A18]/10 bg-[#FAF8F6] px-4">
+                  <span className="mr-2 text-[12px] font-semibold text-[#211A18]/45">₹</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={maxAmount}
+                    onChange={(event) => setMaxAmount(event.target.value)}
+                    placeholder="No limit"
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-[#211A18] outline-none"
+                  />
+                </div>
+              </label>
+            </div>
+          </div>
+
           <div className="mt-5 space-y-3">
             <ToggleRow
               label="All Products"
@@ -380,7 +450,7 @@ export default function DiscountCodePage() {
               Created Codes
             </h3>
             <p className="mt-1 text-[11px] text-[#211A18]/40">
-              Active/inactive status and product scope are shown here.
+              Active/inactive status, price range and product scope are shown here.
             </p>
           </div>
           <span className="rounded-full bg-[#F2EEEA] px-3 py-1.5 text-[10px] font-semibold text-[#211A18]/55">
@@ -398,11 +468,12 @@ export default function DiscountCodePage() {
           </div>
         ) : (
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[760px] border-separate border-spacing-y-2 text-left">
+            <table className="w-full min-w-[900px] border-separate border-spacing-y-2 text-left">
               <thead>
                 <tr className="text-[10px] uppercase tracking-[0.08em] text-[#211A18]/40">
                   <th className="px-3 py-2">Code</th>
                   <th className="px-3 py-2">Discount</th>
+                  <th className="px-3 py-2">Base price range</th>
                   <th className="px-3 py-2">Products</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2 text-right">Actions</th>
@@ -419,6 +490,12 @@ export default function DiscountCodePage() {
                     </td>
                     <td className="px-3 py-3">
                       {item.percentage}%
+                    </td>
+                    <td className="px-3 py-3 text-[#211A18]/60">
+                      ₹{Number(item.minAmount ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                      {item.maxAmount === null || item.maxAmount === undefined
+                        ? " +"
+                        : ` – ₹${Number(item.maxAmount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`}
                     </td>
                     <td className="px-3 py-3 text-[#211A18]/60">
                       {item.appliesToAllProducts

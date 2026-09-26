@@ -1,4 +1,3 @@
-import { Types } from "mongoose";
 import DiscountSetting from "../models/DiscountSetting.model";
 import DiscountCode from "../models/DiscountCode.model";
 
@@ -18,9 +17,22 @@ export async function calculateDiscounts(lines: DiscountableLine[], code?: strin
     ? await DiscountCode.findOne({ code: normalizedCode, isActive: true }).lean()
     : null;
 
+  const baseAmount = roundMoney(
+    lines.reduce(
+      (sum, line) => sum + Math.max(0, Number(line.unitPrice || 0)) * Math.max(0, Number(line.quantity || 0)),
+      0
+    )
+  );
+  const minAmount = Math.max(0, Number(auto?.minAmount || 0));
+  const maxAmount = auto?.maxAmount === null || auto?.maxAmount === undefined
+    ? null
+    : Math.max(0, Number(auto.maxAmount));
+  const rangeEligible = baseAmount >= minAmount && (maxAmount === null || baseAmount <= maxAmount);
+
   const excluded = new Set((auto?.excludedProducts || []).map((id: any) => String(id)));
   const couponProducts = new Set((coupon?.productIds || []).map((id: any) => String(id)));
-  const autoPercent = auto?.isActive ? Number(auto.percentage || 0) : 0;
+  const configuredAutoPercent = auto?.isActive ? Number(auto.percentage || 0) : 0;
+  const autoPercent = rangeEligible ? configuredAutoPercent : 0;
   const couponValidDate = Boolean(
     coupon &&
       (!coupon.startsAt || new Date(coupon.startsAt) <= now) &&
@@ -63,9 +75,14 @@ export async function calculateDiscounts(lines: DiscountableLine[], code?: strin
 
   return {
     automatic: {
-      active: autoPercent > 0,
+      active: configuredAutoPercent > 0,
+      rangeEligible,
       name: auto?.name || "Automatic Discount",
       percentage: autoPercent,
+      configuredPercentage: configuredAutoPercent,
+      minAmount,
+      maxAmount,
+      baseAmount,
       amount: automaticDiscount,
     },
     code: normalizedCode

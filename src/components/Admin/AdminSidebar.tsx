@@ -12,6 +12,7 @@ import {
   ReceiptText,
   Tag,
   Star,
+  Truck,
   UsersRound,
 } from "lucide-react";
 
@@ -129,6 +130,13 @@ export default function AdminSidebar() {
               icon={<ReceiptText size={13} />}
             >
               Tax Settings
+            </SubMenuLink>
+            <SubMenuLink
+              href="/admin/extra-add/delivery-charge"
+              active={pathname === "/admin/extra-add/delivery-charge"}
+              icon={<Truck size={13} />}
+            >
+              Delivery Charges
             </SubMenuLink>
           </DropdownMenu>
 

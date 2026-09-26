@@ -15,8 +15,34 @@ async function readJson(response: Response) {
   }
 }
 
+type DiscountHistoryItem = {
+  _id?: string;
+  name?: string;
+  percentage: number;
+  isActive: boolean;
+  minAmount: number;
+  maxAmount: number | null;
+  excludedProductCount?: number;
+  changedAt?: string;
+};
+
+function money(value: number) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+}
+
+function dateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
 export default function AutomaticDiscountPage() {
   const [percentage, setPercentage] = useState("5");
+  const [minAmount, setMinAmount] = useState("0");
+  const [maxAmount, setMaxAmount] = useState("");
+  const [history, setHistory] = useState<DiscountHistoryItem[]>([]);
   const [isActive, setIsActive] = useState(true);
   const [applyToAllProducts, setApplyToAllProducts] = useState(true);
   const [excludedProducts, setExcludedProducts] = useState<string[]>([]);
@@ -63,6 +89,13 @@ export default function AutomaticDiscountPage() {
         setPercentage(
           String(data?.discount?.percentage ?? 0)
         );
+        setMinAmount(String(data?.discount?.minAmount ?? 0));
+        setMaxAmount(
+          data?.discount?.maxAmount === null || data?.discount?.maxAmount === undefined
+            ? ""
+            : String(data.discount.maxAmount)
+        );
+        setHistory(Array.isArray(data?.discount?.history) ? data.discount.history : []);
         setIsActive(
           data?.discount?.isActive === true
         );
@@ -110,6 +143,15 @@ export default function AutomaticDiscountPage() {
         );
       }
 
+      const min = Number(minAmount);
+      const max = maxAmount.trim() === "" ? null : Number(maxAmount);
+      if (!Number.isFinite(min) || min < 0) {
+        throw new Error("Minimum base price must be 0 or greater.");
+      }
+      if (max !== null && (!Number.isFinite(max) || max < min)) {
+        throw new Error("Maximum base price must be greater than or equal to minimum base price.");
+      }
+
       const response = await fetch(
         `${API_URL}/api/admin/discounts/automatic`,
         {
@@ -121,6 +163,8 @@ export default function AutomaticDiscountPage() {
           body: JSON.stringify({
             name: "Automatic Discount",
             percentage: number,
+            minAmount: min,
+            maxAmount: max,
             isActive,
             applyToAllProducts,
             excludedProducts: applyToAllProducts
@@ -143,6 +187,9 @@ export default function AutomaticDiscountPage() {
         data?.message ||
           "Automatic discount saved."
       );
+      if (Array.isArray(data?.discount?.history)) {
+        setHistory(data.discount.history);
+      }
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -207,6 +254,31 @@ export default function AutomaticDiscountPage() {
             </div>
           </label>
 
+
+
+          <div className="mt-5">
+            <p className="text-[12px] font-semibold text-[#211A18]">Base price range</p>
+            <p className="mt-1 text-[10px] leading-4 text-[#211A18]/45">
+              Automatic discount applies only when the cart subtotal is inside this range.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-[10px] font-medium text-[#211A18]/55">Minimum</span>
+                <div className="mt-2 flex h-12 items-center rounded-[14px] border border-[#211A18]/10 bg-[#FAF8F6] px-4">
+                  <span className="mr-2 text-[12px] font-semibold text-[#211A18]/45">₹</span>
+                  <input type="number" min={0} step="0.01" value={minAmount} disabled={loading} onChange={(event) => setMinAmount(event.target.value)} className="min-w-0 flex-1 bg-transparent text-[13px] text-[#211A18] outline-none" />
+                </div>
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-medium text-[#211A18]/55">Maximum</span>
+                <div className="mt-2 flex h-12 items-center rounded-[14px] border border-[#211A18]/10 bg-[#FAF8F6] px-4">
+                  <span className="mr-2 text-[12px] font-semibold text-[#211A18]/45">₹</span>
+                  <input type="number" min={0} step="0.01" value={maxAmount} disabled={loading} onChange={(event) => setMaxAmount(event.target.value)} placeholder="No limit" className="min-w-0 flex-1 bg-transparent text-[13px] text-[#211A18] outline-none" />
+                </div>
+              </label>
+            </div>
+          </div>
+
           <div className="mt-5 space-y-3">
             <ToggleRow
               label="Active"
@@ -257,6 +329,38 @@ export default function AutomaticDiscountPage() {
           emptySelectionText="No products are excluded."
         />
       </div>
+
+      <section className="mt-6 rounded-[24px] border border-[#211A18]/10 bg-white p-5 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#211A18]/8 pb-5">
+          <div>
+            <h3 className="text-[18px] font-semibold text-[#211A18]">Automatic Discount History</h3>
+            <p className="mt-1 text-[11px] text-[#211A18]/40">Saved percentage, price range and active/inactive changes.</p>
+          </div>
+          <span className="rounded-full bg-[#F2EEEA] px-3 py-1.5 text-[10px] font-semibold text-[#211A18]/55">{history.length} entries</span>
+        </div>
+        {history.length === 0 ? (
+          <div className="py-10 text-center text-[12px] text-[#211A18]/40">No history yet.</div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-[11px]">
+              <thead className="text-[9px] uppercase tracking-[0.08em] text-[#211A18]/40">
+                <tr><th className="px-3 py-3">Saved</th><th className="px-3 py-3">Discount</th><th className="px-3 py-3">Base Price Range</th><th className="px-3 py-3">Excluded</th><th className="px-3 py-3">Status</th></tr>
+              </thead>
+              <tbody>
+                {[...history].reverse().map((item, index) => (
+                  <tr key={item._id || `${item.changedAt}-${index}`} className="border-t border-[#211A18]/6 text-[#211A18]/65">
+                    <td className="px-3 py-3">{dateTime(item.changedAt)}</td>
+                    <td className="px-3 py-3 font-semibold text-[#211A18]">{item.percentage}%</td>
+                    <td className="px-3 py-3">{money(item.minAmount)} – {item.maxAmount === null ? "No limit" : money(item.maxAmount)}</td>
+                    <td className="px-3 py-3">{Number(item.excludedProductCount || 0)}</td>
+                    <td className="px-3 py-3">{item.isActive ? "Active" : "Inactive"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

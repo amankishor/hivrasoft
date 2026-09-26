@@ -11,6 +11,7 @@ import {
   createRazorpayGatewayOrder,
   verifyRazorpayPaymentSignature,
 } from "./razorpay.service";
+import { calculateDeliveryCharge, normalizeDeliveryPaymentMethod } from "./delivery-charge.service";
 
 const roundMoney = (value: number) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
@@ -81,7 +82,7 @@ function imageUrl(item: any) {
   return clean(preferred?.url || item?.image || item?.imageUrl);
 }
 
-async function buildOrderSnapshot(userId: string, payload: any) {
+async function buildOrderSnapshot(userId: string, payload: any, paymentMethod: "cod" | "online") {
   assertObjectId(userId, "user ID");
   const [cart, shippingAddress, user] = await Promise.all([
     getUserCart(userId),
@@ -136,8 +137,9 @@ async function buildOrderSnapshot(userId: string, payload: any) {
   const codeDiscount = roundMoney(Number((cart as any).codeDiscount || 0));
   const discount = roundMoney(Number((cart as any).discount || automaticDiscount + codeDiscount));
   const tax = roundMoney(Number((cart as any).tax || 0));
-  const shipping = 0;
-  const total = roundMoney(Number((cart as any).total || Math.max(0, subtotal - discount + tax + shipping)));
+  const deliveryCharge = await calculateDeliveryCharge(subtotal, paymentMethod);
+  const shipping = roundMoney(deliveryCharge.charge);
+  const total = roundMoney(Math.max(0, subtotal - discount + tax + shipping));
   if (total < 0) throw new Error("Calculated order total is invalid.");
 
   return {
@@ -158,6 +160,14 @@ async function buildOrderSnapshot(userId: string, payload: any) {
     taxName: clean((cart as any).taxSummary?.name) || "GST",
     taxPercentage: Number((cart as any).taxSummary?.percentage || 0),
     shipping,
+    deliveryCharge: {
+      paymentMethod: deliveryCharge.paymentMethod,
+      baseAmount: deliveryCharge.baseAmount,
+      charge: deliveryCharge.charge,
+      ruleId: deliveryCharge.rule?.id || null,
+      minAmount: deliveryCharge.rule?.minAmount ?? null,
+      maxAmount: deliveryCharge.rule?.maxAmount ?? null,
+    },
     total,
   };
 }
@@ -298,7 +308,7 @@ export async function createOrderFromCart(userId: string, payload: any) {
     throw new Error("Use /api/orders/razorpay/create for Razorpay payments.");
   }
 
-  const snapshot = await buildOrderSnapshot(userId, payload);
+  const snapshot = await buildOrderSnapshot(userId, payload, "cod");
   const orderNumber = makeOrderNumber();
   const order = await Order.create({
     ...snapshot,
@@ -330,7 +340,7 @@ export async function createOrderFromCart(userId: string, payload: any) {
 }
 
 export async function createRazorpayOrderFromCart(userId: string, payload: any) {
-  const snapshot = await buildOrderSnapshot(userId, payload);
+  const snapshot = await buildOrderSnapshot(userId, payload, "online");
   const orderNumber = makeOrderNumber();
   const order = await Order.create({
     ...snapshot,
@@ -503,6 +513,24 @@ export async function markRazorpayPaymentFailed(razorpayOrderId: string, payment
   order.statusHistory.push({ status: "pending_payment", message: "Razorpay reported a failed payment.", at: new Date() } as any);
   await order.save();
   return order;
+}
+
+export async function getDeliveryChargePreview(userId: string, paymentMethod: unknown) {
+  assertObjectId(userId, "user ID");
+  const cart = await getUserCart(userId);
+  const subtotal = roundMoney(Number((cart as any)?.subtotal || 0));
+  const normalizedMethod = normalizeDeliveryPaymentMethod(paymentMethod);
+  const delivery = await calculateDeliveryCharge(subtotal, normalizedMethod);
+  const cartTotalBeforeDelivery = roundMoney(Number((cart as any)?.total || 0));
+
+  return {
+    paymentMethod: normalizedMethod,
+    baseAmount: subtotal,
+    cartTotalBeforeDelivery,
+    deliveryCharge: delivery.charge,
+    payableTotal: roundMoney(cartTotalBeforeDelivery + delivery.charge),
+    matchedRule: delivery.rule,
+  };
 }
 
 export async function getUserOrders(userId: string) {
