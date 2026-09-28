@@ -24,6 +24,7 @@ export interface INotification extends Document {
   imageUrl: string;
   isActive: boolean;
   readBy: Types.ObjectId[];
+  deletedBy: Types.ObjectId[];
   createdBy?: Types.ObjectId | null;
   source: NotificationSource;
   dedupeKey?: string | null;
@@ -100,6 +101,10 @@ const notificationSchema = new Schema<INotification>(
       index: true,
     },
     readBy: {
+      type: [{ type: Schema.Types.ObjectId, ref: "User" }],
+      default: [],
+    },
+    deletedBy: {
       type: [{ type: Schema.Types.ObjectId, ref: "User" }],
       default: [],
     },

@@ -201,6 +201,7 @@ export async function getMyNotifications(req: Request, res: Response) {
 
     const notifications = await Notification.find({
       isActive: true,
+      deletedBy: { $ne: userObjectId },
       $or: [
         { audience: "all" },
         { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
@@ -241,6 +242,7 @@ export async function getMyUnreadNotificationCount(req: Request, res: Response) 
 
     const unreadCount = await Notification.countDocuments({
       isActive: true,
+      deletedBy: { $ne: userObjectId },
       $or: [
         { audience: "all" },
         { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
@@ -272,6 +274,7 @@ export async function markNotificationRead(req: Request, res: Response) {
       {
         _id: notificationId,
         isActive: true,
+        deletedBy: { $ne: userObjectId },
         $or: [
           { audience: "all" },
           { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
@@ -302,6 +305,7 @@ export async function markAllNotificationsRead(req: Request, res: Response) {
     const result = await Notification.updateMany(
       {
         isActive: true,
+        deletedBy: { $ne: userObjectId },
         $or: [
           { audience: "all" },
           { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
@@ -320,6 +324,90 @@ export async function markAllNotificationsRead(req: Request, res: Response) {
     return res.status(400).json({
       success: false,
       message: error instanceof Error ? error.message : "Unable to update notifications.",
+    });
+  }
+}
+
+
+/* =========================================================
+   USER - DELETE / HIDE ONE NOTIFICATION
+   DELETE /api/notifications/:id
+   Also reused by /api/user-settings/notifications/:id
+========================================================= */
+
+export async function deleteMyNotification(req: Request, res: Response) {
+  try {
+    const userId = currentUserId(req);
+    const notificationId = String(req.params.id || "").trim();
+
+    if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+      return res.status(400).json({ success: false, message: "Invalid notification ID." });
+    }
+
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const notification = await Notification.findOneAndUpdate(
+      {
+        _id: notificationId,
+        isActive: true,
+        deletedBy: { $ne: userObjectId },
+        $or: [
+          { audience: "all" },
+          { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
+        ],
+      },
+      { $addToSet: { deletedBy: userObjectId } },
+      { new: true }
+    );
+
+    if (!notification) {
+      return res.status(404).json({ success: false, message: "Notification not found." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Notification deleted successfully.",
+      id: notificationId,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to delete notification.",
+    });
+  }
+}
+
+/* =========================================================
+   USER - DELETE / HIDE ALL NOTIFICATIONS
+   DELETE /api/notifications
+   Also reused by /api/user-settings/notifications
+========================================================= */
+
+export async function deleteAllMyNotifications(req: Request, res: Response) {
+  try {
+    const userId = currentUserId(req);
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    const result = await Notification.updateMany(
+      {
+        isActive: true,
+        deletedBy: { $ne: userObjectId },
+        $or: [
+          { audience: "all" },
+          { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
+        ],
+      },
+      { $addToSet: { deletedBy: userObjectId } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "All notifications deleted successfully.",
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to delete notifications.",
     });
   }
 }
