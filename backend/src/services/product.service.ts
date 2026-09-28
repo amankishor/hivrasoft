@@ -1044,9 +1044,104 @@ export const createProduct =
    GET ALL PRODUCTS
 ========================================================= */
 
+const toPlainProductObject = (
+  input: any
+) => {
+  return typeof input?.toObject ===
+    "function"
+    ? input.toObject()
+    : input;
+};
+
+const getListingImages = (
+  images: any
+) => {
+  if (!Array.isArray(images)) {
+    return [];
+  }
+
+  if (images.length <= 1) {
+    return images;
+  }
+
+  const defaultIndex =
+    images.findIndex(
+      (image: any) =>
+        image?.isDefault ===
+        true
+    );
+
+  if (defaultIndex < 0) {
+    return images.slice(
+      0,
+      2
+    );
+  }
+
+  const listingImages = [
+    images[defaultIndex],
+  ];
+
+  const nextImage =
+    images[
+      defaultIndex + 1
+    ];
+
+  if (nextImage) {
+    listingImages.push(
+      nextImage
+    );
+  }
+
+  return listingImages;
+};
+
+const formatProductResponse = (
+  input: any,
+  limitImages: boolean
+) => {
+  const product =
+    toPlainProductObject(
+      input
+    );
+
+  return {
+    ...product,
+
+    colors:
+      Array.isArray(
+        product?.colors
+      )
+        ? product.colors.map(
+            (
+              color: any
+            ) => {
+              const {
+                description:
+                  _description,
+                ...colorWithoutDescription
+              } = color;
+
+              return {
+                ...colorWithoutDescription,
+
+                images:
+                  limitImages
+                    ? getListingImages(
+                        color.images
+                      )
+                    : color.images,
+              };
+            }
+          )
+        : [],
+  };
+};
+
 export const getAllProducts =
   async () => {
-    return Product.find()
+    const products =
+      await Product.find()
       .populate(
         "categories",
         "_id name slug level"
@@ -1054,6 +1149,14 @@ export const getAllProducts =
       .sort({
         createdAt: -1,
       });
+
+    return products.map(
+      (product) =>
+        formatProductResponse(
+          product,
+          false
+        )
+    );
   };
 
 /* =========================================================
@@ -1062,9 +1165,10 @@ export const getAllProducts =
 
 export const getActiveProducts =
   async () => {
-    return Product.find({
-      isActive: true,
-    })
+    const products =
+      await Product.find({
+        isActive: true,
+      })
       .populate(
         "categories",
         "_id name slug level"
@@ -1072,6 +1176,14 @@ export const getActiveProducts =
       .sort({
         createdAt: -1,
       });
+
+    return products.map(
+      (product) =>
+        formatProductResponse(
+          product,
+          true
+        )
+    );
   };
 
 /* =========================================================
@@ -1080,11 +1192,12 @@ export const getActiveProducts =
 
 export const getFeaturedProducts =
   async () => {
-    return Product.find({
-      isActive: true,
+    const products =
+      await Product.find({
+        isActive: true,
 
-      isFeatured: true,
-    })
+        isFeatured: true,
+      })
       .populate(
         "categories",
         "_id name slug level"
@@ -1092,6 +1205,14 @@ export const getFeaturedProducts =
       .sort({
         createdAt: -1,
       });
+
+    return products.map(
+      (product) =>
+        formatProductResponse(
+          product,
+          true
+        )
+    );
   };
 
 /* =========================================================
@@ -1100,11 +1221,12 @@ export const getFeaturedProducts =
 
 export const getNewLaunchProducts =
   async () => {
-    return Product.find({
-      isActive: true,
+    const products =
+      await Product.find({
+        isActive: true,
 
-      isNewLaunch: true,
-    })
+        isNewLaunch: true,
+      })
       .populate(
         "categories",
         "_id name slug level"
@@ -1112,6 +1234,14 @@ export const getNewLaunchProducts =
       .sort({
         createdAt: -1,
       });
+
+    return products.map(
+      (product) =>
+        formatProductResponse(
+          product,
+          true
+        )
+    );
   };
 
 /* =========================================================
@@ -2387,7 +2517,13 @@ export const getProductCatalog =
         });
 
     return products.map(
-      toCatalogProduct
+      (product) =>
+        formatProductResponse(
+          toCatalogProduct(
+            product
+          ),
+          true
+        )
     );
   };
 
