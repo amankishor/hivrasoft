@@ -1,6 +1,7 @@
 import { API_URL, apiFetch } from "./api";
 
 export type AdminDashboardData = {
+  generatedAt: string;
   stats: {
     products: number;
     orders: number;
@@ -8,14 +9,46 @@ export type AdminDashboardData = {
     revenue: number;
     categories: number;
     banners: number;
+    growth: {
+      products: number;
+      orders: number;
+      customers: number;
+      revenue: number;
+    };
   };
+  salesOverview: Array<{
+    date: string;
+    label: string;
+    revenue: number;
+    orders: number;
+  }>;
+  orderStatus: {
+    pending: number;
+    processing: number;
+    completed: number;
+    cancelled: number;
+  };
+  recentOrders: Array<{
+    id: string;
+    orderNumber: string;
+    customer: string;
+    amount: number;
+    status: string;
+    date: string;
+  }>;
+  lowStockProducts: Array<{
+    id: string;
+    name: string;
+    stock: number;
+    imageUrl: string;
+  }>;
   status: {
     backend: string;
     mongodb: string;
     productsApi: string;
     categoriesApi: string;
+    ordersApi: string;
     bannersApi: string;
-    cloudinary: string;
   };
 };
 
@@ -44,7 +77,15 @@ export async function getAdminMe() {
 
 export async function getAdminDashboard() {
   const result = await apiFetch<{ success: boolean } & AdminDashboardData>("/api/admin/dashboard");
-  return { stats: result.stats, status: result.status };
+  return {
+    generatedAt: result.generatedAt,
+    stats: result.stats,
+    salesOverview: result.salesOverview,
+    orderStatus: result.orderStatus,
+    recentOrders: result.recentOrders,
+    lowStockProducts: result.lowStockProducts,
+    status: result.status,
+  };
 }
 
 export async function getAdminCustomers() {
@@ -158,3 +199,50 @@ export async function getAdminSystemStatus() {
     environment: string;
   }>("/api/admin/system-status");
 }
+
+export type AdminUserSettings = {
+  profile: {
+    id: string;
+    name: string;
+    gender: "male" | "female" | "other";
+    image: { url: string; publicId: string };
+  };
+  personalInformation: {
+    name: string;
+    gender: "male" | "female" | "other";
+    email: string;
+    mobile: string;
+  };
+  accountActivity: {
+    coupons: number;
+    reviews: number;
+    notifications: number;
+    wishlist: number;
+  };
+};
+
+export async function getAdminUserSettings() {
+  const result = await apiFetch<{ success: boolean; settings: AdminUserSettings }>(
+    "/api/admin/user-settings"
+  );
+  return result.settings;
+}
+
+export async function updateAdminUserSettings(input: {
+  name: string;
+  gender: "male" | "female" | "other";
+  profileImage?: File | null;
+}) {
+  const form = new FormData();
+  form.set("name", input.name);
+  form.set("gender", input.gender);
+  if (input.profileImage) form.set("profileImage", input.profileImage);
+
+  return apiFetch<{
+    success: boolean;
+    message: string;
+    profile: AdminUserSettings["profile"];
+    personalInformation: AdminUserSettings["personalInformation"];
+  }>("/api/admin/user-settings", { method: "PATCH", body: form });
+}
+

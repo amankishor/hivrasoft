@@ -9,6 +9,7 @@ import Banner from "../models/Banner.model";
 import Order from "../models/Order.model";
 import Cart from "../models/Cart.model";
 import Wishlist from "../models/Wishlist.model";
+import Review from "../models/Review.model";
 import Address from "../models/user/address.model";
 import Account from "../models/user/account.model";
 import { hashPassword, verifyPassword } from "../utils/password";
@@ -19,6 +20,7 @@ import { addItemToCart, clearUserCart, removeCartItem, updateCartItem, getUserCa
 import { addProductToWishlist, clearUserWishlist, removeProductFromWishlist, getUserWishlist } from "../services/wishlist.service";
 import { buildInvoicePdf, buildInvoicesPdf } from "../services/invoice.service";
 import { createOrderStatusNotification, isAdminTransitionAllowed, restoreOrderInventoryIfNeeded } from "../services/order.service";
+import { deleteCloudinaryImage, uploadImageBuffer } from "../services/cloudinary.service";
 
 const dummyHash = hashPassword("invalid-admin-login");
 
@@ -86,67 +88,176 @@ async function safeCollectionCount(name: string) {
  */
 export async function getAdminDashboard(_req: Request, res: Response) {
   try {
-    const db = getDb();
-    const hasOrders = await collectionExists("orders");
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-    const [products, categories, banners, customers, orders] = await Promise.all([
+    const cancelledStatuses = ["cancelled", "canceled"];
+    const revenueMatch = { status: { $nin: cancelledStatuses } };
+
+    const [
+      products,
+      categories,
+      banners,
+      customers,
+      orders,
+      revenueRows,
+      currentProducts,
+      previousProducts,
+      currentOrders,
+      previousOrders,
+      currentCustomers,
+      previousCustomers,
+      currentRevenueRows,
+      previousRevenueRows,
+      recentOrdersRaw,
+      productRows,
+    ] = await Promise.all([
       Product.countDocuments({}),
       Category.countDocuments({}),
       Banner.countDocuments({}),
       User.countDocuments({ role: "customer" }),
-      hasOrders ? db.collection("orders").countDocuments({}) : Promise.resolve(0),
+      Order.countDocuments({}),
+      Order.aggregate([{ $match: revenueMatch }, { $group: { _id: null, revenue: { $sum: "$total" } } }]),
+      Product.countDocuments({ createdAt: { $gte: currentMonthStart, $lt: nextMonthStart } }),
+      Product.countDocuments({ createdAt: { $gte: previousMonthStart, $lt: currentMonthStart } }),
+      Order.countDocuments({ createdAt: { $gte: currentMonthStart, $lt: nextMonthStart } }),
+      Order.countDocuments({ createdAt: { $gte: previousMonthStart, $lt: currentMonthStart } }),
+      User.countDocuments({ role: "customer", createdAt: { $gte: currentMonthStart, $lt: nextMonthStart } }),
+      User.countDocuments({ role: "customer", createdAt: { $gte: previousMonthStart, $lt: currentMonthStart } }),
+      Order.aggregate([
+        { $match: { ...revenueMatch, createdAt: { $gte: currentMonthStart, $lt: nextMonthStart } } },
+        { $group: { _id: null, revenue: { $sum: "$total" } } },
+      ]),
+      Order.aggregate([
+        { $match: { ...revenueMatch, createdAt: { $gte: previousMonthStart, $lt: currentMonthStart } } },
+        { $group: { _id: null, revenue: { $sum: "$total" } } },
+      ]),
+      Order.find({}).sort({ createdAt: -1 }).limit(4).populate("user", "name email").lean(),
+      Product.find({ isActive: { $ne: false } }).select("colors isActive createdAt").lean(),
     ]);
 
-    let revenue = 0;
-    if (hasOrders) {
-      const revenueRows = await db
-        .collection("orders")
-        .aggregate<{ revenue: number }>([
-          {
-            $match: {
-              status: { $nin: ["cancelled", "canceled"] },
-            },
+    const growth = (current: number, previous: number) => {
+      if (previous <= 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 1000) / 10;
+    };
+
+    const revenue = Number(revenueRows[0]?.revenue || 0);
+    const currentRevenue = Number(currentRevenueRows[0]?.revenue || 0);
+    const previousRevenue = Number(previousRevenueRows[0]?.revenue || 0);
+
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+
+    const dailyRevenueRows = await Order.aggregate([
+      { $match: { ...revenueMatch, createdAt: { $gte: sevenDaysAgo } } },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+            day: { $dayOfMonth: "$createdAt" },
           },
-          {
-            $group: {
-              _id: null,
-              revenue: {
-                $sum: {
-                  $convert: {
-                    input: {
-                      $ifNull: [
-                        "$grandTotal",
-                        { $ifNull: ["$total", { $ifNull: ["$totalAmount", 0] }] },
-                      ],
-                    },
-                    to: "double",
-                    onError: 0,
-                    onNull: 0,
-                  },
-                },
-              },
-            },
-          },
-        ])
-        .toArray();
-      revenue = Number(revenueRows[0]?.revenue || 0);
-    }
+          revenue: { $sum: "$total" },
+          orders: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const dailyMap = new Map(
+      dailyRevenueRows.map((row: any) => [
+        `${row._id.year}-${String(row._id.month).padStart(2, "0")}-${String(row._id.day).padStart(2, "0")}`,
+        { revenue: Number(row.revenue || 0), orders: Number(row.orders || 0) },
+      ])
+    );
+
+    const salesOverview = Array.from({ length: 7 }, (_, index) => {
+      const day = new Date(sevenDaysAgo);
+      day.setDate(sevenDaysAgo.getDate() + index);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const item = dailyMap.get(key) || { revenue: 0, orders: 0 };
+      return {
+        date: key,
+        label: day.toLocaleDateString("en-US", { day: "2-digit", month: "short" }),
+        revenue: item.revenue,
+        orders: item.orders,
+      };
+    });
+
+    const rawStatuses = await Order.aggregate([
+      { $group: { _id: { $toLower: "$status" }, count: { $sum: 1 } } },
+    ]);
+    const rawStatusMap = new Map(rawStatuses.map((row: any) => [String(row._id || ""), Number(row.count || 0)]));
+    const statusCount = (names: string[]) => names.reduce((sum, name) => sum + Number(rawStatusMap.get(name) || 0), 0);
+    const orderStatus = {
+      pending: statusCount(["pending", "pending_payment", "confirmed"]),
+      processing: statusCount(["processing", "shipped", "out_for_delivery"]),
+      completed: statusCount(["delivered"]),
+      cancelled: statusCount(["cancelled", "canceled", "returned", "refunded"]),
+    };
+
+    const recentOrders = recentOrdersRaw.map((order: any) => {
+      const customerData = order.customer && typeof order.customer === "object" ? order.customer : {};
+      const userData = order.user && typeof order.user === "object" ? order.user : {};
+      return {
+        id: String(order._id),
+        orderNumber: String(order.orderNumber || ""),
+        customer: String(userData.name || customerData.name || customerData.fullName || "Customer"),
+        amount: Number(order.total || 0),
+        status: String(order.status || "pending"),
+        date: order.createdAt,
+      };
+    });
+
+    const lowStockProducts = productRows
+      .map((product: any) => {
+        const colors = Array.isArray(product.colors) ? product.colors : [];
+        const defaultColor = colors.find((color: any) => color?.isDefault) || colors[0] || null;
+        const sizes = colors.flatMap((color: any) => (Array.isArray(color?.sizes) ? color.sizes : []));
+        const stock = sizes.reduce((sum: number, size: any) => sum + Math.max(0, Number(size?.stock || 0)), 0);
+        const images = Array.isArray(defaultColor?.images) ? defaultColor.images : [];
+        const image = images.find((item: any) => item?.isDefault) || images[0] || null;
+        return {
+          id: String(product._id),
+          name: String(defaultColor?.nameProduct || "Product"),
+          stock,
+          imageUrl: String(image?.url || ""),
+        };
+      })
+      .filter((product) => product.stock <= 5)
+      .sort((a, b) => a.stock - b.stock)
+      .slice(0, 4);
 
     return res.status(200).json({
       success: true,
-      stats: { products, orders, customers, revenue, categories, banners },
+      generatedAt: now.toISOString(),
+      stats: {
+        products,
+        orders,
+        customers,
+        revenue,
+        categories,
+        banners,
+        growth: {
+          products: growth(currentProducts, previousProducts),
+          orders: growth(currentOrders, previousOrders),
+          customers: growth(currentCustomers, previousCustomers),
+          revenue: growth(currentRevenue, previousRevenue),
+        },
+      },
+      salesOverview,
+      orderStatus,
+      recentOrders,
+      lowStockProducts,
       status: {
         backend: "connected",
         mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
         productsApi: "ready",
         categoriesApi: "ready",
+        ordersApi: "ready",
         bannersApi: "ready",
-        cloudinary:
-          process.env.CLOUDINARY_CLOUD_NAME &&
-          process.env.CLOUDINARY_API_KEY &&
-          process.env.CLOUDINARY_API_SECRET
-            ? "ready"
-            : "pending",
       },
     });
   } catch (error) {
@@ -901,6 +1012,156 @@ export async function getAdminPages(_req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : "Unable to load pages.",
+    });
+  }
+}
+
+/**
+ * GET /api/admin/user-settings
+ * Admin account settings in one API: profile, personal information and activity counts.
+ */
+export async function getAdminUserSettings(req: Request, res: Response) {
+  try {
+    const userId = String(req.user!._id);
+    const userObjectId = new Types.ObjectId(userId);
+    const user = await User.findById(userId)
+      .select("name email phone gender avatar role createdAt updatedAt")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Admin user not found." });
+    }
+
+    const [reviews, wishlist, notifications, usedCouponCodes] = await Promise.all([
+      Review.countDocuments({ userId: userObjectId }),
+      Wishlist.findOne({ user: userObjectId }).select("items").lean(),
+      Notification.countDocuments({
+        isActive: true,
+        $or: [
+          { audience: "all" },
+          { audience: { $in: ["selected", "filtered"] }, userIds: userObjectId },
+        ],
+      }),
+      Order.distinct("discountCode", {
+        user: userObjectId,
+        discountCode: { $type: "string", $ne: "" },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      settings: {
+        profile: {
+          id: String(user._id),
+          name: user.name,
+          gender: (user as any).gender || "other",
+          image: {
+            url: user.avatar?.url || "",
+            publicId: user.avatar?.publicId || "",
+          },
+        },
+        personalInformation: {
+          name: user.name,
+          gender: (user as any).gender || "other",
+          email: user.email,
+          mobile: user.phone,
+        },
+        accountActivity: {
+          coupons: usedCouponCodes.filter(Boolean).length,
+          reviews,
+          notifications,
+          wishlist: Array.isArray((wishlist as any)?.items) ? (wishlist as any).items.length : 0,
+        },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to load user settings.",
+    });
+  }
+}
+
+/**
+ * PATCH /api/admin/user-settings
+ * Same user-settings API path updates only the fields requested by the UI.
+ */
+export async function updateAdminUserSettings(req: Request, res: Response) {
+  let uploadedPublicId = "";
+  try {
+    const nameInput = req.body?.name;
+    const genderInput = req.body?.gender;
+    const update: Record<string, unknown> = {};
+
+    if (nameInput !== undefined) {
+      const name = String(nameInput).trim();
+      if (name.length < 2 || name.length > 100) {
+        return res.status(400).json({ success: false, message: "Name must be between 2 and 100 characters." });
+      }
+      update.name = name;
+    }
+
+    if (genderInput !== undefined) {
+      const gender = String(genderInput).trim().toLowerCase();
+      if (!["male", "female", "other"].includes(gender)) {
+        return res.status(400).json({ success: false, message: "Gender must be male, female or other." });
+      }
+      update.gender = gender;
+    }
+
+    const currentUser = await User.findById(req.user!._id).select("avatar");
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "Admin user not found." });
+    }
+
+    if (req.file?.buffer) {
+      const uploaded = await uploadImageBuffer(req.file.buffer, "hivrasoft/admin-profile");
+      uploadedPublicId = uploaded.public_id;
+      update.avatar = { url: uploaded.secure_url, publicId: uploaded.public_id };
+    }
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ success: false, message: "Name, gender or profile image is required." });
+    }
+
+    const updated = await User.findByIdAndUpdate(req.user!._id, { $set: update }, { new: true, runValidators: true })
+      .select("name email phone gender avatar role createdAt updatedAt")
+      .lean();
+
+    if (!updated) {
+      if (uploadedPublicId) await deleteCloudinaryImage(uploadedPublicId).catch(() => undefined);
+      return res.status(404).json({ success: false, message: "Admin user not found." });
+    }
+
+    const oldPublicId = currentUser.avatar?.publicId || "";
+    if (uploadedPublicId && oldPublicId && oldPublicId !== uploadedPublicId) {
+      await deleteCloudinaryImage(oldPublicId).catch(() => undefined);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "User settings updated successfully.",
+      profile: {
+        id: String(updated._id),
+        name: updated.name,
+        gender: (updated as any).gender || "other",
+        image: {
+          url: updated.avatar?.url || "",
+          publicId: updated.avatar?.publicId || "",
+        },
+      },
+      personalInformation: {
+        name: updated.name,
+        gender: (updated as any).gender || "other",
+        email: updated.email,
+        mobile: updated.phone,
+      },
+    });
+  } catch (error) {
+    if (uploadedPublicId) await deleteCloudinaryImage(uploadedPublicId).catch(() => undefined);
+    return res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to update user settings.",
     });
   }
 }

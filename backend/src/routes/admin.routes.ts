@@ -12,6 +12,8 @@ import {
   downloadAdminOrderInvoice,
   downloadSelectedAdminInvoices,
   getAdminSystemStatus,
+  getAdminUserSettings,
+  updateAdminUserSettings,
   updateAdminCustomerStatus,
   createAdminCustomer,
   updateAdminCustomer,
@@ -31,6 +33,7 @@ import {
 } from "../controllers/admin.controller";
 import User from "../models/User.model";
 import { verifyToken } from "../utils/jwt";
+import { upload } from "../middleware/upload.middleware";
 
 import {
   createAdminNotification,
@@ -176,6 +179,8 @@ router.get("/orders/:id/invoice", authenticateAdmin, downloadAdminOrderInvoice);
 router.get("/orders/:id", authenticateAdmin, getAdminOrderById);
 router.patch("/orders/:id/status", authenticateAdmin, updateAdminOrderStatus);
 router.get("/system-status", authenticateAdmin, getAdminSystemStatus);
+router.get("/user-settings", authenticateAdmin, getAdminUserSettings);
+router.patch("/user-settings", authenticateAdmin, upload.single("profileImage"), updateAdminUserSettings);
 
 router.get("/reviews", authenticateAdmin, listAdminReviews);
 router.get("/reviews/:id", authenticateAdmin, getAdminReview);
