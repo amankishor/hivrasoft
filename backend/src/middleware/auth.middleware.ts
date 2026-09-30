@@ -13,8 +13,9 @@ const authenticate = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const token =
-      req.cookies?.accessToken;
+    const authorization = String(req.headers.authorization || "");
+    const bearerToken = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+    const token = req.cookies?.accessToken || bearerToken;
 
     if (!token) {
       res.status(401).json({
@@ -65,6 +66,13 @@ const authenticate = async (
     }
 
     req.user = user;
+
+    if (user.role === "customer") {
+      const last = user.lastActiveAt ? new Date(user.lastActiveAt).getTime() : 0;
+      if (!last || Date.now() - last > 5 * 60 * 1000) {
+        void User.updateOne({ _id: user._id }, { $set: { lastActiveAt: new Date() } }).catch(() => undefined);
+      }
+    }
 
     next();
   } catch (error) {

@@ -1,68 +1,43 @@
-import {
-  Types,
-} from "mongoose";
+import { Types } from "mongoose";
 
 import Wishlist from "../models/Wishlist.model";
 import Product from "../models/Product.model";
 import { trackUserActivity } from "./activity.service";
 
-/* =========================================================
-   POPULATE CONFIG
-========================================================= */
+const WISHLIST_PRODUCT_SELECT = [
+  "name",
+  "slug",
+  "shortDescription",
+  "price",
+  "compareAtPrice",
+  "stock",
+  "mainImages",
+  "colors",
+  "ratings",
+  "status",
+  "isActive",
+  "isFeatured",
+  "isNewLaunch",
+].join(" ");
 
-const WISHLIST_PRODUCT_SELECT =
-  [
-    "name",
-    "slug",
-    "shortDescription",
-    "price",
-    "compareAtPrice",
-    "stock",
-    "mainImages",
-    "colors",
-    "ratings",
-    "status",
-    "isFeatured",
-    "isNewLaunch",
-  ].join(" ");
+export type WishlistVariantInput = {
+  colorId?: string | null;
+  sizeId?: string | null;
+};
 
-/* =========================================================
-   HELPERS
-========================================================= */
-
-const validateObjectId = (
-  value: string,
-  fieldName: string
-) => {
-  if (
-    !Types.ObjectId.isValid(
-      value
-    )
-  ) {
-    throw new Error(
-      `Invalid ${fieldName} ID.`
-    );
+const validateObjectId = (value: string, fieldName: string) => {
+  if (!Types.ObjectId.isValid(value)) {
+    throw new Error(`Invalid ${fieldName} ID.`);
   }
 };
 
-const populateWishlistById =
-  async (
-    wishlistId:
-      | string
-      | Types.ObjectId
-  ) => {
-    return Wishlist.findById(
-      wishlistId
-    ).populate({
-      path: "items.product",
-      select:
-        WISHLIST_PRODUCT_SELECT,
-    });
-  };
+const populateWishlistById = async (wishlistId: string | Types.ObjectId) =>
+  Wishlist.findById(wishlistId).populate({
+    path: "items.product",
+    select: WISHLIST_PRODUCT_SELECT,
+  });
 
-const createEmptyWishlistResponse = (
-  userId: string
-) => ({
+const createEmptyWishlistResponse = (userId: string) => ({
   _id: null,
   user: userId,
   items: [],
@@ -70,329 +45,212 @@ const createEmptyWishlistResponse = (
   updatedAt: null,
 });
 
-/* =========================================================
-   ADD PRODUCT TO WISHLIST
-========================================================= */
+function validateVariant(product: any, input: WishlistVariantInput) {
+  const colorId = String(input.colorId || "").trim();
+  const sizeId = String(input.sizeId || "").trim();
 
-export const addProductToWishlist =
-  async (
-    userId: string,
-    productId: string
-  ) => {
-    validateObjectId(
-      userId,
-      "user"
-    );
+  if (!colorId && !sizeId) {
+    return { colorId: null, sizeId: null };
+  }
 
-    validateObjectId(
-      productId,
-      "product"
-    );
+  if (!colorId || !Types.ObjectId.isValid(colorId)) {
+    throw new Error("A valid colorId is required when saving a wishlist variant.");
+  }
 
-    /* =====================================================
-       PRODUCT MUST EXIST AND BE ACTIVE
-    ===================================================== */
+  const colors = Array.isArray(product?.colors) ? product.colors : [];
+  const color = colors.find((item: any) => String(item?._id || "") === colorId);
+  if (!color || color?.isActive === false) {
+    throw new Error("Selected product color was not found or is inactive.");
+  }
 
-    const product =
-      await Product.findOne({
-        _id: productId,
-        isActive: true,
-      })
-        .select("_id")
-        .lean();
+  if (!sizeId) {
+    return { colorId, sizeId: null };
+  }
 
-    if (!product) {
-      throw new Error(
-        "Active product not found."
-      );
-    }
+  if (!Types.ObjectId.isValid(sizeId)) {
+    throw new Error("Invalid size ID.");
+  }
 
-    const userObjectId =
-      new Types.ObjectId(
-        userId
-      );
+  const sizes = Array.isArray(color?.sizes) ? color.sizes : [];
+  const size = sizes.find((item: any) => String(item?._id || "") === sizeId);
+  if (!size || size?.isActive === false) {
+    throw new Error("Selected product size was not found or is inactive.");
+  }
 
-    const productObjectId =
-      new Types.ObjectId(
-        productId
-      );
+  return { colorId, sizeId };
+}
 
-    let wishlist =
-      await Wishlist.findOne({
-        user: userObjectId,
-      });
+export const addProductToWishlist = async (
+  userId: string,
+  productId: string,
+  variant: WishlistVariantInput = {}
+) => {
+  validateObjectId(userId, "user");
+  validateObjectId(productId, "product");
 
-    /* =====================================================
-       FIRST WISHLIST ITEM
-    ===================================================== */
+  const product = await Product.findOne({
+    _id: productId,
+    isActive: true,
+  })
+    .select("_id colors isActive")
+    .lean();
 
-    if (!wishlist) {
-      wishlist =
-        await Wishlist.create({
-          user:
-            userObjectId,
+  if (!product) {
+    throw new Error("Active product not found.");
+  }
 
-          items: [
-            {
-              product:
-                productObjectId,
-              addedAt:
-                new Date(),
-            },
-          ],
-        });
+  const selected = validateVariant(product, variant);
+  const userObjectId = new Types.ObjectId(userId);
+  const productObjectId = new Types.ObjectId(productId);
+  const selectedColorId = selected.colorId ? new Types.ObjectId(selected.colorId) : null;
+  const selectedSizeId = selected.sizeId ? new Types.ObjectId(selected.sizeId) : null;
 
-      await trackUserActivity({
-        userId,
-        type: "wishlist_add",
-        productId,
-      });
+  let wishlist = await Wishlist.findOne({ user: userObjectId });
 
-      return {
-        wishlist:
-          await populateWishlistById(
-            wishlist._id
-          ),
+  const sameVariant = (item: any) =>
+    item.product.equals(productObjectId) &&
+    String(item.colorId || "") === String(selectedColorId || "") &&
+    String(item.sizeId || "") === String(selectedSizeId || "");
 
-        alreadyExists:
-          false,
-      };
-    }
-
-    /* =====================================================
-       ALREADY IN WISHLIST
-    ===================================================== */
-
-    const alreadyExists =
-      wishlist.items.some(
-        (item) =>
-          item.product.equals(
-            productObjectId
-          )
-      );
-
-    if (alreadyExists) {
-      return {
-        wishlist:
-          await populateWishlistById(
-            wishlist._id
-          ),
-
-        alreadyExists:
-          true,
-      };
-    }
-
-    /* =====================================================
-       ADD ITEM
-    ===================================================== */
-
-    wishlist.items.push({
-      product:
-        productObjectId,
-      addedAt:
-        new Date(),
+  if (!wishlist) {
+    wishlist = await Wishlist.create({
+      user: userObjectId,
+      items: [
+        {
+          product: productObjectId,
+          colorId: selectedColorId,
+          sizeId: selectedSizeId,
+          addedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
     });
-
-    await wishlist.save();
 
     await trackUserActivity({
       userId,
       type: "wishlist_add",
       productId,
+      metadata: {
+        colorId: selected.colorId,
+        sizeId: selected.sizeId,
+      },
     });
 
-    return {
-      wishlist:
-        await populateWishlistById(
-          wishlist._id
-        ),
+    return { wishlist: await populateWishlistById(wishlist._id), alreadyExists: false };
+  }
 
-      alreadyExists:
-        false,
-    };
-  };
+  const existing = wishlist.items.find(sameVariant);
+  if (existing) {
+    return { wishlist: await populateWishlistById(wishlist._id), alreadyExists: true };
+  }
 
-/* =========================================================
-   GET LOGGED-IN USER WISHLIST
-========================================================= */
+  wishlist.items.push({
+    product: productObjectId,
+    colorId: selectedColorId,
+    sizeId: selectedSizeId,
+    addedAt: new Date(),
+    updatedAt: new Date(),
+  });
+  await wishlist.save();
 
-export const getUserWishlist =
-  async (
-    userId: string
-  ) => {
-    validateObjectId(
-      userId,
-      "user"
-    );
+  await trackUserActivity({
+    userId,
+    type: "wishlist_add",
+    productId,
+    metadata: {
+      colorId: selected.colorId,
+      sizeId: selected.sizeId,
+    },
+  });
 
-    const wishlist =
-      await Wishlist.findOne({
-        user:
-          new Types.ObjectId(
-            userId
-          ),
-      }).populate({
-        path: "items.product",
-        select:
-          WISHLIST_PRODUCT_SELECT,
-      });
+  return { wishlist: await populateWishlistById(wishlist._id), alreadyExists: false };
+};
 
-    if (!wishlist) {
-      return createEmptyWishlistResponse(
-        userId
-      );
-    }
+export const getUserWishlist = async (userId: string) => {
+  validateObjectId(userId, "user");
 
-    return wishlist;
-  };
+  const wishlist = await Wishlist.findOne({
+    user: new Types.ObjectId(userId),
+  }).populate({
+    path: "items.product",
+    select: WISHLIST_PRODUCT_SELECT,
+  });
 
-/* =========================================================
-   CHECK PRODUCT IN WISHLIST
-========================================================= */
+  return wishlist || createEmptyWishlistResponse(userId);
+};
 
-export const checkProductInWishlist =
-  async (
-    userId: string,
-    productId: string
-  ) => {
-    validateObjectId(
-      userId,
-      "user"
-    );
+export const checkProductInWishlist = async (userId: string, productId: string) => {
+  validateObjectId(userId, "user");
+  validateObjectId(productId, "product");
 
-    validateObjectId(
-      productId,
-      "product"
-    );
+  const exists = await Wishlist.exists({
+    user: new Types.ObjectId(userId),
+    "items.product": new Types.ObjectId(productId),
+  });
 
-    const exists =
-      await Wishlist.exists({
-        user:
-          new Types.ObjectId(
-            userId
-          ),
+  return Boolean(exists);
+};
 
-        "items.product":
-          new Types.ObjectId(
-            productId
-          ),
-      });
+export const removeProductFromWishlist = async (
+  userId: string,
+  itemOrProductId: string
+) => {
+  validateObjectId(userId, "user");
+  validateObjectId(itemOrProductId, "wishlist item or product");
 
-    return Boolean(
-      exists
-    );
-  };
+  const wishlist = await Wishlist.findOne({ user: new Types.ObjectId(userId) });
+  if (!wishlist) throw new Error("Wishlist not found.");
 
-/* =========================================================
-   REMOVE ONE PRODUCT
-========================================================= */
+  const target = new Types.ObjectId(itemOrProductId);
+  const byItemId = wishlist.items.find((item: any) => String(item._id || "") === itemOrProductId);
+  const removedItems = byItemId
+    ? wishlist.items.filter((item: any) => String(item._id || "") === itemOrProductId)
+    : wishlist.items.filter((item) => item.product.equals(target));
 
-export const removeProductFromWishlist =
-  async (
-    userId: string,
-    productId: string
-  ) => {
-    validateObjectId(
-      userId,
-      "user"
-    );
+  if (!removedItems.length) {
+    throw new Error("Product is not in wishlist.");
+  }
 
-    validateObjectId(
-      productId,
-      "product"
-    );
+  wishlist.items = byItemId
+    ? wishlist.items.filter((item: any) => String(item._id || "") !== itemOrProductId)
+    : wishlist.items.filter((item) => !item.product.equals(target));
 
-    const wishlist =
-      await Wishlist.findOne({
-        user:
-          new Types.ObjectId(
-            userId
-          ),
-      });
+  await wishlist.save();
 
-    if (!wishlist) {
-      throw new Error(
-        "Wishlist not found."
-      );
-    }
-
-    const beforeCount =
-      wishlist.items.length;
-
-    wishlist.items =
-      wishlist.items.filter(
-        (item) =>
-          !item.product.equals(
-            new Types.ObjectId(
-              productId
-            )
-          )
-      );
-
-    if (
-      wishlist.items.length ===
-      beforeCount
-    ) {
-      throw new Error(
-        "Product is not in wishlist."
-      );
-    }
-
-    await wishlist.save();
-
+  for (const removed of removedItems) {
     await trackUserActivity({
       userId,
       type: "wishlist_remove",
-      productId,
+      productId: String(removed.product),
+      metadata: {
+        wishlistItemId: String((removed as any)._id || ""),
+        colorId: String(removed.colorId || ""),
+        sizeId: String(removed.sizeId || ""),
+        addedAt: removed.addedAt,
+      },
     });
+  }
 
-    return populateWishlistById(
-      wishlist._id
-    );
-  };
+  return populateWishlistById(wishlist._id);
+};
 
-/* =========================================================
-   CLEAR WISHLIST
-========================================================= */
+export const clearUserWishlist = async (userId: string) => {
+  validateObjectId(userId, "user");
 
-export const clearUserWishlist =
-  async (
-    userId: string
-  ) => {
-    validateObjectId(
+  const wishlist = await Wishlist.findOne({ user: new Types.ObjectId(userId) });
+  if (!wishlist) return createEmptyWishlistResponse(userId);
+
+  const clearedItems = wishlist.items.length;
+  wishlist.items = [];
+  await wishlist.save();
+
+  if (clearedItems > 0) {
+    await trackUserActivity({
       userId,
-      "user"
-    );
+      type: "wishlist_clear",
+      metadata: { clearedItems },
+    });
+  }
 
-    const wishlist =
-      await Wishlist.findOne({
-        user:
-          new Types.ObjectId(
-            userId
-          ),
-      });
-
-    if (!wishlist) {
-      return createEmptyWishlistResponse(
-        userId
-      );
-    }
-
-    const clearedItems = wishlist.items.length;
-    wishlist.items = [];
-
-    await wishlist.save();
-
-    if (clearedItems > 0) {
-      await trackUserActivity({
-        userId,
-        type: "wishlist_clear",
-        metadata: { clearedItems },
-      });
-    }
-
-    return populateWishlistById(
-      wishlist._id
-    );
-  };
+  return populateWishlistById(wishlist._id);
+};

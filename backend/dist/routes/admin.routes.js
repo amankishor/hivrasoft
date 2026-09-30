@@ -1,3 +1,112 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const express_rate_limit_1 = require("express-rate-limit");
+const admin_controller_1 = require("../controllers/admin.controller");
+const User_model_1 = __importDefault(require("../models/User.model"));
+const jwt_1 = require("../utils/jwt");
+const notification_controller_1 = require("../controllers/notification.controller");
+const discount_controller_1 = require("../controllers/discount.controller");
+const tax_controller_1 = require("../controllers/tax.controller");
+const router = (0, express_1.Router)();
+router.post("/login", (0, express_rate_limit_1.rateLimit)({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Too many login attempts. Try again in 15 minutes." },
+}), admin_controller_1.adminLogin);
+const authenticateAdmin = async (req, res, next) => {
+    try {
+        const token = req.cookies?.accessToken;
+        if (!token) {
+            res.status(401).json({ success: false, message: "Not authenticated" });
+            return;
+        }
+        const decoded = (0, jwt_1.verifyToken)(token);
+        if (!decoded?.id) {
+            res.status(401).json({ success: false, message: "Invalid session" });
+            return;
+        }
+        const user = await User_model_1.default.findById(decoded.id);
+        if (!user) {
+            res.status(401).json({ success: false, message: "User not found" });
+            return;
+        }
+        if (!user.isActive) {
+            res.status(403).json({ success: false, message: "Account is disabled" });
+            return;
+        }
+        if (user.role !== "admin" && user.role !== "super_admin") {
+            res.status(403).json({ success: false, message: "Admin access required." });
+            return;
+        }
+        req.user = user;
+        next();
+    }
+    catch (error) {
+        console.error("ADMIN AUTH ERROR:", error);
+        res.status(401).json({ success: false, message: "Invalid or expired session" });
+    }
+};
+router.get("/me", authenticateAdmin, (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+        success: true,
+        user: {
+            id: String(req.user._id),
+            name: req.user.name,
+            email: req.user.email,
+            role: req.user.role,
+        },
+    });
+});
+router.get("/dashboard", authenticateAdmin, admin_controller_1.getAdminDashboard);
+router.get("/customers", authenticateAdmin, admin_controller_1.getAdminCustomers);
+router.post("/customers", authenticateAdmin, admin_controller_1.createAdminCustomer);
+router.get("/customers/:id", authenticateAdmin, admin_controller_1.getAdminCustomerDetails);
+router.patch("/customers/:id", authenticateAdmin, admin_controller_1.updateAdminCustomer);
+router.patch("/customers/:id/status", authenticateAdmin, admin_controller_1.updateAdminCustomerStatus);
+router.patch("/customers/:id/last-active", authenticateAdmin, admin_controller_1.updateAdminCustomerLastActive);
+router.get("/customers/:id/cart", authenticateAdmin, admin_controller_1.getAdminUserCart);
+router.post("/customers/:id/cart", authenticateAdmin, admin_controller_1.adminAddCustomerCartItem);
+router.patch("/customers/:id/cart/:itemId", authenticateAdmin, admin_controller_1.adminUpdateCustomerCartItem);
+router.delete("/customers/:id/cart/:itemId", authenticateAdmin, admin_controller_1.adminRemoveCustomerCartItem);
+router.delete("/customers/:id/cart", authenticateAdmin, admin_controller_1.adminClearCustomerCart);
+router.get("/customers/:id/wishlist", authenticateAdmin, admin_controller_1.getAdminUserWishlist);
+router.post("/customers/:id/wishlist", authenticateAdmin, admin_controller_1.adminAddCustomerWishlistItem);
+router.delete("/customers/:id/wishlist/:itemId", authenticateAdmin, admin_controller_1.adminRemoveCustomerWishlistItem);
+router.delete("/customers/:id/wishlist", authenticateAdmin, admin_controller_1.adminClearCustomerWishlist);
+router.get("/customers/:id/orders", authenticateAdmin, admin_controller_1.getAdminUserOrders);
+router.get("/customers/:id/activity", authenticateAdmin, admin_controller_1.getAdminCustomerActivity);
+// User tracking aliases used by the admin customer intelligence screens.
+router.get("/users/:userId", authenticateAdmin, admin_controller_1.getAdminCustomerDetails);
+router.get("/users/:userId/cart", authenticateAdmin, admin_controller_1.getAdminUserCart);
+router.get("/users/:userId/wishlist", authenticateAdmin, admin_controller_1.getAdminUserWishlist);
+router.get("/users/:userId/orders", authenticateAdmin, admin_controller_1.getAdminUserOrders);
+router.get("/users/:userId/activity", authenticateAdmin, admin_controller_1.getAdminCustomerActivity);
+router.get("/users/:userId/notifications", authenticateAdmin, admin_controller_1.getAdminUserNotifications);
+router.get("/orders", authenticateAdmin, admin_controller_1.getAdminOrders);
+router.patch("/orders/:id/status", authenticateAdmin, admin_controller_1.updateAdminOrderStatus);
+router.get("/system-status", authenticateAdmin, admin_controller_1.getAdminSystemStatus);
+router.get("/notifications", authenticateAdmin, notification_controller_1.listAdminNotifications);
+router.post("/notifications", authenticateAdmin, notification_controller_1.createAdminNotification);
+router.post("/notifications/preview", authenticateAdmin, notification_controller_1.previewAdminNotificationAudience);
+router.post("/notifications/send", authenticateAdmin, notification_controller_1.sendAdminNotificationToOne);
+router.post("/notifications/bulk-send", authenticateAdmin, notification_controller_1.sendAdminNotificationBulk);
+router.post("/notifications/broadcast", authenticateAdmin, notification_controller_1.broadcastAdminNotification);
+router.delete("/notifications/:id", authenticateAdmin, notification_controller_1.deleteAdminNotification);
+router.get("/discounts/products", authenticateAdmin, discount_controller_1.getDiscountProducts);
+router.get("/discounts/automatic", authenticateAdmin, discount_controller_1.getAutomaticDiscount);
+router.put("/discounts/automatic", authenticateAdmin, discount_controller_1.saveAutomaticDiscount);
+router.get("/discounts/codes", authenticateAdmin, discount_controller_1.listDiscountCodes);
+router.post("/discounts/codes", authenticateAdmin, discount_controller_1.createDiscountCode);
+router.patch("/discounts/codes/:id", authenticateAdmin, discount_controller_1.updateDiscountCode);
+router.delete("/discounts/codes/:id", authenticateAdmin, discount_controller_1.deleteDiscountCode);
+router.get("/tax", authenticateAdmin, tax_controller_1.getTaxSettingAdmin);
+router.put("/tax", authenticateAdmin, tax_controller_1.saveTaxSettingAdmin);
+exports.default = router;
 //# sourceMappingURL=admin.routes.js.map

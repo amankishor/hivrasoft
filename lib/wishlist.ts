@@ -28,10 +28,13 @@ export async function getWishlist() {
   return requireWishlist(response);
 }
 
-export async function addToWishlist(productId: string) {
+export async function addToWishlist(
+  productId: string,
+  variant?: { colorId?: string | null; sizeId?: string | null },
+) {
   const response = await apiFetch<WishlistApiResponse>("/api/wishlist", {
     method: "POST",
-    body: { productId },
+    body: { productId, ...(variant || {}) },
   });
   const wishlist = requireWishlist(response);
   notifyWishlistUpdated(wishlist);

@@ -38,6 +38,9 @@ const EMPTY_CART = {
   codeDiscount: 0,
   discount: 0,
   appliedDiscountCode: "",
+  taxableAmount: 0,
+  tax: 0,
+  taxSummary: null,
   total: 0,
 };
 
@@ -329,8 +332,9 @@ export default function CartPage() {
   const automaticDiscount = Number(cart?.automaticDiscount || 0);
   const codeDiscount = Number(cart?.codeDiscount || 0);
   const totalDiscount = Number(cart?.discount || 0);
+  const tax = Number(cart?.tax || 0);
   const shipping = 0;
-  const estimatedTotal = Number(cart?.total ?? (subtotal - totalDiscount + shipping));
+  const estimatedTotal = Number(cart?.total ?? (subtotal - totalDiscount + tax + shipping));
 
   async function handleApplyDiscountCode() {
     if (!discountCode.trim() || applyingCode) return;
@@ -991,6 +995,13 @@ export default function CartPage() {
                       <div className="flex items-center justify-between gap-4 text-[#a31340]">
                         <span>Code {cart?.appliedDiscountCode}</span>
                         <strong>-{money(codeDiscount)}</strong>
+                      </div>
+                    )}
+
+                    {tax > 0 && (
+                      <div className="flex items-center justify-between gap-4">
+                        <span>{cart?.taxSummary?.name || "Tax"} {cart?.taxSummary?.percentage ? `(${cart.taxSummary.percentage}%)` : ""}</span>
+                        <strong className="text-[#211A18]">+{money(tax)}</strong>
                       </div>
                     )}
                   </div>

@@ -392,6 +392,11 @@ export default function CategoryManager() {
     });
 
   const [
+    slugManuallyEdited,
+    setSlugManuallyEdited,
+  ] = useState(false);
+
+  const [
     error,
     setError,
   ] =
@@ -780,6 +785,7 @@ export default function CategoryManager() {
       setForm({
         ...EMPTY_FORM,
       });
+      setSlugManuallyEdited(false);
 
       setError(
         ""
@@ -804,6 +810,7 @@ export default function CategoryManager() {
       setEditingId(
         null
       );
+      setSlugManuallyEdited(false);
 
       setNewUploadIds(
         []
@@ -893,6 +900,7 @@ export default function CategoryManager() {
         setEditingId(
           categoryId
         );
+        setSlugManuallyEdited(true);
 
         setForm({
           name:
@@ -1256,6 +1264,7 @@ export default function CategoryManager() {
         setForm({
           ...EMPTY_FORM,
         });
+        setSlugManuallyEdited(false);
 
         setViewMode(
           "all"
@@ -1952,7 +1961,7 @@ export default function CategoryManager() {
                         Admin baad me slug manually change kar sakta hai.
                       */
                       slug:
-                        current.slug
+                        slugManuallyEdited
                           ? current.slug
                           : normalizeCategorySlug(
                               nextName
@@ -1996,22 +2005,13 @@ export default function CategoryManager() {
                   value={
                     form.slug
                   }
-                  onChange={(
-                    event
-                  ) =>
-                    setForm(
-                      (
-                        current
-                      ) => ({
-                        ...current,
-
-                        slug:
-                          event
-                            .target
-                            .value,
-                      })
-                    )
-                  }
+                  onChange={(event) => {
+                    setSlugManuallyEdited(true);
+                    setForm((current) => ({
+                      ...current,
+                      slug: event.target.value,
+                    }));
+                  }}
                   onBlur={() =>
                     setForm(
                       (
@@ -2034,20 +2034,13 @@ export default function CategoryManager() {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setForm(
-                      (
-                        current
-                      ) => ({
-                        ...current,
-
-                        slug:
-                          normalizeCategorySlug(
-                            current.name
-                          ),
-                      })
-                    )
-                  }
+                  onClick={() => {
+                    setSlugManuallyEdited(false);
+                    setForm((current) => ({
+                      ...current,
+                      slug: normalizeCategorySlug(current.name),
+                    }));
+                  }}
                   className="
                     h-[48px]
                     shrink-0

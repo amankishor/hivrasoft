@@ -20,6 +20,7 @@ export type CatalogCategory = {
 };
 
 export type CatalogColor = {
+  _id?: string;
   nameProduct: string;
   slugProduct: string;
   nameColor: string;

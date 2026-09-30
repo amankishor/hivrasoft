@@ -21,6 +21,8 @@ export interface ICartItem {
   quantity: number;
 
   addedAt: Date;
+
+  updatedAt: Date;
 }
 
 /* =========================================================
@@ -84,6 +86,13 @@ const cartItemSchema =
 
       addedAt: {
         type: Date,
+        required: true,
+        default:
+          Date.now,
+      },
+
+      updatedAt: {
+        type: Date,
         default:
           Date.now,
       },
@@ -144,6 +153,7 @@ const cartSchema =
 cartSchema.index({
   "items.product": 1,
 });
+cartSchema.index({ "items.addedAt": 1 });
 
 /* =========================================================
    MODEL

@@ -63,8 +63,16 @@ type ColorValue = {
   nameProduct: string;
   slugProduct: string;
 
+  // Frontend-only: keeps URLs stable on edit.
+  // false = slug follows the name automatically.
+  // true = admin explicitly controls the slug.
+  productSlugManuallyEdited: boolean;
+
   nameColor: string;
   slugColor: string;
+
+  // Same behavior for the color URL segment.
+  colorSlugManuallyEdited: boolean;
 
   hex: string;
   isDefault: boolean;
@@ -152,9 +160,11 @@ function emptyColor(
   return {
     nameProduct: "",
     slugProduct: "",
+    productSlugManuallyEdited: false,
 
     nameColor: "",
     slugColor: "",
+    colorSlugManuallyEdited: false,
 
     hex: "#000000",
     isDefault:
@@ -598,6 +608,10 @@ export default function ProductForm({
                       color?.slugProduct ||
                       "",
 
+                    // Existing product URLs must not change just because
+                    // the admin edits the product name.
+                    productSlugManuallyEdited: true,
+
                     nameColor:
                       color?.nameColor ||
                       "",
@@ -605,6 +619,9 @@ export default function ProductForm({
                     slugColor:
                       color?.slugColor ||
                       "",
+
+                    // Existing color URLs stay stable until manually edited.
+                    colorSlugManuallyEdited: true,
 
                     hex:
                       color?.hex ||
@@ -3056,10 +3073,11 @@ export default function ProductForm({
                                   nextName,
 
                                 slugProduct:
-                                  color.slugProduct ||
-                                  slugify(
-                                    nextName
-                                  ),
+                                  color.productSlugManuallyEdited
+                                    ? color.slugProduct
+                                    : slugify(
+                                        nextName
+                                      ),
                               }
                             );
                           }}
@@ -3068,7 +3086,11 @@ export default function ProductForm({
 
                       <Field
                         label="Product Slug"
-                        hint="URL-safe; generated automatically if blank."
+                        hint={
+                          isEdit
+                            ? "Existing URL stays unchanged when the name changes. Edit this field only when you intentionally want to change the URL."
+                            : "Generated from the product name automatically. You can type a custom slug manually."
+                        }
                       >
                         <input
                           className={
@@ -3080,19 +3102,28 @@ export default function ProductForm({
                           placeholder="black-bikini-panty-for-women"
                           onChange={(
                             event
-                          ) =>
+                          ) => {
+                            const rawValue =
+                              event.target.value;
+
+                            const hasManualValue =
+                              rawValue.trim().length > 0;
+
                             updateColor(
                               colorIndex,
                               {
                                 slugProduct:
-                                  slugify(
-                                    event
-                                      .target
-                                      .value
-                                  ),
+                                  hasManualValue
+                                    ? slugify(rawValue)
+                                    : slugify(
+                                        color.nameProduct
+                                      ),
+
+                                productSlugManuallyEdited:
+                                  hasManualValue,
                               }
-                            )
-                          }
+                            );
+                          }}
                         />
                       </Field>
 
@@ -3125,10 +3156,11 @@ export default function ProductForm({
                                       nextName,
 
                                     slugColor:
-                                      color.slugColor ||
-                                      slugify(
-                                        nextName
-                                      ),
+                                      color.colorSlugManuallyEdited
+                                        ? color.slugColor
+                                        : slugify(
+                                            nextName
+                                          ),
                                   }
                                 );
                               }}
@@ -3148,19 +3180,28 @@ export default function ProductForm({
                               placeholder="black"
                               onChange={(
                                 event
-                              ) =>
+                              ) => {
+                                const rawValue =
+                                  event.target.value;
+
+                                const hasManualValue =
+                                  rawValue.trim().length > 0;
+
                                 updateColor(
                                   colorIndex,
                                   {
                                     slugColor:
-                                      slugify(
-                                        event
-                                          .target
-                                          .value
-                                      ),
+                                      hasManualValue
+                                        ? slugify(rawValue)
+                                        : slugify(
+                                            color.nameColor
+                                          ),
+
+                                    colorSlugManuallyEdited:
+                                      hasManualValue,
                                   }
-                                )
-                              }
+                                );
+                              }}
                             />
                           </Field>
 

@@ -6,6 +6,8 @@ import {
   getMyUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
+  deleteMyNotification,
+  deleteAllMyNotifications,
 } from "../controllers/notification.controller";
 
 const router = Router();
@@ -30,6 +32,16 @@ router.patch(
 router.patch(
   "/:id/read",
   markNotificationRead
+);
+
+router.delete(
+  "/:id",
+  deleteMyNotification
+);
+
+router.delete(
+  "/",
+  deleteAllMyNotifications
 );
 
 export default router;

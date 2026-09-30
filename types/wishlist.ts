@@ -1,8 +1,12 @@
 import type { Product } from "./product";
 
 export type WishlistItem = {
+  _id?: string;
   product: Product | null;
+  colorId?: string | null;
+  sizeId?: string | null;
   addedAt?: string;
+  updatedAt?: string;
 };
 
 export type Wishlist = {
