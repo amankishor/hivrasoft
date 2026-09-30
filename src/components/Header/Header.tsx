@@ -2,17 +2,32 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 import {
+  usePathname,
+  useRouter,
+} from "next/navigation";
+
+import {
+  useCallback,
+  useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
 import Account from "../Auth/Account";
 
+import {
+  checkLoggedIn,
+  getCartCount,
+  getPendingWishlistIds,
+  requestStoreLogin,
+  syncPendingWishlist,
+} from "@/src/Services/storeActions";
+
 /* =========================================================
-   WOMEN MENU DATA
+   WOMEN
 ========================================================= */
 
 const braLinks = [
@@ -77,7 +92,7 @@ const discoverLinks = [
 ];
 
 /* =========================================================
-   MEN MENU DATA
+   MEN
 ========================================================= */
 
 const menLinks = [
@@ -108,34 +123,335 @@ const menLinks = [
 ========================================================= */
 
 export default function Header() {
-  const pathname = usePathname();
+  const pathname =
+    usePathname();
 
-  const [mobileOpen, setMobileOpen] =
+  const router =
+    useRouter();
+
+  const [
+    mobileOpen,
+    setMobileOpen,
+  ] =
     useState(false);
 
   const [
     mobileWomenOpen,
     setMobileWomenOpen,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     mobileMenOpen,
     setMobileMenOpen,
-  ] = useState(false);
+  ] =
+    useState(false);
 
-  /* =========================================================
-     HIDE NAVBAR ON LANDING
-  ========================================================= */
+  const [
+    cartCount,
+    setCartCount,
+  ] =
+    useState(0);
 
-  if (pathname === "/landing") {
+  const [
+    pendingWishlist,
+    setPendingWishlist,
+  ] =
+    useState(false);
+
+  const [
+    message,
+    setMessage,
+  ] =
+    useState("");
+
+  const syncRunning =
+    useRef(false);
+
+  /* =======================================================
+     TEMP WISHLIST FLAG
+  ======================================================= */
+
+  const refreshPendingState =
+    useCallback(() => {
+      setPendingWishlist(
+        getPendingWishlistIds()
+          .length > 0
+      );
+    }, []);
+
+  /* =======================================================
+     HEADER AUTH REFRESH
+  ======================================================= */
+
+  const refreshHeaderState =
+    useCallback(
+      async () => {
+        if (
+          syncRunning.current
+        ) {
+          return;
+        }
+
+        syncRunning.current =
+          true;
+
+        try {
+          const loggedIn =
+            await checkLoggedIn();
+
+          if (
+            !loggedIn
+          ) {
+            setCartCount(
+              0
+            );
+
+            refreshPendingState();
+
+            return;
+          }
+
+          /*
+           * USER JUST LOGGED IN:
+           *
+           * sessionStorage wishlist
+           * automatically backend me sync.
+           */
+
+          const sync =
+            await syncPendingWishlist();
+
+          refreshPendingState();
+
+          if (
+            sync.synced >
+            0
+          ) {
+            setMessage(
+              `${sync.synced} saved ${
+                sync.synced ===
+                1
+                  ? "item"
+                  : "items"
+              } added to your wishlist.`
+            );
+          }
+
+          const count =
+            await getCartCount();
+
+          setCartCount(
+            count
+          );
+        } finally {
+          syncRunning.current =
+            false;
+        }
+      },
+      [
+        refreshPendingState,
+      ]
+    );
+
+  /* =======================================================
+     INITIAL LOAD
+  ======================================================= */
+
+  useEffect(() => {
+    refreshPendingState();
+
+    void refreshHeaderState();
+  }, [
+    refreshHeaderState,
+    refreshPendingState,
+  ]);
+
+  /* =======================================================
+     GLOBAL EVENTS
+  ======================================================= */
+
+  useEffect(() => {
+    const refresh = () => {
+      refreshPendingState();
+
+      void refreshHeaderState();
+    };
+
+    window.addEventListener(
+      "hivrasoft-cart-updated",
+      refresh
+    );
+
+    window.addEventListener(
+      "hivrasoft-wishlist-updated",
+      refresh
+    );
+
+    window.addEventListener(
+      "hivrasoft-pending-wishlist-updated",
+      refresh
+    );
+
+    window.addEventListener(
+      "hivrasoft-auth-changed",
+      refresh
+    );
+
+    window.addEventListener(
+      "focus",
+      refresh
+    );
+
+    return () => {
+      window.removeEventListener(
+        "hivrasoft-cart-updated",
+        refresh
+      );
+
+      window.removeEventListener(
+        "hivrasoft-wishlist-updated",
+        refresh
+      );
+
+      window.removeEventListener(
+        "hivrasoft-pending-wishlist-updated",
+        refresh
+      );
+
+      window.removeEventListener(
+        "hivrasoft-auth-changed",
+        refresh
+      );
+
+      window.removeEventListener(
+        "focus",
+        refresh
+      );
+    };
+  }, [
+    refreshHeaderState,
+    refreshPendingState,
+  ]);
+
+  /* =======================================================
+     LOGIN POLLING ONLY WHEN GUEST WISHLIST EXISTS
+
+     Login modal same page par open ho sakta hai.
+     Isliye pending product hone par hi short polling.
+
+     Login detect hote hi sync ho jayega.
+  ======================================================= */
+
+  useEffect(() => {
+    if (
+      !pendingWishlist
+    ) {
+      return;
+    }
+
+    const timer =
+      window.setInterval(
+        () => {
+          void refreshHeaderState();
+        },
+        1500
+      );
+
+    return () =>
+      window.clearInterval(
+        timer
+      );
+  }, [
+    pendingWishlist,
+    refreshHeaderState,
+  ]);
+
+  /* =======================================================
+     TOAST
+  ======================================================= */
+
+  useEffect(() => {
+    if (
+      !message
+    ) {
+      return;
+    }
+
+    const timer =
+      window.setTimeout(
+        () => {
+          setMessage(
+            ""
+          );
+        },
+        3000
+      );
+
+    return () =>
+      window.clearTimeout(
+        timer
+      );
+  }, [
+    message,
+  ]);
+
+  /* =======================================================
+     PROTECTED HEADER PAGE
+
+     Cart + Wishlist page logged-in only.
+  ======================================================= */
+
+  async function openProtectedPage(
+    path: string
+  ) {
+    const loggedIn =
+      await checkLoggedIn();
+
+    if (
+      !loggedIn
+    ) {
+      setMessage(
+        "Please log in first."
+      );
+
+      requestStoreLogin();
+
+      return;
+    }
+
+    /*
+     * Wishlist kholne se pehle
+     * temporary products sync.
+     */
+
+    if (
+      path.startsWith(
+        "/wishlist"
+      )
+    ) {
+      await syncPendingWishlist();
+    }
+
+    router.push(
+      path
+    );
+  }
+
+  /* =======================================================
+     LANDING
+  ======================================================= */
+
+  if (
+    pathname ===
+    "/landing"
+  ) {
     return null;
   }
 
   return (
     <>
-      {/* =====================================================
-          TOP ANNOUNCEMENT BAR
-      ===================================================== */}
+      {/* TOP BAR */}
 
       <div
         className="
@@ -154,6 +470,7 @@ export default function Header() {
             uppercase
             tracking-[0.2em]
             text-[#F7F3EF]
+
             md:text-[9px]
           "
         >
@@ -183,30 +500,34 @@ export default function Header() {
         </p>
       </div>
 
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
+      {/* HEADER */}
 
       <header
         className="
           sticky
           top-0
           z-[100]
+
           w-full
+
           border-b
           border-[#211A18]/10
+
           bg-[#F7F3EF]
         "
       >
         <div
           className="
             mx-auto
+
             flex
             h-[74px]
             max-w-[1600px]
             items-center
             justify-between
+
             px-4
+
             md:px-6
             xl:px-8
           "
@@ -232,14 +553,13 @@ export default function Header() {
                 h-auto
                 w-[120px]
                 object-contain
+
                 xl:w-[145px]
               "
             />
           </Link>
 
-          {/* =================================================
-              DESKTOP NAVIGATION
-          ================================================= */}
+          {/* DESKTOP NAV */}
 
           <nav
             className="
@@ -247,6 +567,7 @@ export default function Header() {
               h-full
               items-center
               gap-[22px]
+
               xl:flex
             "
           >
@@ -280,13 +601,12 @@ export default function Header() {
                   h-full
                   items-center
                   gap-[5px]
+
                   text-[10px]
                   font-semibold
                   uppercase
                   tracking-[0.1em]
                   text-[#8C1839]
-                  transition-colors
-                  duration-300
                 "
               >
                 Women
@@ -300,14 +620,21 @@ export default function Header() {
                   absolute
                   left-1/2
                   top-full
+
                   w-[650px]
+
                   -translate-x-1/2
                   translate-y-[8px]
+
                   border
                   border-[#211A18]/5
+
                   bg-[#F7F3EF]
+
                   opacity-0
+
                   shadow-[0_24px_60px_rgba(33,26,24,0.16)]
+
                   transition-all
                   duration-300
 
@@ -326,103 +653,21 @@ export default function Header() {
                     pt-9
                   "
                 >
-                  {/* BRAS */}
+                  <MenuColumn
+                    title="Bras"
+                    titleHref="/women/bra/"
+                    links={
+                      braLinks
+                    }
+                  />
 
-                  <div>
-                    <Link
-                      href="/women/bra/"
-                      className="
-                        mb-5
-                        inline-block
-                        text-[9px]
-                        font-semibold
-                        uppercase
-                        tracking-[0.35em]
-                        text-[#8C1839]
-                        transition
-                        hover:text-[#211A18]
-                      "
-                    >
-                      Bras
-                    </Link>
-
-                    <div
-                      className="
-                        space-y-[17px]
-                      "
-                    >
-                      {braLinks.map(
-                        (item) => (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            className="
-                              block
-                              text-[12px]
-                              font-normal
-                              text-[#211A18]/60
-                              transition-all
-                              duration-200
-                              hover:translate-x-1
-                              hover:text-[#8C1839]
-                            "
-                          >
-                            {item.name}
-                          </Link>
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  {/* PANTIES */}
-
-                  <div>
-                    <Link
-                      href="/women/panty/"
-                      className="
-                        mb-5
-                        inline-block
-                        text-[9px]
-                        font-semibold
-                        uppercase
-                        tracking-[0.35em]
-                        text-[#8C1839]
-                        transition
-                        hover:text-[#211A18]
-                      "
-                    >
-                      Panties
-                    </Link>
-
-                    <div
-                      className="
-                        space-y-[17px]
-                      "
-                    >
-                      {pantyLinks.map(
-                        (item) => (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            className="
-                              block
-                              text-[12px]
-                              font-normal
-                              text-[#211A18]/60
-                              transition-all
-                              duration-200
-                              hover:translate-x-1
-                              hover:text-[#8C1839]
-                            "
-                          >
-                            {item.name}
-                          </Link>
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  {/* DISCOVER */}
+                  <MenuColumn
+                    title="Panties"
+                    titleHref="/women/panty/"
+                    links={
+                      pantyLinks
+                    }
+                  />
 
                   <div>
                     <p
@@ -438,29 +683,23 @@ export default function Header() {
                       Discover
                     </p>
 
-                    <div
-                      className="
-                        space-y-[17px]
-                      "
-                    >
+                    <div className="space-y-[17px]">
                       {discoverLinks.map(
-                        (item) => (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            className="
-                              block
-                              text-[12px]
-                              font-normal
-                              text-[#211A18]/60
-                              transition-all
-                              duration-200
-                              hover:translate-x-1
-                              hover:text-[#8C1839]
-                            "
+                        (
+                          item
+                        ) => (
+                          <DropdownLink
+                            key={
+                              item.href
+                            }
+                            href={
+                              item.href
+                            }
                           >
-                            {item.name}
-                          </Link>
+                            {
+                              item.name
+                            }
+                          </DropdownLink>
                         )
                       )}
                     </div>
@@ -481,19 +720,24 @@ export default function Header() {
                       inline-flex
                       items-center
                       gap-3
+
                       text-[9px]
                       font-semibold
                       uppercase
                       tracking-[0.32em]
                       text-[#8C1839]
+
                       transition
+
                       hover:gap-5
                       hover:text-[#211A18]
                     "
                   >
                     Explore all Women&apos;s Collection
 
-                    <span>→</span>
+                    <span>
+                      →
+                    </span>
                   </Link>
                 </div>
               </div>
@@ -517,12 +761,15 @@ export default function Header() {
                   h-full
                   items-center
                   gap-[5px]
+
                   text-[10px]
                   font-semibold
                   uppercase
                   tracking-[0.1em]
                   text-[#211A18]
+
                   transition
+
                   hover:text-[#8C1839]
                 "
               >
@@ -537,15 +784,23 @@ export default function Header() {
                   absolute
                   left-1/2
                   top-full
+
                   w-[230px]
+
                   -translate-x-1/2
                   translate-y-2
+
                   border
                   border-[#211A18]/10
+
                   bg-[#F7F3EF]
+
                   p-4
+
                   opacity-0
+
                   shadow-[0_20px_50px_rgba(33,26,24,0.12)]
+
                   transition-all
                   duration-300
 
@@ -555,22 +810,33 @@ export default function Header() {
                 "
               >
                 {menLinks.map(
-                  (item) => (
+                  (
+                    item
+                  ) => (
                     <Link
-                      key={item.href}
-                      href={item.href}
+                      key={
+                        item.href
+                      }
+                      href={
+                        item.href
+                      }
                       className="
                         block
                         px-4
                         py-3
+
                         text-[11px]
                         text-[#211A18]/65
+
                         transition
+
                         hover:bg-[#EFE6DC]
                         hover:text-[#8C1839]
                       "
                     >
-                      {item.name}
+                      {
+                        item.name
+                      }
                     </Link>
                   )
                 )}
@@ -599,12 +865,15 @@ export default function Header() {
                   h-full
                   items-center
                   gap-[5px]
+
                   text-[10px]
                   font-semibold
                   uppercase
                   tracking-[0.1em]
                   text-[#211A18]
+
                   transition
+
                   hover:text-[#8C1839]
                 "
               >
@@ -619,16 +888,23 @@ export default function Header() {
                   absolute
                   right-0
                   top-full
+
                   w-[240px]
+
                   translate-y-2
+
                   border
                   border-[#211A18]/10
+
                   bg-[#F7F3EF]
+
                   p-4
+
                   opacity-0
+
                   shadow-[0_20px_50px_rgba(33,26,24,0.12)]
+
                   transition-all
-                  duration-300
 
                   group-hover:visible
                   group-hover:translate-y-0
@@ -643,7 +919,6 @@ export default function Header() {
                     py-3
                     text-[11px]
                     text-[#211A18]/65
-                    transition
                     hover:bg-[#EFE6DC]
                     hover:text-[#8C1839]
                   "
@@ -659,7 +934,6 @@ export default function Header() {
                     py-3
                     text-[11px]
                     text-[#211A18]/65
-                    transition
                     hover:bg-[#EFE6DC]
                     hover:text-[#8C1839]
                   "
@@ -670,9 +944,7 @@ export default function Header() {
             </div>
           </nav>
 
-          {/* =================================================
-              DESKTOP RIGHT ICONS
-          ================================================= */}
+          {/* DESKTOP ICONS */}
 
           <div
             className="
@@ -680,9 +952,12 @@ export default function Header() {
               items-center
               gap-1
               text-[#211A18]
+
               md:flex
             "
           >
+            {/* SEARCH */}
+
             <IconLink
               href="/search/"
               label="Search"
@@ -690,12 +965,51 @@ export default function Header() {
               <SearchIcon />
             </IconLink>
 
-            <IconLink
-              href="/wishlist/"
-              label="Wishlist"
+            {/* WISHLIST */}
+
+            <button
+              type="button"
+              onClick={() =>
+                void openProtectedPage(
+                  "/wishlist/"
+                )
+              }
+              aria-label="Wishlist"
+              title="Wishlist"
+              className="
+                flex
+                h-11
+                w-11
+                shrink-0
+                items-center
+                justify-center
+
+                rounded-full
+
+                text-[#8C1839]
+
+                transition-all
+                duration-300
+
+                hover:bg-[#EFE6DC]
+              "
             >
               <HeartIcon />
-            </IconLink>
+
+              {pendingWishlist && (
+                <span
+                  className="
+                    absolute
+                    h-[6px]
+                    w-[6px]
+                    translate-x-[8px]
+                    -translate-y-[9px]
+                    rounded-full
+                    bg-[#8C1839]
+                  "
+                />
+              )}
+            </button>
 
             {/* ACCOUNT */}
 
@@ -703,73 +1017,100 @@ export default function Header() {
 
             {/* CART */}
 
-            <Link
-              href="/cart/"
+            <button
+              type="button"
+              onClick={() =>
+                void openProtectedPage(
+                  "/cart/"
+                )
+              }
               aria-label="Cart"
+              title="Cart"
               className="
                 relative
                 ml-1
+
                 flex
                 h-11
                 w-11
                 shrink-0
                 items-center
                 justify-center
+
                 rounded-full
+
                 bg-[#211A18]
+
                 text-white
+
                 shadow-sm
+
                 transition-all
-                duration-300
 
                 hover:bg-[#8C1839]
               "
             >
               <BagIcon />
 
-              <span
-                className="
-                  absolute
-                  -right-1
-                  -top-1
-                  flex
-                  h-[17px]
-                  min-w-[17px]
-                  items-center
-                  justify-center
-                  rounded-full
-                  bg-[#8C1839]
-                  px-1
-                  text-[8px]
-                  font-bold
-                  text-white
-                "
-              >
-                0
-              </span>
-            </Link>
+              {cartCount >
+                0 && (
+                <span
+                  className="
+                    absolute
+                    -right-1
+                    -top-1
+
+                    flex
+                    h-[17px]
+                    min-w-[17px]
+                    items-center
+                    justify-center
+
+                    rounded-full
+
+                    bg-[#8C1839]
+
+                    px-1
+
+                    text-[8px]
+                    font-bold
+                    text-white
+                  "
+                >
+                  {cartCount >
+                  99
+                    ? "99+"
+                    : cartCount}
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* MOBILE BUTTON */}
+          {/* MOBILE MENU BUTTON */}
 
           <button
             type="button"
             aria-label="Menu"
-            onClick={() => {
+            onClick={() =>
               setMobileOpen(
-                (value) => !value
-              );
-            }}
+                (value) =>
+                  !value
+              )
+            }
             className="
               flex
               h-11
               w-11
               items-center
               justify-center
+
               rounded-full
+
               border
               border-[#211A18]/20
+
               text-[#211A18]
+
               xl:hidden
             "
           >
@@ -781,18 +1122,20 @@ export default function Header() {
           </button>
         </div>
 
-        {/* =================================================
-            MOBILE MENU
-        ================================================= */}
+        {/* MOBILE MENU */}
 
         <div
           className={`
             overflow-visible
+
             border-t
             border-[#211A18]/10
+
             bg-[#F7F3EF]
+
             transition-all
             duration-500
+
             xl:hidden
 
             ${
@@ -813,11 +1156,14 @@ export default function Header() {
             <div
               className="
                 mb-5
+
                 grid
                 grid-cols-4
                 gap-2
+
                 border-b
                 border-[#211A18]/10
+
                 pb-5
               "
             >
@@ -825,48 +1171,150 @@ export default function Header() {
                 href="/search/"
                 label="Search"
                 close={() =>
-                  setMobileOpen(false)
+                  setMobileOpen(
+                    false
+                  )
                 }
               >
                 <SearchIcon />
               </MobileIconLink>
 
-              <MobileIconLink
-                href="/wishlist/"
-                label="Wishlist"
-                close={() =>
-                  setMobileOpen(false)
-                }
+              {/* MOBILE WISHLIST */}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(
+                    false
+                  );
+
+                  void openProtectedPage(
+                    "/wishlist/"
+                  );
+                }}
+                className="
+                  relative
+
+                  flex
+                  h-12
+                  items-center
+                  justify-center
+
+                  rounded-md
+
+                  border
+                  border-[#211A18]/15
+
+                  bg-[#F7F3EF]
+
+                  text-[#211A18]
+                "
               >
                 <HeartIcon />
-              </MobileIconLink>
 
-              {/* MOBILE ACCOUNT */}
+                {pendingWishlist && (
+                  <span
+                    className="
+                      absolute
+                      right-2
+                      top-2
+                      h-[6px]
+                      w-[6px]
+                      rounded-full
+                      bg-[#8C1839]
+                    "
+                  />
+                )}
+              </button>
+
+              {/* ACCOUNT */}
 
               <Account
                 mobile
                 onBeforeOpen={() => {
-                  setMobileOpen(false);
+                  setMobileOpen(
+                    false
+                  );
 
-                  setMobileWomenOpen(false);
+                  setMobileWomenOpen(
+                    false
+                  );
 
-                  setMobileMenOpen(false);
+                  setMobileMenOpen(
+                    false
+                  );
                 }}
               />
 
-              <MobileCartLink
-                close={() =>
-                  setMobileOpen(false)
-                }
-              />
-            </div>
+              {/* MOBILE CART */}
 
-            {/* LINKS */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(
+                    false
+                  );
+
+                  void openProtectedPage(
+                    "/cart/"
+                  );
+                }}
+                className="
+                  relative
+
+                  flex
+                  h-12
+                  items-center
+                  justify-center
+
+                  rounded-md
+
+                  bg-[#211A18]
+
+                  text-white
+                "
+              >
+                <BagIcon />
+
+                {cartCount >
+                  0 && (
+                  <span
+                    className="
+                      absolute
+                      right-1
+                      top-1
+
+                      flex
+                      h-[16px]
+                      min-w-[16px]
+                      items-center
+                      justify-center
+
+                      rounded-full
+
+                      bg-[#8C1839]
+
+                      px-1
+
+                      text-[8px]
+                      font-bold
+                    "
+                  >
+                    {cartCount >
+                    99
+                      ? "99+"
+                      : cartCount}
+                  </span>
+                )}
+              </button>
+            </div>
 
             <MobileLink
               href="/bundle-pricing/"
               close={() =>
-                setMobileOpen(false)
+                setMobileOpen(
+                  false
+                )
               }
             >
               Bundle Pricing
@@ -875,7 +1323,9 @@ export default function Header() {
             <MobileLink
               href="/new-launch/"
               close={() =>
-                setMobileOpen(false)
+                setMobileOpen(
+                  false
+                )
               }
             >
               New Launch
@@ -884,34 +1334,39 @@ export default function Header() {
             <MobileLink
               href="/buy-3-get-1-free/"
               close={() =>
-                setMobileOpen(false)
+                setMobileOpen(
+                  false
+                )
               }
             >
               Buy 3 Get 1 Free
             </MobileLink>
 
-            {/* MOBILE WOMEN */}
+            {/* WOMEN */}
 
             <button
               type="button"
-              onClick={() => {
+              onClick={() =>
                 setMobileWomenOpen(
-                  (value) => !value
-                );
-              }}
+                  (value) =>
+                    !value
+                )
+              }
               className="
                 flex
                 w-full
                 items-center
                 justify-between
+
                 border-b
                 border-[#211A18]/10
+
                 py-4
+
                 text-[12px]
                 font-semibold
                 uppercase
                 tracking-[0.1em]
-                text-[#211A18]
               "
             >
               Women
@@ -931,115 +1386,72 @@ export default function Header() {
                   py-4
                 "
               >
-                <Link
+                <MobileSubTitle
                   href="/women/"
-                  onClick={() =>
-                    setMobileOpen(false)
+                  close={() =>
+                    setMobileOpen(
+                      false
+                    )
                   }
-                  className="
-                    block
-                    border-b
-                    border-[#211A18]/10
-                    pb-4
-                    text-[11px]
-                    font-bold
-                    uppercase
-                    tracking-[0.1em]
-                    text-[#8C1839]
-                  "
                 >
                   View All Women
-                </Link>
+                </MobileSubTitle>
 
-                <Link
-                  href="/women/bra/"
-                  onClick={() =>
-                    setMobileOpen(false)
-                  }
-                  className="
-                    mt-5
-                    block
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.2em]
-                    text-[#8C1839]
-                  "
-                >
+                <MobileSectionTitle href="/women/bra/">
                   Bras
-                </Link>
+                </MobileSectionTitle>
 
-                <div
-                  className="
-                    mt-2
-                    pl-3
-                  "
-                >
-                  {braLinks.map(
-                    (item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() =>
-                          setMobileOpen(false)
-                        }
-                        className="
-                          block
-                          py-2
-                          text-[11px]
-                          text-[#6F5A4C]
-                        "
-                      >
-                        {item.name}
-                      </Link>
-                    )
-                  )}
-                </div>
+                {braLinks.map(
+                  (
+                    item
+                  ) => (
+                    <MobileChildLink
+                      key={
+                        item.href
+                      }
+                      href={
+                        item.href
+                      }
+                      close={() =>
+                        setMobileOpen(
+                          false
+                        )
+                      }
+                    >
+                      {
+                        item.name
+                      }
+                    </MobileChildLink>
+                  )
+                )}
 
-                <Link
-                  href="/women/panty/"
-                  onClick={() =>
-                    setMobileOpen(false)
-                  }
-                  className="
-                    mt-5
-                    block
-                    text-[10px]
-                    font-bold
-                    uppercase
-                    tracking-[0.2em]
-                    text-[#8C1839]
-                  "
-                >
+                <MobileSectionTitle href="/women/panty/">
                   Panties
-                </Link>
+                </MobileSectionTitle>
 
-                <div
-                  className="
-                    mt-2
-                    pl-3
-                  "
-                >
-                  {pantyLinks.map(
-                    (item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() =>
-                          setMobileOpen(false)
-                        }
-                        className="
-                          block
-                          py-2
-                          text-[11px]
-                          text-[#6F5A4C]
-                        "
-                      >
-                        {item.name}
-                      </Link>
-                    )
-                  )}
-                </div>
+                {pantyLinks.map(
+                  (
+                    item
+                  ) => (
+                    <MobileChildLink
+                      key={
+                        item.href
+                      }
+                      href={
+                        item.href
+                      }
+                      close={() =>
+                        setMobileOpen(
+                          false
+                        )
+                      }
+                    >
+                      {
+                        item.name
+                      }
+                    </MobileChildLink>
+                  )
+                )}
 
                 <p
                   className="
@@ -1054,57 +1466,57 @@ export default function Header() {
                   Discover
                 </p>
 
-                <div
-                  className="
-                    mt-2
-                    pl-3
-                  "
-                >
-                  {discoverLinks.map(
-                    (item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() =>
-                          setMobileOpen(false)
-                        }
-                        className="
-                          block
-                          py-2
-                          text-[11px]
-                          text-[#6F5A4C]
-                        "
-                      >
-                        {item.name}
-                      </Link>
-                    )
-                  )}
-                </div>
+                {discoverLinks.map(
+                  (
+                    item
+                  ) => (
+                    <MobileChildLink
+                      key={
+                        item.href
+                      }
+                      href={
+                        item.href
+                      }
+                      close={() =>
+                        setMobileOpen(
+                          false
+                        )
+                      }
+                    >
+                      {
+                        item.name
+                      }
+                    </MobileChildLink>
+                  )
+                )}
               </div>
             )}
 
-            {/* MOBILE MEN */}
+            {/* MEN */}
 
             <button
               type="button"
-              onClick={() => {
+              onClick={() =>
                 setMobileMenOpen(
-                  (value) => !value
-                );
-              }}
+                  (value) =>
+                    !value
+                )
+              }
               className="
                 flex
                 w-full
                 items-center
                 justify-between
+
                 border-b
                 border-[#211A18]/10
+
                 py-4
+
                 text-[12px]
                 font-semibold
                 uppercase
                 tracking-[0.1em]
-                text-[#211A18]
               "
             >
               Men
@@ -1124,40 +1536,38 @@ export default function Header() {
                   py-3
                 "
               >
-                <Link
+                <MobileSubTitle
                   href="/men/"
-                  onClick={() =>
-                    setMobileOpen(false)
+                  close={() =>
+                    setMobileOpen(
+                      false
+                    )
                   }
-                  className="
-                    block
-                    py-3
-                    text-[11px]
-                    font-bold
-                    uppercase
-                    text-[#8C1839]
-                  "
                 >
                   All Men
-                </Link>
+                </MobileSubTitle>
 
                 {menLinks.map(
-                  (item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() =>
-                        setMobileOpen(false)
+                  (
+                    item
+                  ) => (
+                    <MobileChildLink
+                      key={
+                        item.href
                       }
-                      className="
-                        block
-                        py-3
-                        text-[11px]
-                        text-[#6F5A4C]
-                      "
+                      href={
+                        item.href
+                      }
+                      close={() =>
+                        setMobileOpen(
+                          false
+                        )
+                      }
                     >
-                      {item.name}
-                    </Link>
+                      {
+                        item.name
+                      }
+                    </MobileChildLink>
                   )
                 )}
               </div>
@@ -1166,7 +1576,9 @@ export default function Header() {
             <MobileLink
               href="/accessories/"
               close={() =>
-                setMobileOpen(false)
+                setMobileOpen(
+                  false
+                )
               }
             >
               Accessories
@@ -1175,7 +1587,9 @@ export default function Header() {
             <MobileLink
               href="/send-your-bra/"
               close={() =>
-                setMobileOpen(false)
+                setMobileOpen(
+                  false
+                )
               }
             >
               Send Your Bra
@@ -1184,7 +1598,9 @@ export default function Header() {
             <MobileLink
               href="/reseller-registration/"
               close={() =>
-                setMobileOpen(false)
+                setMobileOpen(
+                  false
+                )
               }
             >
               Reseller Registration
@@ -1192,7 +1608,139 @@ export default function Header() {
           </div>
         </div>
       </header>
+
+      {/* HEADER TOAST */}
+
+      {message && (
+        <div
+          className="
+            fixed
+            right-5
+            top-[105px]
+            z-[9999]
+
+            max-w-[350px]
+
+            rounded-xl
+
+            border
+            border-[#211A18]/10
+
+            bg-white
+
+            px-5
+            py-3
+
+            text-[10px]
+            font-medium
+            text-[#211A18]
+
+            shadow-[0_14px_45px_rgba(0,0,0,0.16)]
+          "
+        >
+          {
+            message
+          }
+        </div>
+      )}
     </>
+  );
+}
+
+/* =========================================================
+   DESKTOP MENU HELPERS
+========================================================= */
+
+function MenuColumn({
+  title,
+  titleHref,
+  links,
+}: {
+  title: string;
+  titleHref: string;
+
+  links: {
+    name: string;
+    href: string;
+  }[];
+}) {
+  return (
+    <div>
+      <Link
+        href={
+          titleHref
+        }
+        className="
+          mb-5
+          inline-block
+
+          text-[9px]
+          font-semibold
+          uppercase
+          tracking-[0.35em]
+          text-[#8C1839]
+
+          hover:text-[#211A18]
+        "
+      >
+        {
+          title
+        }
+      </Link>
+
+      <div className="space-y-[17px]">
+        {links.map(
+          (
+            item
+          ) => (
+            <DropdownLink
+              key={
+                item.href
+              }
+              href={
+                item.href
+              }
+            >
+              {
+                item.name
+              }
+            </DropdownLink>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DropdownLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={
+        href
+      }
+      className="
+        block
+
+        text-[12px]
+        font-normal
+        text-[#211A18]/60
+
+        transition-all
+
+        hover:translate-x-1
+        hover:text-[#8C1839]
+      "
+    >
+      {
+        children
+      }
+    </Link>
   );
 }
 
@@ -1209,61 +1757,34 @@ function NavLink({
 }) {
   return (
     <Link
-      href={href}
+      href={
+        href
+      }
       className="
         flex
         h-full
         items-center
+
         text-[10px]
         font-semibold
         uppercase
         tracking-[0.1em]
         text-[#211A18]
+
         transition
+
         hover:text-[#8C1839]
       "
     >
-      {children}
+      {
+        children
+      }
     </Link>
   );
 }
 
 /* =========================================================
-   MOBILE LINK
-========================================================= */
-
-function MobileLink({
-  href,
-  close,
-  children,
-}: {
-  href: string;
-  close: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      onClick={close}
-      className="
-        block
-        border-b
-        border-[#211A18]/10
-        py-4
-        text-[12px]
-        font-semibold
-        uppercase
-        tracking-[0.1em]
-        text-[#211A18]
-      "
-    >
-      {children}
-    </Link>
-  );
-}
-
-/* =========================================================
-   DESKTOP ICON LINK
+   ICON LINK
 ========================================================= */
 
 function IconLink({
@@ -1277,9 +1798,15 @@ function IconLink({
 }) {
   return (
     <Link
-      href={href}
-      aria-label={label}
-      title={label}
+      href={
+        href
+      }
+      aria-label={
+        label
+      }
+      title={
+        label
+      }
       className="
         flex
         h-11
@@ -1287,28 +1814,64 @@ function IconLink({
         shrink-0
         items-center
         justify-center
+
         rounded-full
+
         text-[#8C1839]
+
         transition-all
-        duration-300
 
         hover:bg-[#EFE6DC]
-        hover:text-[#8C1839]
-
-        focus-visible:outline-none
-        focus-visible:ring-2
-        focus-visible:ring-[#8C1839]
-        focus-visible:ring-offset-2
       "
     >
-      {children}
+      {
+        children
+      }
     </Link>
   );
 }
 
 /* =========================================================
-   MOBILE ICON LINK
+   MOBILE
 ========================================================= */
+
+function MobileLink({
+  href,
+  close,
+  children,
+}: {
+  href: string;
+  close: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={
+        href
+      }
+      onClick={
+        close
+      }
+      className="
+        block
+
+        border-b
+        border-[#211A18]/10
+
+        py-4
+
+        text-[12px]
+        font-semibold
+        uppercase
+        tracking-[0.1em]
+      "
+    >
+      {
+        children
+      }
+    </Link>
+  );
+}
 
 function MobileIconLink({
   href,
@@ -1323,82 +1886,136 @@ function MobileIconLink({
 }) {
   return (
     <Link
-      href={href}
-      onClick={close}
-      aria-label={label}
-      title={label}
+      href={
+        href
+      }
+      onClick={
+        close
+      }
+      aria-label={
+        label
+      }
       className="
         flex
         h-12
         items-center
         justify-center
+
         rounded-md
+
         border
         border-[#211A18]/15
-        bg-[#F7F3EF]
-        text-[#211A18]
-        transition
 
-        hover:border-[#8C1839]
-        hover:text-[#8C1839]
+        bg-[#F7F3EF]
+
+        text-[#211A18]
       "
     >
-      {children}
+      {
+        children
+      }
     </Link>
   );
 }
 
-/* =========================================================
-   MOBILE CART
-========================================================= */
-
-function MobileCartLink({
+function MobileSubTitle({
+  href,
   close,
+  children,
 }: {
+  href: string;
   close: () => void;
+  children: ReactNode;
 }) {
   return (
     <Link
-      href="/cart/"
-      onClick={close}
-      aria-label="Cart"
-      title="Cart"
+      href={
+        href
+      }
+      onClick={
+        close
+      }
       className="
-        relative
-        flex
-        h-12
-        items-center
-        justify-center
-        rounded-md
-        bg-[#211A18]
-        text-white
-        transition
+        block
 
-        hover:bg-[#8C1839]
+        border-b
+        border-[#211A18]/10
+
+        pb-4
+
+        text-[11px]
+        font-bold
+        uppercase
+        tracking-[0.1em]
+        text-[#8C1839]
       "
     >
-      <BagIcon />
+      {
+        children
+      }
+    </Link>
+  );
+}
 
-      <span
-        className="
-          absolute
-          right-1
-          top-1
-          flex
-          h-[16px]
-          min-w-[16px]
-          items-center
-          justify-center
-          rounded-full
-          bg-[#8C1839]
-          px-1
-          text-[8px]
-          font-bold
-          text-white
-        "
-      >
-        0
-      </span>
+function MobileSectionTitle({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={
+        href
+      }
+      className="
+        mt-5
+        block
+
+        text-[10px]
+        font-bold
+        uppercase
+        tracking-[0.2em]
+        text-[#8C1839]
+      "
+    >
+      {
+        children
+      }
+    </Link>
+  );
+}
+
+function MobileChildLink({
+  href,
+  close,
+  children,
+}: {
+  href: string;
+  close: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={
+        href
+      }
+      onClick={
+        close
+      }
+      className="
+        ml-3
+        block
+        py-2
+
+        text-[11px]
+        text-[#6F5A4C]
+      "
+    >
+      {
+        children
+      }
     </Link>
   );
 }

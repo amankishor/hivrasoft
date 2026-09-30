@@ -32,8 +32,21 @@ export type ApiSize = {
   name?: string;
 
   stock?: number;
+
   isActive?: boolean;
   isDefault?: boolean;
+
+  /* =========================
+     NEW ADMIN PRICING
+  ========================= */
+
+  originalPrice?: number;
+  showPrice?: number;
+  discountPrice?: number;
+
+  /* =========================
+     LEGACY PRICING
+  ========================= */
 
   price?: number;
   sellingPrice?: number;
@@ -42,7 +55,6 @@ export type ApiSize = {
 
   compareAtPrice?: number;
   actualPrice?: number;
-  originalPrice?: number;
   mrp?: number;
 };
 
@@ -65,6 +77,18 @@ export type ApiColor = {
   images?: ApiImage[];
   sizes?: ApiSize[];
 
+  /* =========================
+     NEW ADMIN PRICING
+  ========================= */
+
+  originalPrice?: number;
+  showPrice?: number;
+  discountPrice?: number;
+
+  /* =========================
+     LEGACY PRICING
+  ========================= */
+
   price?: number;
   sellingPrice?: number;
   discountedPrice?: number;
@@ -72,7 +96,6 @@ export type ApiColor = {
 
   compareAtPrice?: number;
   actualPrice?: number;
-  originalPrice?: number;
   mrp?: number;
 };
 
@@ -90,13 +113,27 @@ export type ApiProduct = {
   _id?: string;
   id?: string;
 
-  /* OLD / SIMPLE PRODUCT STRUCTURE */
+  /* =======================================================
+     SIMPLE PRODUCT
+  ======================================================= */
 
   name?: string;
   slug?: string;
 
   shortDescription?: string;
   description?: string;
+
+  /* =========================
+     NEW ADMIN PRICING
+  ========================= */
+
+  originalPrice?: number;
+  showPrice?: number;
+  discountPrice?: number;
+
+  /* =========================
+     LEGACY PRICING
+  ========================= */
 
   price?: number;
   sellingPrice?: number;
@@ -105,12 +142,13 @@ export type ApiProduct = {
 
   compareAtPrice?: number;
   actualPrice?: number;
-  originalPrice?: number;
   mrp?: number;
 
   mainImages?: ApiImage[];
 
-  /* CURRENT PRODUCT STRUCTURE */
+  /* =======================================================
+     CURRENT PRODUCT STRUCTURE
+  ======================================================= */
 
   colors?: ApiColor[];
 
@@ -156,7 +194,18 @@ export type StoreProductData = {
   image1: string;
   image2: string;
 
+  /*
+   * sellingPrice =
+   * admin showPrice
+   */
+
   sellingPrice: number;
+
+  /*
+   * actualPrice =
+   * admin originalPrice
+   */
+
   actualPrice: number;
 
   categorySlugs: string[];
@@ -168,7 +217,7 @@ export type StoreProductData = {
 };
 
 /* =========================================================
-   API RESPONSE TYPE
+   API RESPONSE
 ========================================================= */
 
 type ProductsApiResponse =
@@ -214,8 +263,6 @@ export function normalizeSlug(
 function normalizeProductsResponse(
   response: ProductsApiResponse
 ): ApiProduct[] {
-  /* RESPONSE = [] */
-
   if (
     Array.isArray(
       response
@@ -223,8 +270,6 @@ function normalizeProductsResponse(
   ) {
     return response;
   }
-
-  /* { products: [] } */
 
   if (
     response &&
@@ -235,8 +280,6 @@ function normalizeProductsResponse(
     return response.products;
   }
 
-  /* { data: [] } */
-
   if (
     response &&
     Array.isArray(
@@ -245,8 +288,6 @@ function normalizeProductsResponse(
   ) {
     return response.data;
   }
-
-  /* { data: { products: [] } } */
 
   if (
     response &&
@@ -266,8 +307,6 @@ function normalizeProductsResponse(
 
 /* =========================================================
    GET ACTIVE PRODUCTS
-
-   PUBLIC STOREFRONT API
 ========================================================= */
 
 export async function getActiveProducts(): Promise<
@@ -289,9 +328,11 @@ export async function getActiveProducts(): Promise<
         }
       );
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       console.error(
-        "Active products API failed:",
+        "[PRODUCTS] API failed:",
         response.status
       );
 
@@ -301,15 +342,14 @@ export async function getActiveProducts(): Promise<
     const data =
       (await response.json()) as ProductsApiResponse;
 
-    const products =
-      normalizeProductsResponse(
-        data
-      );
-
-    return products;
-  } catch (error) {
+    return normalizeProductsResponse(
+      data
+    );
+  } catch (
+    error
+  ) {
     console.error(
-      "Active products fetch failed:",
+      "[PRODUCTS] Fetch failed:",
       error
     );
 
@@ -319,9 +359,6 @@ export async function getActiveProducts(): Promise<
 
 /* =========================================================
    DEFAULT COLOR
-
-   Backend product:
-   colors[]
 ========================================================= */
 
 export function getDefaultColor(
@@ -331,11 +368,16 @@ export function getDefaultColor(
     Array.isArray(
       product.colors
     )
-      ? product.colors
+      ? product.colors.filter(
+          (color) =>
+            color?.isActive !==
+            false
+        )
       : [];
 
   if (
-    colors.length === 0
+    colors.length ===
+    0
   ) {
     return null;
   }
@@ -358,7 +400,9 @@ export function getDefaultColor(
 function getDefaultSize(
   color: ApiColor | null
 ): ApiSize | null {
-  if (!color) {
+  if (
+    !color
+  ) {
     return null;
   }
 
@@ -374,7 +418,8 @@ function getDefaultSize(
       : [];
 
   if (
-    sizes.length === 0
+    sizes.length ===
+    0
   ) {
     return null;
   }
@@ -391,7 +436,10 @@ function getDefaultSize(
 }
 
 /* =========================================================
-   FIRST VALID NUMBER
+   FIRST POSITIVE NUMBER
+
+   IMPORTANT:
+   ₹0 ko valid product price nahi maante.
 ========================================================= */
 
 function firstNumber(
@@ -408,16 +456,18 @@ function firstNumber(
       continue;
     }
 
-    const numericValue =
-      Number(value);
+    const number =
+      Number(
+        value
+      );
 
     if (
       Number.isFinite(
-        numericValue
+        number
       ) &&
-      numericValue >= 0
+      number > 0
     ) {
-      return numericValue;
+      return number;
     }
   }
 
@@ -518,17 +568,11 @@ export function getProductCategorySlugs(
       ? product.categories
       : [];
 
-  /* =======================================================
-     CATEGORIES ARRAY
-  ======================================================= */
-
   categories.forEach(
     (
       category,
       index
     ) => {
-      /* CATEGORY STRING */
-
       if (
         typeof category ===
         "string"
@@ -537,8 +581,8 @@ export function getProductCategorySlugs(
           category.trim();
 
         /*
-         * MongoDB ObjectId ko
-         * category slug nahi maanenge.
+         * Mongo ObjectId ko category
+         * slug nahi maanenge.
          */
 
         if (
@@ -554,7 +598,9 @@ export function getProductCategorySlugs(
             value
           );
 
-        if (slug) {
+        if (
+          slug
+        ) {
           result.push({
             slug,
             level: 999,
@@ -565,15 +611,15 @@ export function getProductCategorySlugs(
         return;
       }
 
-      /* CATEGORY OBJECT */
-
       const slug =
         normalizeSlug(
           category?.slug ||
             category?.name
         );
 
-      if (!slug) {
+      if (
+        !slug
+      ) {
         return;
       }
 
@@ -593,7 +639,7 @@ export function getProductCategorySlugs(
   );
 
   /* =======================================================
-     SINGLE CATEGORY FALLBACK
+     SINGLE CATEGORY
   ======================================================= */
 
   if (
@@ -613,10 +659,14 @@ export function getProductCategorySlugs(
             product.category
           );
 
-        if (slug) {
+        if (
+          slug
+        ) {
           result.push({
             slug,
+
             level: 999,
+
             index:
               result.length,
           });
@@ -631,7 +681,9 @@ export function getProductCategorySlugs(
               ?.name
         );
 
-      if (slug) {
+      if (
+        slug
+      ) {
         result.push({
           slug,
 
@@ -653,7 +705,7 @@ export function getProductCategorySlugs(
   }
 
   /* =======================================================
-     CATEGORY SLUG ARRAY FALLBACK
+     CATEGORY SLUG ARRAY
   ======================================================= */
 
   if (
@@ -662,16 +714,22 @@ export function getProductCategorySlugs(
     )
   ) {
     product.categorySlugs.forEach(
-      (value) => {
+      (
+        value
+      ) => {
         const slug =
           normalizeSlug(
             value
           );
 
-        if (slug) {
+        if (
+          slug
+        ) {
           result.push({
             slug,
+
             level: 999,
+
             index:
               result.length,
           });
@@ -682,30 +740,29 @@ export function getProductCategorySlugs(
 
   /* =======================================================
      GENDER FALLBACK
-
-     Agar backend:
-     gender: "Men"
-     bhejta hai to "men" add hoga.
   ======================================================= */
 
-  const fallbackGenderValues =
-    [
-      product.gender,
-      product.department,
-      product.audience,
-    ];
-
-  fallbackGenderValues.forEach(
-    (value) => {
+  [
+    product.gender,
+    product.department,
+    product.audience,
+  ].forEach(
+    (
+      value
+    ) => {
       const slug =
         normalizeSlug(
           value
         );
 
-      if (slug) {
+      if (
+        slug
+      ) {
         result.push({
           slug,
+
           level: 0,
+
           index:
             result.length,
         });
@@ -713,38 +770,34 @@ export function getProductCategorySlugs(
     }
   );
 
-  /* =======================================================
-     ORDER
-  ======================================================= */
-
   result.sort(
     (
-      first,
-      second
+      a,
+      b
     ) => {
       if (
-        first.level !==
-        second.level
+        a.level !==
+        b.level
       ) {
         return (
-          first.level -
-          second.level
+          a.level -
+          b.level
         );
       }
 
       return (
-        first.index -
-        second.index
+        a.index -
+        b.index
       );
     }
   );
 
-  /* REMOVE DUPLICATES */
-
   return Array.from(
     new Set(
       result.map(
-        (item) =>
+        (
+          item
+        ) =>
           item.slug
       )
     )
@@ -763,10 +816,6 @@ export function getProductImageUrls(
       product
     );
 
-  /* =======================================================
-     DEFAULT COLOR IMAGES
-  ======================================================= */
-
   const defaultColorImages =
     Array.isArray(
       defaultColor?.images
@@ -776,7 +825,9 @@ export function getProductImageUrls(
 
   const defaultImage =
     defaultColorImages.find(
-      (image) =>
+      (
+        image
+      ) =>
         image?.isDefault ===
           true &&
         Boolean(
@@ -786,17 +837,15 @@ export function getProductImageUrls(
 
   const remainingDefaultImages =
     defaultColorImages.filter(
-      (image) =>
+      (
+        image
+      ) =>
         Boolean(
           image?.url
         ) &&
         image !==
           defaultImage
     );
-
-  /* =======================================================
-     OLD mainImages FALLBACK
-  ======================================================= */
 
   const mainImages =
     Array.isArray(
@@ -805,16 +854,14 @@ export function getProductImageUrls(
       ? product.mainImages
       : [];
 
-  /* =======================================================
-     ALL COLOR IMAGES FALLBACK
-  ======================================================= */
-
   const allColorImages =
     Array.isArray(
       product.colors
     )
       ? product.colors.flatMap(
-          (color) =>
+          (
+            color
+          ) =>
             Array.isArray(
               color.images
             )
@@ -825,7 +872,9 @@ export function getProductImageUrls(
 
   const images = [
     ...(defaultImage
-      ? [defaultImage]
+      ? [
+          defaultImage,
+        ]
       : []),
 
     ...remainingDefaultImages,
@@ -838,13 +887,17 @@ export function getProductImageUrls(
   const urls =
     images
       .map(
-        (image) =>
+        (
+          image
+        ) =>
           String(
             image?.url ||
               ""
           ).trim()
       )
-      .filter(Boolean);
+      .filter(
+        Boolean
+      );
 
   return Array.from(
     new Set(
@@ -854,7 +907,18 @@ export function getProductImageUrls(
 }
 
 /* =========================================================
-   PRICE
+   PRODUCT PRICES
+
+   ADMIN:
+
+   originalPrice = 899
+   showPrice     = 348.99
+   discountPrice = 550.01
+
+   FRONTEND:
+
+   sellingPrice = 348.99
+   actualPrice  = 899
 ========================================================= */
 
 export function getProductPrices(
@@ -874,104 +938,218 @@ export function getProductPrices(
     );
 
   /* =======================================================
-     SELLING PRICE
+     SELLING / SHOW PRICE
+
+     showPrice FIRST.
   ======================================================= */
 
-  const sellingPrice =
+  const sellingCandidate =
     firstNumber(
-      /* COLOR */
-
-      defaultColor
-        ?.discountedPrice,
-
-      defaultColor
-        ?.salePrice,
-
-      defaultColor
-        ?.sellingPrice,
-
-      defaultColor?.price,
-
       /* SIZE */
 
       defaultSize
-        ?.discountedPrice,
+        ?.showPrice,
+
+      /* COLOR */
+
+      defaultColor
+        ?.showPrice,
+
+      /* PRODUCT */
+
+      product.showPrice,
+
+      /* LEGACY SIZE */
+
+      defaultSize
+        ?.sellingPrice,
 
       defaultSize
         ?.salePrice,
 
       defaultSize
+        ?.discountedPrice,
+
+      defaultSize
+        ?.price,
+
+      /* LEGACY COLOR */
+
+      defaultColor
         ?.sellingPrice,
 
-      defaultSize?.price,
+      defaultColor
+        ?.salePrice,
 
-      /* PRODUCT */
+      defaultColor
+        ?.discountedPrice,
 
-      product.discountedPrice,
+      defaultColor
+        ?.price,
 
-      product.salePrice,
+      /* LEGACY PRODUCT */
 
       product.sellingPrice,
 
+      product.salePrice,
+
+      product.discountedPrice,
+
       product.price
-    ) ?? 0;
+    );
 
   /* =======================================================
-     ACTUAL PRICE / MRP
+     ORIGINAL PRICE
   ======================================================= */
 
-  const comparePrice =
+  const originalCandidate =
     firstNumber(
-      /* COLOR */
-
-      defaultColor
-        ?.compareAtPrice,
-
-      defaultColor
-        ?.actualPrice,
-
-      defaultColor
-        ?.originalPrice,
-
-      defaultColor?.mrp,
-
       /* SIZE */
 
       defaultSize
+        ?.originalPrice,
+
+      /* COLOR */
+
+      defaultColor
+        ?.originalPrice,
+
+      /* PRODUCT */
+
+      product.originalPrice,
+
+      /* LEGACY SIZE */
+
+      defaultSize
         ?.compareAtPrice,
 
       defaultSize
         ?.actualPrice,
 
       defaultSize
-        ?.originalPrice,
+        ?.mrp,
 
-      defaultSize?.mrp,
+      /* LEGACY COLOR */
 
-      /* PRODUCT */
+      defaultColor
+        ?.compareAtPrice,
+
+      defaultColor
+        ?.actualPrice,
+
+      defaultColor
+        ?.mrp,
+
+      /* LEGACY PRODUCT */
 
       product.compareAtPrice,
 
       product.actualPrice,
 
-      product.originalPrice,
-
       product.mrp
-    ) ?? sellingPrice;
+    );
+
+  const sellingPrice =
+    sellingCandidate ??
+    originalCandidate ??
+    0;
+
+  const originalPrice =
+    originalCandidate ??
+    sellingPrice;
+
+  const actualPrice =
+    originalPrice >
+    sellingPrice
+      ? originalPrice
+      : sellingPrice;
 
   return {
     sellingPrice,
-
-    actualPrice:
-      comparePrice >
-      sellingPrice
-        ? comparePrice
-        : sellingPrice,
+    actualPrice,
   };
 }
 
 /* =========================================================
-   OFFER CHECK
+   DISCOUNT AMOUNT
+========================================================= */
+
+export function getProductDiscountAmount(
+  product: ApiProduct
+): number {
+  const defaultColor =
+    getDefaultColor(
+      product
+    );
+
+  const defaultSize =
+    getDefaultSize(
+      defaultColor
+    );
+
+  const backendDiscount =
+    firstNumber(
+      defaultSize
+        ?.discountPrice,
+
+      defaultColor
+        ?.discountPrice,
+
+      product.discountPrice
+    );
+
+  if (
+    backendDiscount !==
+    undefined
+  ) {
+    return backendDiscount;
+  }
+
+  const prices =
+    getProductPrices(
+      product
+    );
+
+  return prices.actualPrice >
+    prices.sellingPrice
+    ? prices.actualPrice -
+        prices.sellingPrice
+    : 0;
+}
+
+/* =========================================================
+   DISCOUNT %
+========================================================= */
+
+export function getProductDiscountPercent(
+  product: ApiProduct
+): number {
+  const prices =
+    getProductPrices(
+      product
+    );
+
+  if (
+    prices.actualPrice <=
+      prices.sellingPrice ||
+    prices.actualPrice <=
+      0 ||
+    prices.sellingPrice <=
+      0
+  ) {
+    return 0;
+  }
+
+  return Math.round(
+    ((prices.actualPrice -
+      prices.sellingPrice) /
+      prices.actualPrice) *
+      100
+  );
+}
+
+/* =========================================================
+   OFFER
 ========================================================= */
 
 export function isProductOnOffer(
@@ -984,17 +1162,14 @@ export function isProductOnOffer(
 
   return (
     prices.actualPrice >
-    prices.sellingPrice
+      prices.sellingPrice &&
+    prices.sellingPrice >
+      0
   );
 }
 
 /* =========================================================
-   NORMALIZE PRODUCT FOR STOREFRONT
-
-   ⭐ THIS WAS MISSING
-
-   Men page imports this:
-   normalizeStoreProduct
+   NORMALIZE PRODUCT
 ========================================================= */
 
 export function normalizeStoreProduct(
@@ -1016,62 +1191,50 @@ export function normalizeStoreProduct(
     );
 
   return {
-    /* ID */
-
     id:
       getProductId(
         product
       ),
-
-    /* NAME FROM DEFAULT COLOR */
 
     name:
       getProductName(
         product
       ),
 
-    /* SLUG FROM DEFAULT COLOR */
-
     slug:
       getProductSlug(
         product
       ),
-
-    /* DESCRIPTION */
 
     shortDescription:
       getProductShortDescription(
         product
       ),
 
-    /* NORMAL IMAGE */
-
     image1:
       images[0] ||
       "",
-
-    /* HOVER IMAGE */
 
     image2:
       images[1] ||
       images[0] ||
       "",
 
-    /* SELLING PRICE */
+    /*
+     * ADMIN showPrice
+     */
 
     sellingPrice:
       prices.sellingPrice,
 
-    /* MRP / ORIGINAL PRICE */
+    /*
+     * ADMIN originalPrice
+     */
 
     actualPrice:
       prices.actualPrice,
 
-    /* MEN / WOMEN / CATEGORY */
-
     categorySlugs,
-
-    /* FLAGS */
 
     isActive:
       product.isActive !==

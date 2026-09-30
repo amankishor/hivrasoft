@@ -3,30 +3,62 @@
 import Link from "next/link";
 
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
+import gsap from "gsap";
+
+import {
+  ScrollTrigger,
+} from "gsap/ScrollTrigger";
+
 /* =========================================================
-   TYPES
+   PRODUCT TYPE
 ========================================================= */
 
-type NewLaunchProduct = {
+export type NewLaunchProduct = {
   id: string;
 
   name: string;
+
   slug: string;
 
-  shortDescription: string;
+  shortDescription?: string;
 
   price: number;
+
   compareAtPrice: number;
 
   image: string;
-  hoverImage: string;
 
-  colorCount: number;
+  hoverImage?: string;
+
+  colorCount?: number;
+
+  gender:
+    | "men"
+    | "women";
 };
+
+/* =========================================================
+   PROPS
+========================================================= */
+
+type NewLaunchCatalogProps = {
+  products:
+    NewLaunchProduct[];
+
+  bannerUrl: string;
+
+  categoryName: string;
+};
+
+/* =========================================================
+   SORT
+========================================================= */
 
 type SortValue =
   | "featured"
@@ -34,13 +66,382 @@ type SortValue =
   | "high-low"
   | "discount";
 
-type NewLaunchCatalogProps = {
-  products: NewLaunchProduct[];
+/* =========================================================
+   DISCOUNT
+========================================================= */
 
-  bannerUrl: string;
+function getDiscount(
+  product:
+    NewLaunchProduct
+): number {
+  const original =
+    Number(
+      product.compareAtPrice
+    );
 
-  categoryName: string;
-};
+  const current =
+    Number(
+      product.price
+    );
+
+  if (
+    original <= 0 ||
+    current <= 0 ||
+    original <=
+      current
+  ) {
+    return 0;
+  }
+
+  return Math.round(
+    ((original -
+      current) /
+      original) *
+      100
+  );
+}
+
+/* =========================================================
+   CARD
+========================================================= */
+
+function ProductCard({
+  product,
+}: {
+  product:
+    NewLaunchProduct;
+}) {
+  const discount =
+    getDiscount(
+      product
+    );
+
+  return (
+    <article
+      className="
+        new-launch-card
+        group
+
+        w-[235px]
+        shrink-0
+
+        sm:w-[255px]
+
+        lg:w-[270px]
+      "
+    >
+      {/* =====================================================
+          IMAGE
+      ===================================================== */}
+
+      <Link
+        href={`/product/${product.slug}`}
+        className="
+          relative
+
+          block
+
+          aspect-[4/5]
+
+          overflow-hidden
+
+          rounded-[18px]
+
+          border
+          border-black/[0.06]
+
+          bg-[#F2EFEC]
+        "
+      >
+        {product.image ? (
+          <>
+            <img
+              src={
+                product.image
+              }
+              alt={
+                product.name
+              }
+              className={`
+                absolute
+                inset-0
+
+                h-full
+                w-full
+
+                object-cover
+                object-center
+
+                transition-all
+                duration-500
+
+                ${
+                  product.hoverImage
+                    ? "group-hover:scale-[1.025] group-hover:opacity-0"
+                    : "group-hover:scale-[1.035]"
+                }
+              `}
+            />
+
+            {product.hoverImage && (
+              <img
+                src={
+                  product.hoverImage
+                }
+                alt={
+                  product.name
+                }
+                className="
+                  absolute
+                  inset-0
+
+                  h-full
+                  w-full
+
+                  scale-[1.02]
+
+                  object-cover
+                  object-center
+
+                  opacity-0
+
+                  transition-all
+                  duration-500
+
+                  group-hover:scale-100
+                  group-hover:opacity-100
+                "
+              />
+            )}
+          </>
+        ) : (
+          <div
+            className="
+              flex
+              h-full
+              items-center
+              justify-center
+
+              text-[11px]
+              text-black/30
+            "
+          >
+            No Image
+          </div>
+        )}
+
+        {/* NEW */}
+
+        <span
+          className="
+            absolute
+            left-3
+            top-3
+            z-20
+
+            rounded-full
+
+            bg-[#292726]
+
+            px-3
+            py-1.5
+
+            text-[9px]
+            font-semibold
+            uppercase
+            tracking-[0.08em]
+            text-white
+          "
+        >
+          New
+        </span>
+
+        {/* DISCOUNT */}
+
+        {discount >
+          0 && (
+          <span
+            className="
+              absolute
+              bottom-3
+              left-3
+              z-20
+
+              rounded-full
+
+              bg-[#B41443]
+
+              px-3
+              py-1.5
+
+              text-[9px]
+              font-semibold
+              text-white
+            "
+          >
+            {discount}% OFF
+          </span>
+        )}
+
+        {/* WISHLIST */}
+
+        <span
+          className="
+            absolute
+            right-3
+            top-3
+            z-20
+
+            flex
+            h-9
+            w-9
+            items-center
+            justify-center
+
+            rounded-full
+
+            bg-white
+
+            text-[19px]
+            text-[#B41443]
+
+            shadow-sm
+          "
+        >
+          ♡
+        </span>
+      </Link>
+
+      {/* =====================================================
+          INFO
+      ===================================================== */}
+
+      <div
+        className="
+          px-1
+          pt-3
+        "
+      >
+        <Link
+          href={`/product/${product.slug}`}
+          className="
+            block
+
+            min-h-[39px]
+
+            text-[13px]
+            font-medium
+            leading-[1.45]
+
+            text-[#211A18]
+
+            transition
+
+            hover:text-[#B41443]
+          "
+        >
+          {product.name}
+        </Link>
+
+        {/* PRICE */}
+
+        <div
+          className="
+            mt-2
+
+            flex
+            flex-wrap
+            items-center
+            gap-2
+          "
+        >
+          <strong
+            className="
+              text-[15px]
+            "
+          >
+            ₹
+            {product.price.toLocaleString(
+              "en-IN",
+              {
+                maximumFractionDigits:
+                  2,
+              }
+            )}
+          </strong>
+
+          {product.compareAtPrice >
+            product.price && (
+            <span
+              className="
+                text-[10px]
+                text-black/30
+                line-through
+              "
+            >
+              ₹
+              {product.compareAtPrice.toLocaleString(
+                "en-IN"
+              )}
+            </span>
+          )}
+
+          {discount >
+            0 && (
+            <span
+              className="
+                rounded-full
+
+                bg-[#F8E5E8]
+
+                px-2
+                py-1
+
+                text-[8px]
+                font-semibold
+                text-[#B41443]
+              "
+            >
+              {discount}% OFF
+            </span>
+          )}
+        </div>
+
+        {/* EXPLORE */}
+
+        <Link
+          href={`/product/${product.slug}`}
+          className="
+            mt-3
+
+            flex
+            h-10
+            w-full
+
+            items-center
+            justify-center
+
+            rounded-[8px]
+
+            bg-[#292726]
+
+            text-[9px]
+            font-semibold
+            uppercase
+            tracking-[0.07em]
+            text-white
+
+            transition
+
+            hover:bg-[#B41443]
+          "
+        >
+          Explore
+        </Link>
+      </div>
+    </article>
+  );
+}
 
 /* =========================================================
    COMPONENT
@@ -51,6 +452,54 @@ export default function NewLaunchCatalog({
   bannerUrl,
   categoryName,
 }: NewLaunchCatalogProps) {
+  /* =======================================================
+     COUNTS
+  ======================================================= */
+
+  const menCount =
+    products.filter(
+      (
+        product
+      ) =>
+        product.gender ===
+        "men"
+    ).length;
+
+  const womenCount =
+    products.filter(
+      (
+        product
+      ) =>
+        product.gender ===
+        "women"
+    ).length;
+
+  /*
+   * Important:
+   *
+   * Men products available hain to page
+   * MEN se open hoga.
+   *
+   * Warna Women.
+   */
+
+  const initialGender:
+    | "men"
+    | "women" =
+    menCount > 0
+      ? "men"
+      : "women";
+
+  const [
+    gender,
+    setGender,
+  ] =
+    useState<
+      "men" | "women"
+    >(
+      initialGender
+    );
+
   const [
     sort,
     setSort,
@@ -59,90 +508,361 @@ export default function NewLaunchCatalog({
       "featured"
     );
 
+  const rootRef =
+    useRef<HTMLElement | null>(
+      null
+    );
+
+  const headingRef =
+    useRef<HTMLDivElement | null>(
+      null
+    );
+
+  const trackRef =
+    useRef<HTMLDivElement | null>(
+      null
+    );
+
   /* =======================================================
-     SORT PRODUCTS
+     FILTER
+  ======================================================= */
+
+  const genderProducts =
+    useMemo(
+      () =>
+        products.filter(
+          (
+            product
+          ) =>
+            product.gender ===
+            gender
+        ),
+      [
+        products,
+        gender,
+      ]
+    );
+
+  /* =======================================================
+     SORT
   ======================================================= */
 
   const sortedProducts =
     useMemo(() => {
-      const items = [
-        ...products,
+      const list = [
+        ...genderProducts,
       ];
 
-      switch (sort) {
-        case "low-high":
-          return items.sort(
-            (a, b) =>
-              a.price -
-              b.price
-          );
-
-        case "high-low":
-          return items.sort(
-            (a, b) =>
-              b.price -
-              a.price
-          );
-
-        case "discount":
-          return items.sort(
-            (a, b) => {
-              const aDiscount =
-                a.compareAtPrice >
-                a.price
-                  ? a.compareAtPrice -
-                    a.price
-                  : 0;
-
-              const bDiscount =
-                b.compareAtPrice >
-                b.price
-                  ? b.compareAtPrice -
-                    b.price
-                  : 0;
-
-              return (
-                bDiscount -
-                aDiscount
-              );
-            }
-          );
-
-        default:
-          return items;
+      if (
+        sort ===
+        "low-high"
+      ) {
+        list.sort(
+          (
+            a,
+            b
+          ) =>
+            a.price -
+            b.price
+        );
       }
+
+      if (
+        sort ===
+        "high-low"
+      ) {
+        list.sort(
+          (
+            a,
+            b
+          ) =>
+            b.price -
+            a.price
+        );
+      }
+
+      if (
+        sort ===
+        "discount"
+      ) {
+        list.sort(
+          (
+            a,
+            b
+          ) =>
+            getDiscount(
+              b
+            ) -
+            getDiscount(
+              a
+            )
+        );
+      }
+
+      return list;
     }, [
-      products,
+      genderProducts,
       sort,
     ]);
 
+  /* =======================================================
+     SCROLLTRIGGER
+  ======================================================= */
+
+  useEffect(() => {
+    gsap.registerPlugin(
+      ScrollTrigger
+    );
+
+    const ctx =
+      gsap.context(
+        () => {
+          /* heading */
+
+          if (
+            headingRef.current
+          ) {
+            gsap.fromTo(
+              headingRef.current,
+              {
+                opacity: 0,
+
+                y: 30,
+              },
+              {
+                opacity: 1,
+
+                y: 0,
+
+                duration: 0.75,
+
+                ease:
+                  "power3.out",
+
+                scrollTrigger: {
+                  trigger:
+                    headingRef.current,
+
+                  start:
+                    "top 88%",
+
+                  once: true,
+                },
+              }
+            );
+          }
+
+          /* cards */
+
+          if (
+            trackRef.current
+          ) {
+            gsap.fromTo(
+              trackRef.current
+                .children,
+              {
+                opacity: 0,
+
+                y: 30,
+
+                scale: 0.97,
+              },
+              {
+                opacity: 1,
+
+                y: 0,
+
+                scale: 1,
+
+                stagger: 0.06,
+
+                duration: 0.6,
+
+                ease:
+                  "power3.out",
+
+                scrollTrigger: {
+                  trigger:
+                    trackRef.current,
+
+                  start:
+                    "top 90%",
+
+                  once: true,
+                },
+              }
+            );
+          }
+        },
+        rootRef
+      );
+
+    return () =>
+      ctx.revert();
+  }, []);
+
+  /* =======================================================
+     GENDER CLICK
+  ======================================================= */
+
+  function changeGender(
+    next:
+      | "men"
+      | "women"
+  ) {
+    if (
+      next ===
+      gender
+    ) {
+      return;
+    }
+
+    const track =
+      trackRef.current;
+
+    if (
+      !track ||
+      track.children
+        .length === 0
+    ) {
+      setGender(
+        next
+      );
+
+      return;
+    }
+
+    gsap.to(
+      track.children,
+      {
+        opacity: 0,
+
+        x: -18,
+
+        stagger: 0.025,
+
+        duration: 0.18,
+
+        ease:
+          "power2.in",
+
+        onComplete:
+          () =>
+            setGender(
+              next
+            ),
+      }
+    );
+  }
+
+  /* =======================================================
+     ANIMATE AFTER TAB / SORT CHANGE
+  ======================================================= */
+
+  useEffect(() => {
+    const track =
+      trackRef.current;
+
+    if (
+      !track ||
+      track.children
+        .length === 0
+    ) {
+      return;
+    }
+
+    gsap.killTweensOf(
+      track.children
+    );
+
+    gsap.fromTo(
+      track.children,
+      {
+        opacity: 0,
+
+        x: 24,
+
+        scale: 0.97,
+      },
+      {
+        opacity: 1,
+
+        x: 0,
+
+        scale: 1,
+
+        stagger: 0.055,
+
+        duration: 0.48,
+
+        ease:
+          "power3.out",
+      }
+    );
+  }, [
+    gender,
+    sort,
+  ]);
+
+  /* =======================================================
+     ARROWS
+  ======================================================= */
+
+  function scrollProducts(
+    direction:
+      | "left"
+      | "right"
+  ) {
+    trackRef.current?.scrollBy({
+      left:
+        direction ===
+        "right"
+          ? 600
+          : -600,
+
+      behavior:
+        "smooth",
+    });
+  }
+
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
     <main
+      ref={
+        rootRef
+      }
       className="
         min-h-screen
         bg-white
-        text-[#292526]
+        text-[#211A18]
       "
     >
       {/* =================================================
-          NEW LAUNCH BANNER
+          BANNER
       ================================================= */}
 
-      {bannerUrl ? (
+      {bannerUrl && (
         <section
           className="
             relative
+
             w-full
+
             overflow-hidden
-            bg-[#F4F1EF]
+
+            bg-[#F1ECE5]
           "
         >
           <div
             className="
               relative
-              w-full
 
               aspect-[16/6]
+
+              w-full
 
               sm:aspect-[16/5.5]
 
@@ -161,53 +881,58 @@ export default function NewLaunchCatalog({
               className="
                 absolute
                 inset-0
+
                 h-full
                 w-full
+
                 object-cover
                 object-center
               "
             />
           </div>
         </section>
-      ) : null}
+      )}
 
       {/* =================================================
-          PRODUCTS
+          NEW ARRIVALS
       ================================================= */}
 
       <section
         className="
           mx-auto
+
           w-full
           max-w-[1350px]
+
           px-4
           pb-20
-          pt-10
-
-          sm:px-6
+          pt-12
 
           md:px-8
-          md:pt-12
-
-          lg:px-10
+          md:pt-16
         "
       >
-        {/* =================================================
-            HEADING
-        ================================================= */}
+        {/* HEADER */}
 
         <div
+          ref={
+            headingRef
+          }
           className="
+            mb-6
+
             flex
             flex-col
-            gap-5
+            gap-6
+
             border-b
             border-black/[0.08]
+
             pb-6
 
-            sm:flex-row
-            sm:items-end
-            sm:justify-between
+            md:flex-row
+            md:items-end
+            md:justify-between
           "
         >
           <div>
@@ -216,8 +941,10 @@ export default function NewLaunchCatalog({
                 text-[9px]
                 font-semibold
                 uppercase
-                tracking-[0.18em]
-                text-[#9D173E]
+
+                tracking-[0.22em]
+
+                text-[#B41443]
               "
             >
               New Launch
@@ -226,6 +953,7 @@ export default function NewLaunchCatalog({
             <div
               className="
                 mt-2
+
                 flex
                 flex-wrap
                 items-end
@@ -234,29 +962,41 @@ export default function NewLaunchCatalog({
             >
               <h1
                 className="
-                  text-[24px]
+                  text-[38px]
                   font-semibold
-                  tracking-[-0.02em]
+                  uppercase
 
-                  sm:text-[27px]
+                  leading-none
 
-                  md:text-[30px]
+                  tracking-[-0.04em]
+
+                  md:text-[52px]
                 "
               >
-                Freshly Arrived
+                New{" "}
+
+                <span
+                  className="
+                    font-light
+                    text-black/60
+                  "
+                >
+                  Arrivals
+                </span>
               </h1>
 
               <span
                 className="
                   mb-1
+
                   text-[10px]
                   text-black/40
                 "
               >
                 {
-                  products.length
+                  sortedProducts.length
                 }{" "}
-                {products.length ===
+                {sortedProducts.length ===
                 1
                   ? "product"
                   : "products"}
@@ -265,99 +1005,298 @@ export default function NewLaunchCatalog({
           </div>
 
           {/* =================================================
-              SORT
+              MEN / WOMEN
           ================================================= */}
 
-          {products.length >
-            0 && (
-            <div
+          <div
+            className="
+              flex
+
+              w-full
+              max-w-[310px]
+
+              rounded-[13px]
+
+              border
+              border-black/20
+
+              bg-white
+
+              p-2
+            "
+          >
+            <button
+              type="button"
+              onClick={() =>
+                changeGender(
+                  "men"
+                )
+              }
+              className={`
+                flex-1
+
+                rounded-[8px]
+
+                py-3
+
+                text-[14px]
+                font-medium
+
+                transition-all
+
+                ${
+                  gender ===
+                  "men"
+                    ? "bg-[#292726] text-white shadow-sm"
+                    : "text-[#403B38]"
+                }
+              `}
+            >
+              Men{" "}
+
+              {menCount >
+                0 && (
+                <span
+                  className="
+                    ml-1
+                    text-[10px]
+                    opacity-60
+                  "
+                >
+                  ({menCount})
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                changeGender(
+                  "women"
+                )
+              }
+              className={`
+                flex-1
+
+                rounded-[8px]
+
+                py-3
+
+                text-[14px]
+                font-medium
+
+                transition-all
+
+                ${
+                  gender ===
+                  "women"
+                    ? "bg-[#292726] text-white shadow-sm"
+                    : "text-[#403B38]"
+                }
+              `}
+            >
+              Women{" "}
+
+              {womenCount >
+                0 && (
+                <span
+                  className="
+                    ml-1
+                    text-[10px]
+                    opacity-60
+                  "
+                >
+                  ({womenCount})
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* =================================================
+            TOOLBAR
+        ================================================= */}
+
+        <div
+          className="
+            mb-5
+
+            flex
+            items-center
+            justify-between
+            gap-4
+          "
+        >
+          <div
+            className="
+              flex
+              gap-2
+            "
+          >
+            <button
+              type="button"
+              onClick={() =>
+                scrollProducts(
+                  "left"
+                )
+              }
               className="
                 flex
+                h-9
+                w-9
                 items-center
-                gap-3
+                justify-center
+
+                rounded-[7px]
+
+                bg-[#292726]
+
+                text-xl
+                text-white
+
+                transition
+
+                hover:bg-[#B41443]
               "
             >
-              <span
-                className="
-                  hidden
-                  text-[9px]
-                  font-medium
-                  uppercase
-                  tracking-[0.12em]
-                  text-black/45
+              ‹
+            </button>
 
-                  sm:block
-                "
-              >
-                Sort By
-              </span>
+            <button
+              type="button"
+              onClick={() =>
+                scrollProducts(
+                  "right"
+                )
+              }
+              className="
+                flex
+                h-9
+                w-9
+                items-center
+                justify-center
 
-              <select
-                value={
-                  sort
-                }
-                onChange={(
-                  event
-                ) =>
-                  setSort(
-                    event.target
-                      .value as SortValue
-                  )
-                }
-                className="
-                  h-11
-                  min-w-[180px]
-                  cursor-pointer
-                  rounded-full
-                  border
-                  border-black/10
-                  bg-white
-                  px-4
-                  text-[10px]
-                  font-medium
-                  outline-none
-                  transition
+                rounded-[7px]
 
-                  hover:border-black/25
+                bg-[#292726]
 
-                  focus:border-[#9D173E]/50
-                "
-              >
-                <option value="featured">
-                  Featured
-                </option>
+                text-xl
+                text-white
 
-                <option value="low-high">
-                  Price: Low to High
-                </option>
+                transition
 
-                <option value="high-low">
-                  Price: High to Low
-                </option>
+                hover:bg-[#B41443]
+              "
+            >
+              ›
+            </button>
+          </div>
 
-                <option value="discount">
-                  Best Discount
-                </option>
-              </select>
-            </div>
+          {genderProducts.length >
+            0 && (
+            <select
+              value={
+                sort
+              }
+              onChange={(
+                event
+              ) =>
+                setSort(
+                  event.target
+                    .value as SortValue
+                )
+              }
+              className="
+                h-11
+
+                rounded-full
+
+                border
+                border-black/10
+
+                bg-white
+
+                px-5
+
+                text-[10px]
+
+                outline-none
+
+                focus:border-[#B41443]
+              "
+            >
+              <option value="featured">
+                Featured
+              </option>
+
+              <option value="low-high">
+                Price: Low to High
+              </option>
+
+              <option value="high-low">
+                Price: High to Low
+              </option>
+
+              <option value="discount">
+                Best Discount
+              </option>
+            </select>
           )}
         </div>
 
         {/* =================================================
-            EMPTY
+            PRODUCTS
         ================================================= */}
 
-        {sortedProducts.length ===
+        {sortedProducts.length >
         0 ? (
+          <div
+            ref={
+              trackRef
+            }
+            className="
+              flex
+
+              gap-4
+
+              overflow-x-auto
+
+              pb-5
+
+              scroll-smooth
+
+              [scrollbar-width:none]
+
+              [&::-webkit-scrollbar]:hidden
+            "
+          >
+            {sortedProducts.map(
+              (
+                product
+              ) => (
+                <ProductCard
+                  key={
+                    product.id
+                  }
+                  product={
+                    product
+                  }
+                />
+              )
+            )}
+          </div>
+        ) : (
           <div
             className="
               flex
-              min-h-[360px]
-              w-full
+
+              min-h-[300px]
+
               flex-col
+
               items-center
               justify-center
-              px-5
+
               text-center
             "
           >
@@ -368,510 +1307,46 @@ export default function NewLaunchCatalog({
                 w-14
                 items-center
                 justify-center
+
                 rounded-full
-                bg-[#9D173E]/[0.05]
+
+                bg-[#B41443]/[0.06]
+
+                text-xl
+                text-[#B41443]
               "
             >
-              <NewIcon />
+              ✦
             </div>
 
             <h2
               className="
                 mt-5
+
                 text-[20px]
                 font-semibold
               "
             >
-              New launches
-              coming soon
+              {gender ===
+              "men"
+                ? "Men's"
+                : "Women's"}{" "}
+              new launches coming soon
             </h2>
 
             <p
               className="
                 mt-2
-                max-w-[430px]
+
                 text-[10px]
-                leading-5
-                text-black/45
+                text-black/40
               "
             >
-              Products marked as
-              New Launch or assigned
-              to the New Launch
-              category will appear
-              here automatically.
+              New Launch products will appear here automatically.
             </p>
-          </div>
-        ) : (
-          /* =================================================
-              GRID
-          ================================================= */
-
-          <div
-            className="
-              mt-8
-              grid
-              grid-cols-2
-              gap-x-3
-              gap-y-8
-
-              sm:gap-x-5
-
-              md:grid-cols-3
-              md:gap-x-6
-              md:gap-y-10
-
-              lg:grid-cols-4
-              lg:gap-x-7
-              lg:gap-y-12
-            "
-          >
-            {sortedProducts.map(
-              (
-                product,
-                index
-              ) => (
-                <ProductCard
-                  key={
-                    product.id
-                  }
-                  product={
-                    product
-                  }
-                  index={
-                    index
-                  }
-                />
-              )
-            )}
           </div>
         )}
       </section>
     </main>
-  );
-}
-
-/* =========================================================
-   PRODUCT CARD
-========================================================= */
-
-function ProductCard({
-  product,
-  index,
-}: {
-  product: NewLaunchProduct;
-  index: number;
-}) {
-  const hasDiscount =
-    product.compareAtPrice >
-    product.price;
-
-  const discount =
-    hasDiscount
-      ? Math.round(
-          ((product.compareAtPrice -
-            product.price) /
-            product.compareAtPrice) *
-            100
-        )
-      : 0;
-
-  return (
-    <article
-      className="
-        group
-        min-w-0
-      "
-    >
-      <Link
-        href={`/product/${product.slug}`}
-        className="
-          block
-        "
-      >
-        {/* IMAGE */}
-
-        <div
-          className="
-            relative
-            aspect-[4/5]
-            overflow-hidden
-            rounded-[14px]
-            border
-            border-black/[0.055]
-            bg-[#F2F0EE]
-          "
-        >
-          {/* NEW BADGE */}
-
-          <span
-            className="
-              absolute
-              left-3
-              top-3
-              z-20
-              rounded-full
-              bg-white/90
-              px-2.5
-              py-1.5
-              text-[7px]
-              font-semibold
-              uppercase
-              tracking-[0.12em]
-              text-[#9D173E]
-              backdrop-blur
-            "
-          >
-            New
-          </span>
-
-          {/* NUMBER */}
-
-          <span
-            className="
-              absolute
-              bottom-3
-              left-3
-              z-20
-              rounded-full
-              bg-white/90
-              px-2.5
-              py-1.5
-              text-[7px]
-              font-semibold
-              tracking-[0.12em]
-              text-black/45
-              backdrop-blur
-            "
-          >
-            {String(
-              index + 1
-            ).padStart(
-              2,
-              "0"
-            )}
-          </span>
-
-          {/* DISCOUNT */}
-
-          {hasDiscount && (
-            <span
-              className="
-                absolute
-                right-3
-                top-3
-                z-20
-                rounded-full
-                bg-[#9D173E]
-                px-2.5
-                py-1.5
-                text-[7px]
-                font-semibold
-                text-white
-              "
-            >
-              {discount}% OFF
-            </span>
-          )}
-
-          {/* IMAGE */}
-
-          {product.image ? (
-            <>
-              <img
-                src={
-                  product.image
-                }
-                alt={
-                  product.name
-                }
-                className={`
-                  absolute
-                  inset-0
-                  h-full
-                  w-full
-                  object-cover
-                  object-center
-                  transition-all
-                  duration-500
-
-                  ${
-                    product.hoverImage &&
-                    product.hoverImage !==
-                      product.image
-                      ? "group-hover:opacity-0 group-hover:scale-[1.025]"
-                      : "group-hover:scale-[1.035]"
-                  }
-                `}
-              />
-
-              {product.hoverImage &&
-                product.hoverImage !==
-                  product.image && (
-                  <img
-                    src={
-                      product.hoverImage
-                    }
-                    alt={`${product.name} alternate`}
-                    className="
-                      absolute
-                      inset-0
-                      h-full
-                      w-full
-                      scale-[1.02]
-                      object-cover
-                      object-center
-                      opacity-0
-                      transition-all
-                      duration-500
-
-                      group-hover:scale-100
-                      group-hover:opacity-100
-                    "
-                  />
-                )}
-            </>
-          ) : (
-            <div
-              className="
-                flex
-                h-full
-                w-full
-                items-center
-                justify-center
-                text-[10px]
-                text-black/30
-              "
-            >
-              No Image
-            </div>
-          )}
-
-          {/* VIEW PRODUCT */}
-
-          <div
-            className="
-              absolute
-              inset-x-3
-              bottom-3
-              z-30
-              translate-y-2
-              opacity-0
-              transition-all
-              duration-300
-
-              group-hover:translate-y-0
-              group-hover:opacity-100
-            "
-          >
-            <div
-              className="
-                flex
-                h-10
-                items-center
-                justify-center
-                rounded-full
-                bg-[#292526]/95
-                text-[8px]
-                font-semibold
-                uppercase
-                tracking-[0.12em]
-                text-white
-                shadow-lg
-              "
-            >
-              View Product
-            </div>
-          </div>
-        </div>
-
-        {/* INFO */}
-
-        <div
-          className="
-            px-1
-            pt-4
-          "
-        >
-          <div
-            className="
-              flex
-              items-start
-              justify-between
-              gap-2
-            "
-          >
-            <h2
-              className="
-                min-w-0
-                flex-1
-                text-[11px]
-                font-semibold
-                leading-[1.45]
-
-                sm:text-[12px]
-              "
-            >
-              {
-                product.name
-              }
-            </h2>
-
-            <span
-              className="
-                shrink-0
-                text-[14px]
-                text-black/25
-                transition
-
-                group-hover:translate-x-1
-                group-hover:text-[#9D173E]
-              "
-            >
-              →
-            </span>
-          </div>
-
-          {product.shortDescription && (
-            <p
-              className="
-                mt-1.5
-                line-clamp-2
-                text-[8px]
-                leading-4
-                text-black/40
-
-                sm:text-[9px]
-              "
-            >
-              {
-                product.shortDescription
-              }
-            </p>
-          )}
-
-          {/* PRICE */}
-
-          <div
-            className="
-              mt-3
-              flex
-              flex-wrap
-              items-center
-              gap-x-2
-              gap-y-1
-            "
-          >
-            <strong
-              className="
-                text-[12px]
-                font-semibold
-
-                sm:text-[13px]
-              "
-            >
-              ₹
-              {product.price.toLocaleString(
-                "en-IN"
-              )}
-            </strong>
-
-            {hasDiscount && (
-              <>
-                <span
-                  className="
-                    text-[8px]
-                    text-black/30
-                    line-through
-                  "
-                >
-                  ₹
-                  {product.compareAtPrice.toLocaleString(
-                    "en-IN"
-                  )}
-                </span>
-
-                <span
-                  className="
-                    text-[7px]
-                    font-semibold
-                    text-green-700
-                  "
-                >
-                  SAVE{" "}
-                  {
-                    discount
-                  }%
-                </span>
-              </>
-            )}
-          </div>
-
-          {/* COLORS */}
-
-          {product.colorCount >
-            0 && (
-            <div
-              className="
-                mt-3
-                flex
-                items-center
-                gap-1.5
-              "
-            >
-              <span
-                className="
-                  h-1.5
-                  w-1.5
-                  rounded-full
-                  bg-[#9D173E]/60
-                "
-              />
-
-              <span
-                className="
-                  text-[7px]
-                  uppercase
-                  tracking-[0.08em]
-                  text-black/40
-                "
-              >
-                {
-                  product.colorCount
-                }{" "}
-                {product.colorCount ===
-                1
-                  ? "colour"
-                  : "colours"}
-              </span>
-            </div>
-          )}
-        </div>
-      </Link>
-    </article>
-  );
-}
-
-/* =========================================================
-   NEW ICON
-========================================================= */
-
-function NewIcon() {
-  return (
-    <svg
-      width="23"
-      height="23"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#9D173E"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 3v18" />
-      <path d="M3 12h18" />
-      <path d="m5.6 5.6 12.8 12.8" />
-      <path d="m18.4 5.6-12.8 12.8" />
-    </svg>
   );
 }

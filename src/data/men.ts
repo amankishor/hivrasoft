@@ -25,6 +25,17 @@ export type MenProduct = {
 
 /* =========================================================
    MEN BANNER TYPE
+
+   IMPORTANT:
+   Banner ab static men.ts se nahi aayega.
+
+   Banner Category API se:
+   src/services/categoryBanners.ts
+
+   ke through load hoga.
+
+   Type yahan isliye rakha hai kyunki
+   MenCatalog ise use karta hai.
 ========================================================= */
 
 export type MenBanner = {
@@ -63,8 +74,6 @@ export type MenMenuItem = {
 
 /* =========================================================
    MEN MENU
-
-   Screenshot ke according menu structure.
 ========================================================= */
 
 export const menMenu: MenMenuItem[] = [
@@ -152,9 +161,15 @@ export function getMenMenuItem(
     return undefined;
   }
 
+  const normalizedCategory =
+    String(category)
+      .trim()
+      .toLowerCase();
+
   return menMenu.find(
     (item) =>
-      item.slug === category
+      item.slug.toLowerCase() ===
+      normalizedCategory
   );
 }
 
@@ -169,7 +184,8 @@ function titleCase(
     return "";
   }
 
-  return value
+  return String(value)
+    .trim()
     .split("-")
     .filter(Boolean)
     .map(
@@ -183,7 +199,46 @@ function titleCase(
 }
 
 /* =========================================================
+   NORMALIZE SLUG
+========================================================= */
+
+function normalizeSlug(
+  value?: string
+): string {
+  return String(
+    value || ""
+  )
+    .trim()
+    .toLowerCase()
+    .replace(
+      /&/g,
+      "and"
+    )
+    .replace(
+      /['"]/g,
+      ""
+    )
+    .replace(
+      /[^a-z0-9]+/g,
+      "-"
+    )
+    .replace(
+      /^-+|-+$/g,
+      ""
+    );
+}
+
+/* =========================================================
    PATH VALIDATION
+
+   IMPORTANT:
+
+   Backend se future me new category aa sakti hai.
+
+   Isliye static menMenu ke basis par route
+   ko reject nahi karenge.
+
+   Sirf unsafe / invalid slug reject karenge.
 ========================================================= */
 
 export function isValidMenPath(
@@ -193,40 +248,56 @@ export function isValidMenPath(
   const validSlug =
     /^[a-z0-9-]+$/;
 
+  if (category) {
+    const normalizedCategory =
+      normalizeSlug(
+        category
+      );
+
+    if (
+      !normalizedCategory ||
+      !validSlug.test(
+        normalizedCategory
+      )
+    ) {
+      return false;
+    }
+  }
+
+  if (subcategory) {
+    const normalizedSubcategory =
+      normalizeSlug(
+        subcategory
+      );
+
+    if (
+      !normalizedSubcategory ||
+      !validSlug.test(
+        normalizedSubcategory
+      )
+    ) {
+      return false;
+    }
+  }
+
+  /*
+   * Offers nested page nahi hona chahiye.
+   *
+   * /men/offers
+   * valid
+   *
+   * /men/offers/anything
+   * invalid
+   */
+
   if (
-    category &&
-    !validSlug.test(
+    normalizeSlug(
       category
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    subcategory &&
-    !validSlug.test(
-      subcategory
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    category === "offers" &&
+    ) === "offers" &&
     subcategory
   ) {
     return false;
   }
-
-  /*
-   * IMPORTANT:
-   *
-   * Backend se future me new category
-   * aa sakti hai.
-   *
-   * Isliye static menu ke basis par
-   * 404 nahi kar rahe.
-   */
 
   return true;
 }
@@ -239,17 +310,31 @@ export function getMenPageTitle(
   category?: string,
   subcategory?: string
 ): string {
+  /*
+   * Deepest selected category title.
+   */
+
   if (subcategory) {
     return titleCase(
       subcategory
     );
   }
 
+  /*
+   * Offers.
+   */
+
   if (
-    category === "offers"
+    normalizeSlug(
+      category
+    ) === "offers"
   ) {
     return "Men's Offers";
   }
+
+  /*
+   * Single category.
+   */
 
   if (category) {
     const menuItem =
@@ -257,11 +342,18 @@ export function getMenPageTitle(
         category
       );
 
-    return `Men's ${
+    const categoryName =
       menuItem?.name ||
-      titleCase(category)
-    }`;
+      titleCase(
+        category
+      );
+
+    return `Men's ${categoryName}`;
   }
+
+  /*
+   * Root /men
+   */
 
   return "Men's Collection";
 }
@@ -274,17 +366,40 @@ export function getMenPageDescription(
   category?: string,
   subcategory?: string
 ): string {
+  /*
+   * Deep category.
+   *
+   * Example:
+   * /men/underwear/trunks
+   */
+
   if (subcategory) {
-    return `Explore our latest men's ${titleCase(
-      subcategory
-    ).toLowerCase()} collection.`;
+    const name =
+      titleCase(
+        subcategory
+      );
+
+    return `Explore our latest men's ${name.toLowerCase()} collection.`;
   }
 
+  /*
+   * Offers.
+   */
+
   if (
-    category === "offers"
+    normalizeSlug(
+      category
+    ) === "offers"
   ) {
     return "Explore special offers and discounted styles from our men's collection.";
   }
+
+  /*
+   * Category.
+   *
+   * Example:
+   * /men/trunks
+   */
 
   if (category) {
     const menuItem =
@@ -301,19 +416,51 @@ export function getMenPageDescription(
     return `Discover our latest men's ${categoryName.toLowerCase()} collection.`;
   }
 
+  /*
+   * Root /men
+   */
+
   return "Explore our latest men's collection, styles and everyday essentials.";
 }
 
 /* =========================================================
-   MEN BANNERS
+   IMPORTANT
 
-   Abhi empty.
-   Baad me Banner API connect karenge.
+   OLD CODE REMOVED:
+
+   export function getMenBanners(...) {
+     return [];
+   }
+
+   Ab banner yahan se nahi aayega.
+
+   Men Page me:
+
+   await getCategoryBanners({
+     rootCategory: "men",
+     path: route,
+   });
+
+   use hoga.
+
+   RESULT:
+
+   /men
+   -> Men category ka banner
+
+   /men/trunks
+   -> Trunks category ka banner
+
+   /men/briefs
+   -> Briefs category ka banner
+
+   /men/underwear/trunks
+   -> Trunks category ka banner
+
+   Agar exact selected category ke paas image/banner
+   nahi hai:
+   -> [] aayega
+   -> koi banner nahi show hoga.
+
+   Parent category ka banner fallback nahi hoga.
 ========================================================= */
-
-export function getMenBanners(
-  _category?: string,
-  _subcategory?: string
-): MenBanner[] {
-  return [];
-}

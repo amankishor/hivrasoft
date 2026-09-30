@@ -14,13 +14,24 @@ import {
   getDefaultColor,
   getProductImageUrls,
   getProductName,
-  getProductPrices,
   type ApiColor,
   type ApiProduct,
+  type ApiSize,
 } from "@/src/services/products";
 
+import {
+  addProductToCart,
+  addProductToWishlist,
+  checkLoggedIn,
+  checkProductWishlist,
+  notifyCartUpdated,
+  notifyWishlistUpdated,
+  removeProductFromWishlist,
+  requestStoreLogin,
+} from "@/src/services/storeActions";
+
 /* =========================================================
-   TYPE
+   TYPES
 ========================================================= */
 
 export type ProductDetailsData =
@@ -28,18 +39,145 @@ export type ProductDetailsData =
 
 type ProductDetailsProps = {
   product: ProductDetailsData;
-
-  /*
-   * Current URL slug:
-   *
-   * mens-light-green-cotton-brief
-   * mens-dark-green-cotton-brief
-   */
   currentSlug: string;
 };
 
+type PriceFields = {
+  originalPrice?:
+    | number
+    | string;
+
+  showPrice?:
+    | number
+    | string;
+
+  discountPrice?:
+    | number
+    | string;
+
+  mrp?:
+    | number
+    | string;
+
+  compareAtPrice?:
+    | number
+    | string;
+
+  actualPrice?:
+    | number
+    | string;
+
+  sellingPrice?:
+    | number
+    | string;
+
+  salePrice?:
+    | number
+    | string;
+
+  price?:
+    | number
+    | string;
+};
+
+type ExtendedColor =
+  ApiColor &
+    PriceFields;
+
+type ExtendedSize =
+  ApiSize &
+    PriceFields;
+
+type ExtendedProduct =
+  ApiProduct &
+    PriceFields;
+
 /* =========================================================
-   CLEAN HTML
+   PRICE
+========================================================= */
+
+function pickPositiveNumber(
+  ...values: unknown[]
+): number | undefined {
+  for (
+    const value of values
+  ) {
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      continue;
+    }
+
+    const number =
+      Number(value);
+
+    if (
+      Number.isFinite(
+        number
+      ) &&
+      number > 0
+    ) {
+      return number;
+    }
+  }
+
+  return undefined;
+}
+
+function getSourcePrices(
+  source?:
+    | PriceFields
+    | null
+) {
+  if (
+    !source
+  ) {
+    return {
+      showPrice:
+        undefined as
+          | number
+          | undefined,
+
+      originalPrice:
+        undefined as
+          | number
+          | undefined,
+
+      discountPrice:
+        undefined as
+          | number
+          | undefined,
+    };
+  }
+
+  return {
+    showPrice:
+      pickPositiveNumber(
+        source.showPrice,
+        source.sellingPrice,
+        source.salePrice,
+        source.price
+      ),
+
+    originalPrice:
+      pickPositiveNumber(
+        source.originalPrice,
+        source.mrp,
+        source.compareAtPrice,
+        source.actualPrice
+      ),
+
+    discountPrice:
+      pickPositiveNumber(
+        source.discountPrice
+      ),
+  };
+}
+
+/* =========================================================
+   DESCRIPTION
 ========================================================= */
 
 function cleanDescriptionHtml(
@@ -76,40 +214,7 @@ function cleanDescriptionHtml(
 }
 
 /* =========================================================
-   GET FIRST NUMBER
-========================================================= */
-
-function firstNumber(
-  ...values: unknown[]
-) {
-  for (
-    const value of values
-  ) {
-    if (
-      value === undefined ||
-      value === null ||
-      value === ""
-    ) {
-      continue;
-    }
-
-    const number =
-      Number(value);
-
-    if (
-      Number.isFinite(
-        number
-      )
-    ) {
-      return number;
-    }
-  }
-
-  return undefined;
-}
-
-/* =========================================================
-   COMPONENT
+   PRODUCT DETAILS
 ========================================================= */
 
 export default function ProductDetails({
@@ -142,20 +247,6 @@ export default function ProductDetails({
       product.colors,
     ]);
 
-  /* =======================================================
-     FIND COLOR FROM CURRENT URL SLUG
-
-     Example:
-
-     URL:
-     mens-dark-green-cotton-brief
-
-     colors[].slugProduct:
-     mens-dark-green-cotton-brief
-
-     => Dark Green selected
-  ======================================================= */
-
   const urlColorIndex =
     useMemo(() => {
       if (
@@ -169,55 +260,45 @@ export default function ProductDetails({
           String(
             color?.slugProduct ||
               ""
-          ) === currentSlug
+          )
+            .trim()
+            .toLowerCase() ===
+          currentSlug
+            .trim()
+            .toLowerCase()
       );
     }, [
       activeColors,
       currentSlug,
     ]);
 
-  /* =======================================================
-     DEFAULT COLOR
-  ======================================================= */
-
   const defaultColorIndex =
     useMemo(() => {
-      /*
-       * URL slug has highest priority.
-       */
-
       if (
-        urlColorIndex >= 0
+        urlColorIndex >=
+        0
       ) {
         return urlColorIndex;
       }
 
-      /*
-       * Otherwise backend default color.
-       */
-
-      const backendDefaultIndex =
+      const backendDefault =
         activeColors.findIndex(
           (color) =>
             color?.isDefault ===
             true
         );
 
-      if (
-        backendDefaultIndex >=
+      return backendDefault >=
         0
-      ) {
-        return backendDefaultIndex;
-      }
-
-      return 0;
+        ? backendDefault
+        : 0;
     }, [
       activeColors,
       urlColorIndex,
     ]);
 
   /* =======================================================
-     STATE
+     STATES
   ======================================================= */
 
   const [
@@ -248,14 +329,49 @@ export default function ProductDetails({
   ] =
     useState(1);
 
-  /* =======================================================
-     SYNC COLOR WHEN URL CHANGES
+  const [
+    wishlisted,
+    setWishlisted,
+  ] =
+    useState(false);
 
-     /light-green
-           ↓ click Dark Green
-     /dark-green
-           ↓
-     selectedColorIndex = dark green
+  const [
+    wishlistBusy,
+    setWishlistBusy,
+  ] =
+    useState(false);
+
+  const [
+    cartBusy,
+    setCartBusy,
+  ] =
+    useState(false);
+
+  const [
+    actionMessage,
+    setActionMessage,
+  ] =
+    useState("");
+
+  const [
+    actionError,
+    setActionError,
+  ] =
+    useState(false);
+
+  /* =======================================================
+     IDS
+  ======================================================= */
+
+  const productId =
+    String(
+      product._id ||
+        product.id ||
+        ""
+    );
+
+  /* =======================================================
+     SYNC COLOR
   ======================================================= */
 
   useEffect(() => {
@@ -284,12 +400,16 @@ export default function ProductDetails({
   ======================================================= */
 
   const selectedColor =
-    activeColors[
-      selectedColorIndex
-    ] ||
-    getDefaultColor(
-      product
-    );
+    (
+      activeColors[
+        selectedColorIndex
+      ] ||
+      getDefaultColor(
+        product
+      )
+    ) as
+      | ExtendedColor
+      | undefined;
 
   /* =======================================================
      IMAGES
@@ -322,7 +442,9 @@ export default function ProductDetails({
 
         return [
           ...(defaultImage
-            ? [defaultImage]
+            ? [
+                defaultImage,
+              ]
             : []),
 
           ...colorImages.filter(
@@ -332,10 +454,6 @@ export default function ProductDetails({
           ),
         ];
       }
-
-      /*
-       * Fallback
-       */
 
       return getProductImageUrls(
         product
@@ -348,6 +466,18 @@ export default function ProductDetails({
       product,
       selectedColor,
     ]);
+
+  const activeImage =
+    images[
+      Math.min(
+        activeImageIndex,
+        Math.max(
+          0,
+          images.length -
+            1
+        )
+      )
+    ];
 
   /* =======================================================
      SIZES
@@ -367,214 +497,152 @@ export default function ProductDetails({
         (size) =>
           size?.isActive !==
           false
-      );
+      ) as ExtendedSize[];
     }, [
       selectedColor,
     ]);
 
   const selectedSize =
     selectedSizeIndex !==
-    null
+      null &&
+    sizes[
+      selectedSizeIndex
+    ]
       ? sizes[
           selectedSizeIndex
         ]
       : undefined;
 
   /* =======================================================
-     TOTAL STOCK
-  ======================================================= */
-
-  const totalStock =
-    activeColors.reduce(
-      (
-        total,
-        color
-      ) => {
-        const colorSizes =
-          Array.isArray(
-            color?.sizes
-          )
-            ? color.sizes
-            : [];
-
-        return (
-          total +
-          colorSizes.reduce(
-            (
-              sum,
-              size
-            ) => {
-              if (
-                size
-                  ?.isActive ===
-                false
-              ) {
-                return sum;
-              }
-
-              return (
-                sum +
-                Math.max(
-                  0,
-                  Number(
-                    size
-                      ?.stock ||
-                      0
-                  )
-                )
-              );
-            },
-            0
-          )
-        );
-      },
-      0
-    );
-
-  /* =======================================================
-     CURRENT COLOR STOCK
+     STOCK
   ======================================================= */
 
   const selectedColorStock =
-    sizes.reduce(
-      (
-        total,
-        size
-      ) =>
-        total +
-        Math.max(
-          0,
-          Number(
-            size?.stock ||
-              0
-          )
-        ),
-      0
-    );
-
-  /* =======================================================
-     CURRENT STOCK
-  ======================================================= */
+    useMemo(() => {
+      return sizes.reduce(
+        (
+          total,
+          size
+        ) =>
+          total +
+          Math.max(
+            0,
+            Number(
+              size.stock ||
+                0
+            )
+          ),
+        0
+      );
+    }, [
+      sizes,
+    ]);
 
   const currentStock =
     selectedSize
       ? Math.max(
           0,
           Number(
-            selectedSize
-              ?.stock ||
+            selectedSize.stock ||
               0
           )
         )
-      : selectedColor
-        ? selectedColorStock
-        : totalStock;
+      : selectedColorStock;
+
+  const isLowStock =
+    currentStock > 0 &&
+    currentStock < 5;
 
   /* =======================================================
-     NAME
-
-     Name automatically selected color se badlega.
+     NAME / DESCRIPTION
   ======================================================= */
 
   const name =
-    selectedColor
-      ?.nameProduct ||
-    getProductName(
-      product
+    String(
+      selectedColor
+        ?.nameProduct ||
+        getProductName(
+          product
+        ) ||
+        "Product"
     );
 
-  /* =======================================================
-     DESCRIPTION
-  ======================================================= */
+  const colorName =
+    String(
+      selectedColor
+        ?.nameColor ||
+        ""
+    );
 
   const shortDescription =
-    selectedColor
-      ?.shortDescription ||
-    product.shortDescription ||
-    "";
+    String(
+      selectedColor
+        ?.shortDescription ||
+        product.shortDescription ||
+        ""
+    );
 
   const descriptionHtml =
     cleanDescriptionHtml(
       selectedColor
         ?.description ||
-        product.description
+        product.description ||
+        ""
     );
 
   /* =======================================================
      PRICES
   ======================================================= */
 
-  const basePrices =
-    getProductPrices(
-      product
+  const sizePrices =
+    getSourcePrices(
+      selectedSize
+    );
+
+  const colorPrices =
+    getSourcePrices(
+      selectedColor
+    );
+
+  const productPrices =
+    getSourcePrices(
+      product as
+        ExtendedProduct
     );
 
   const sellingPrice =
-    firstNumber(
-      selectedSize
-        ?.discountedPrice,
+    sizePrices.showPrice ??
+    colorPrices.showPrice ??
+    productPrices.showPrice ??
+    0;
 
-      selectedSize
-        ?.salePrice,
-
-      selectedSize
-        ?.sellingPrice,
-
-      selectedSize?.price,
-
-      selectedColor
-        ?.discountedPrice,
-
-      selectedColor
-        ?.salePrice,
-
-      selectedColor
-        ?.sellingPrice,
-
-      selectedColor?.price,
-
-      basePrices.sellingPrice
-    ) ?? 0;
-
-  const comparePrice =
-    firstNumber(
-      selectedSize
-        ?.compareAtPrice,
-
-      selectedSize
-        ?.actualPrice,
-
-      selectedSize
-        ?.originalPrice,
-
-      selectedSize?.mrp,
-
-      selectedColor
-        ?.compareAtPrice,
-
-      selectedColor
-        ?.actualPrice,
-
-      selectedColor
-        ?.originalPrice,
-
-      selectedColor?.mrp,
-
-      basePrices.actualPrice
-    ) ??
+  const rawOriginalPrice =
+    sizePrices.originalPrice ??
+    colorPrices.originalPrice ??
+    productPrices.originalPrice ??
     sellingPrice;
 
   const actualPrice =
-    comparePrice >
+    rawOriginalPrice >
     sellingPrice
-      ? comparePrice
+      ? rawOriginalPrice
       : sellingPrice;
 
-  const discount =
+  const discountAmount =
+    sizePrices.discountPrice ??
+    colorPrices.discountPrice ??
+    productPrices.discountPrice ??
+    (actualPrice >
+    sellingPrice
+      ? actualPrice -
+        sellingPrice
+      : 0);
+
+  const discountPercent =
     actualPrice >
       sellingPrice &&
-    actualPrice >
-      0
+    actualPrice > 0 &&
+    sellingPrice > 0
       ? Math.round(
           ((actualPrice -
             sellingPrice) /
@@ -584,34 +652,118 @@ export default function ProductDetails({
       : 0;
 
   /* =======================================================
-     SELECT COLOR
+     WISHLIST INITIAL STATE
 
-     ⭐ MAIN FIX
-
-     Color select
-       ↓
-     local state update
-       ↓
-     color.slugProduct
-       ↓
-     router.push()
-       ↓
-     browser URL changes
+     Login nahi hai to koi modal automatically
+     nahi khulega.
   ======================================================= */
 
-  const selectColor = (
+  useEffect(() => {
+    if (
+      !productId
+    ) {
+      return;
+    }
+
+    let cancelled =
+      false;
+
+    void (async () => {
+      const loggedIn =
+        await checkLoggedIn();
+
+      if (
+        !loggedIn ||
+        cancelled
+      ) {
+        return;
+      }
+
+      const exists =
+        await checkProductWishlist(
+          productId
+        );
+
+      if (
+        !cancelled
+      ) {
+        setWishlisted(
+          exists
+        );
+      }
+    })();
+
+    return () => {
+      cancelled =
+        true;
+    };
+  }, [
+    productId,
+  ]);
+
+  /* =======================================================
+     MESSAGE TIMER
+  ======================================================= */
+
+  useEffect(() => {
+    if (
+      !actionMessage
+    ) {
+      return;
+    }
+
+    const timer =
+      window.setTimeout(
+        () => {
+          setActionMessage(
+            ""
+          );
+
+          setActionError(
+            false
+          );
+        },
+        3000
+      );
+
+    return () =>
+      window.clearTimeout(
+        timer
+      );
+  }, [
+    actionMessage,
+  ]);
+
+  function showMessage(
+    message: string,
+    error = false
+  ) {
+    setActionMessage(
+      message
+    );
+
+    setActionError(
+      error
+    );
+  }
+
+  /* =======================================================
+     COLOR
+  ======================================================= */
+
+  function selectColor(
     index: number
-  ) => {
+  ) {
     const color =
       activeColors[
         index
       ];
 
-    if (!color) {
+    if (
+      !color
+    ) {
       return;
     }
-
-    /* LOCAL UI UPDATE */
 
     setSelectedColorIndex(
       index
@@ -628,10 +780,6 @@ export default function ProductDetails({
     setQuantity(
       1
     );
-
-    /* =====================================================
-       URL SLUG UPDATE
-    ===================================================== */
 
     const nextSlug =
       String(
@@ -653,26 +801,34 @@ export default function ProductDetails({
         }
       );
     }
-  };
+  }
 
   /* =======================================================
-     SELECT SIZE
+     SIZE
   ======================================================= */
 
-  const selectSize = (
+  function selectSize(
     index: number
-  ) => {
+  ) {
     const size =
       sizes[index];
 
     if (
-      !size ||
-      size.isActive ===
-        false ||
+      !size
+    ) {
+      return;
+    }
+
+    const stock =
       Number(
         size.stock ||
           0
-      ) <= 0
+      );
+
+    if (
+      size.isActive ===
+        false ||
+      stock <= 0
     ) {
       return;
     }
@@ -684,10 +840,239 @@ export default function ProductDetails({
     setQuantity(
       1
     );
-  };
+  }
 
   /* =======================================================
-     RENDER
+     QUANTITY
+  ======================================================= */
+
+  function decreaseQuantity() {
+    setQuantity(
+      (current) =>
+        Math.max(
+          1,
+          current - 1
+        )
+    );
+  }
+
+  function increaseQuantity() {
+    setQuantity(
+      (current) =>
+        Math.min(
+          Math.max(
+            1,
+            currentStock
+          ),
+          current + 1
+        )
+    );
+  }
+
+  /* =======================================================
+     LOGIN GUARD
+  ======================================================= */
+
+  async function requireLogin(): Promise<boolean> {
+    const loggedIn =
+      await checkLoggedIn();
+
+    if (
+      loggedIn
+    ) {
+      return true;
+    }
+
+    showMessage(
+      "Please log in first.",
+      true
+    );
+
+    requestStoreLogin();
+
+    return false;
+  }
+
+  /* =======================================================
+     WISHLIST
+  ======================================================= */
+
+  async function toggleWishlist() {
+    if (
+      wishlistBusy ||
+      !productId
+    ) {
+      return;
+    }
+
+    if (
+      !(await requireLogin())
+    ) {
+      return;
+    }
+
+    try {
+      setWishlistBusy(
+        true
+      );
+
+      if (
+        wishlisted
+      ) {
+        await removeProductFromWishlist(
+          productId
+        );
+
+        setWishlisted(
+          false
+        );
+
+        showMessage(
+          "Removed from wishlist."
+        );
+      } else {
+        await addProductToWishlist(
+          productId
+        );
+
+        setWishlisted(
+          true
+        );
+
+        showMessage(
+          "Added to wishlist."
+        );
+      }
+
+      notifyWishlistUpdated();
+    } catch (
+      error
+    ) {
+      showMessage(
+        error instanceof
+          Error
+          ? error.message
+          : "Wishlist update failed.",
+        true
+      );
+    } finally {
+      setWishlistBusy(
+        false
+      );
+    }
+  }
+
+  /* =======================================================
+     ADD TO BAG
+  ======================================================= */
+
+async function handleAddToBag() {
+  if (cartBusy || currentStock <= 0) {
+    return;
+  }
+
+  // Login check
+  if (!(await requireLogin())) {
+    return;
+  }
+
+  // Correct Color ID
+  const colorId = String(
+    selectedColor?.colorId ||
+      selectedColor?._id ||
+      selectedColor?.id ||
+      ""
+  );
+
+  // Correct Size ID
+  const sizeId = String(
+    selectedSize?.sizeId ||
+      selectedSize?._id ||
+      selectedSize?.id ||
+      ""
+  );
+
+  // Product validation
+  if (!productId) {
+    showMessage(
+      "Product ID missing.",
+      true
+    );
+    return;
+  }
+
+  // Color validation
+  if (!colorId) {
+    showMessage(
+      "Please select a color.",
+      true
+    );
+    return;
+  }
+
+  // Size validation
+  if (!sizeId) {
+    showMessage(
+      "Please select a size.",
+      true
+    );
+    return;
+  }
+
+  try {
+    setCartBusy(true);
+
+    console.log("ADD TO BAG PAYLOAD:", {
+      productId,
+      colorId,
+      sizeId,
+      quantity,
+    });
+
+    const response =
+      await addProductToCart({
+        productId,
+        colorId,
+        sizeId,
+        quantity,
+      });
+
+    showMessage(
+      typeof response.message === "string"
+        ? response.message
+        : "Product added to cart successfully."
+    );
+
+    notifyCartUpdated();
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to add product to cart.";
+
+    console.error(
+      "ADD TO BAG ERROR:",
+      error
+    );
+
+    showMessage(
+      message,
+      true
+    );
+
+    if (
+      message ===
+      "Please log in first."
+    ) {
+      requestStoreLogin();
+    }
+  } finally {
+    setCartBusy(false);
+  }
+}
+
+  /* =======================================================
+     UI
   ======================================================= */
 
   return (
@@ -695,99 +1080,52 @@ export default function ProductDetails({
       className="
         min-h-screen
         bg-white
-        text-[#292526]
+        text-[#211A18]
       "
     >
       <section
         className="
           mx-auto
-
           grid
           w-full
-          max-w-[1180px]
-
+          max-w-[1220px]
           grid-cols-1
           gap-8
-
           px-4
-          pb-12
+          pb-14
           pt-8
 
           md:px-6
 
-          lg:grid-cols-[minmax(0,520px)_minmax(0,1fr)]
+          lg:grid-cols-[minmax(0,590px)_minmax(0,1fr)]
           lg:gap-12
         "
       >
         {/* =================================================
-            PRODUCT IMAGE
+            GALLERY
         ================================================= */}
 
-        <div>
+        <div className="min-w-0">
+          {/* DESKTOP */}
+
           <div
             className="
-              relative
+              hidden
 
-              aspect-[4/5]
-
-              overflow-hidden
-
-              rounded-xl
-
-              bg-[#f3f3f3]
+              lg:grid
+              lg:grid-cols-[82px_minmax(0,1fr)]
+              lg:items-start
+              lg:gap-4
             "
           >
-            {images.length >
-            0 ? (
-              <img
-                src={
-                  images[
-                    Math.min(
-                      activeImageIndex,
-                      images.length -
-                        1
-                    )
-                  ]?.url
-                }
-                alt={
-                  name
-                }
-                className="
-                  h-full
-                  w-full
-                  object-cover
-                "
-              />
-            ) : (
-              <div
-                className="
-                  grid
-                  h-full
-                  place-items-center
-
-                  text-sm
-                  text-black/35
-                "
-              >
-                No Product Image
-              </div>
-            )}
-          </div>
-
-          {/* IMAGE THUMBNAILS */}
-
-          {images.length >
-            1 && (
             <div
               className="
-                mt-3
-
                 flex
+                max-h-[650px]
+                flex-col
                 gap-3
-
-                overflow-x-auto
-
-                pb-1
+                overflow-y-auto
+                pr-1
               "
             >
               {images.map(
@@ -796,7 +1134,7 @@ export default function ProductDetails({
                   index
                 ) => (
                   <button
-                    key={`${image.publicId || image.url}-${index}`}
+                    key={`${image.url}-${index}`}
                     type="button"
                     onClick={() =>
                       setActiveImageIndex(
@@ -804,93 +1142,200 @@ export default function ProductDetails({
                       )
                     }
                     className={`
-                      h-20
-                      w-16
+                      relative
+                      h-[98px]
+                      w-[78px]
                       shrink-0
-
                       overflow-hidden
-
-                      rounded-lg
-
+                      rounded-[10px]
                       border-2
+                      bg-[#F3EEE8]
+                      transition-all
 
                       ${
                         activeImageIndex ===
                         index
-                          ? "border-[#8C1839]"
-                          : "border-transparent"
+                          ? "border-[#9D173E]"
+                          : "border-transparent hover:border-[#211A18]/25"
                       }
                     `}
                   >
-                    <img
-                      src={
-                        image.url
-                      }
-                      alt={`${name} ${
-                        index + 1
-                      }`}
-                      className="
-                        h-full
-                        w-full
-                        object-cover
-                      "
-                    />
+                    {image.url ? (
+                      <img
+                        src={
+                          image.url
+                        }
+                        alt={`${name} ${
+                          index +
+                          1
+                        }`}
+                        className="
+                          h-full
+                          w-full
+                          object-cover
+                        "
+                      />
+                    ) : null}
                   </button>
                 )
               )}
             </div>
-          )}
+
+            <div
+              className="
+                relative
+                aspect-[4/5]
+                overflow-hidden
+                rounded-[14px]
+                bg-[#F3EEE8]
+              "
+            >
+              {activeImage?.url ? (
+                <img
+                  src={
+                    activeImage.url
+                  }
+                  alt={
+                    name
+                  }
+                  className="
+                    h-full
+                    w-full
+                    object-cover
+                    object-center
+                  "
+                />
+              ) : (
+                <div
+                  className="
+                    flex
+                    h-full
+                    items-center
+                    justify-center
+                    text-sm
+                    text-black/30
+                  "
+                >
+                  No Image
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* MOBILE */}
+
+          <div className="lg:hidden">
+            <div
+              className="
+                relative
+                aspect-[4/5]
+                overflow-hidden
+                rounded-[14px]
+                bg-[#F3EEE8]
+              "
+            >
+              {activeImage?.url ? (
+                <img
+                  src={
+                    activeImage.url
+                  }
+                  alt={
+                    name
+                  }
+                  className="
+                    h-full
+                    w-full
+                    object-cover
+                  "
+                />
+              ) : null}
+            </div>
+
+            {images.length >
+              1 && (
+              <div
+                className="
+                  mt-4
+                  flex
+                  gap-3
+                  overflow-x-auto
+                  pb-2
+                "
+              >
+                {images.map(
+                  (
+                    image,
+                    index
+                  ) => (
+                    <button
+                      key={`${image.url}-${index}`}
+                      type="button"
+                      onClick={() =>
+                        setActiveImageIndex(
+                          index
+                        )
+                      }
+                      className={`
+                        h-[92px]
+                        w-[72px]
+                        shrink-0
+                        overflow-hidden
+                        rounded-lg
+                        border-2
+                        bg-[#F3EEE8]
+
+                        ${
+                          activeImageIndex ===
+                          index
+                            ? "border-[#9D173E]"
+                            : "border-transparent"
+                        }
+                      `}
+                    >
+                      {image.url && (
+                        <img
+                          src={
+                            image.url
+                          }
+                          alt={`${name} ${
+                            index +
+                            1
+                          }`}
+                          className="
+                            h-full
+                            w-full
+                            object-cover
+                          "
+                        />
+                      )}
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* =================================================
-            RIGHT DETAILS
+            DETAILS
         ================================================= */}
 
         <div
           className="
+            min-w-0
             pt-2
           "
         >
-          {/* BADGES */}
-
-          <div
-            className="
-              flex
-              flex-wrap
-              gap-2
-
-              text-[9px]
-              font-semibold
-              uppercase
-              tracking-[0.14em]
-              text-[#8C1839]
-            "
-          >
-            {product.isNewLaunch && (
-              <span>
-                New Launch
-              </span>
-            )}
-
-            {product.isFeatured && (
-              <span>
-                Featured
-              </span>
-            )}
-          </div>
-
-          {/* NAME */}
-
           <h1
             className="
-              mt-3
-
-              text-2xl
+              max-w-[620px]
+              text-[27px]
               font-semibold
-              leading-tight
-              text-[#211A18]
+              leading-[1.35]
+              tracking-[-0.02em]
+              text-[#171314]
 
-              md:text-3xl
+              md:text-[31px]
             "
           >
             {name}
@@ -899,12 +1344,11 @@ export default function ProductDetails({
           {shortDescription && (
             <p
               className="
-                mt-4
-                max-w-xl
-
-                text-sm
+                mt-3
+                max-w-[600px]
+                text-[13px]
                 leading-6
-                text-[#211A18]/60
+                text-[#211A18]/55
               "
             >
               {
@@ -913,14 +1357,11 @@ export default function ProductDetails({
             </p>
           )}
 
-          {/* =================================================
-              PRICE
-          ================================================= */}
+          {/* PRICE */}
 
           <div
             className="
-              mt-6
-
+              mt-7
               flex
               flex-wrap
               items-center
@@ -931,65 +1372,95 @@ export default function ProductDetails({
               className="
                 text-[24px]
                 font-semibold
-                text-[#211A18]
+                text-[#171314]
               "
             >
               ₹
               {sellingPrice.toLocaleString(
-                "en-IN"
+                "en-IN",
+                {
+                  maximumFractionDigits:
+                    2,
+                }
               )}
             </span>
 
             {actualPrice >
-              sellingPrice && (
-              <>
-                <span
-                  className="
-                    text-[14px]
-                    text-[#211A18]/35
-                    line-through
-                  "
-                >
-                  ₹
-                  {actualPrice.toLocaleString(
-                    "en-IN"
+              sellingPrice &&
+              sellingPrice >
+                0 && (
+                <>
+                  <span
+                    className="
+                      text-[13px]
+                      text-[#211A18]/35
+                      line-through
+                    "
+                  >
+                    ₹
+                    {actualPrice.toLocaleString(
+                      "en-IN",
+                      {
+                        maximumFractionDigits:
+                          2,
+                      }
+                    )}
+                  </span>
+
+                  {discountPercent >
+                    0 && (
+                    <span
+                      className="
+                        rounded-full
+                        bg-[#F8E5E8]
+                        px-3
+                        py-1.5
+                        text-[9px]
+                        font-semibold
+                        text-[#9D173E]
+                      "
+                    >
+                      {
+                        discountPercent
+                      }
+                      % OFF
+                    </span>
                   )}
-                </span>
-
-                <span
-                  className="
-                    rounded-full
-
-                    bg-[#F8E5E8]
-
-                    px-3
-                    py-1.5
-
-                    text-[9px]
-                    font-semibold
-                    text-[#8C1839]
-                  "
-                >
-                  {discount}% OFF
-                </span>
-              </>
-            )}
+                </>
+              )}
           </div>
 
-          {/* =================================================
-              COLORS
-          ================================================= */}
+          {discountAmount >
+            0 &&
+            actualPrice >
+              sellingPrice && (
+              <p
+                className="
+                  mt-2
+                  text-[10px]
+                  font-medium
+                  text-green-700
+                "
+              >
+                You save ₹
+                {discountAmount.toLocaleString(
+                  "en-IN",
+                  {
+                    maximumFractionDigits:
+                      2,
+                  }
+                )}
+              </p>
+            )}
+
+          {/* COLORS */}
 
           {activeColors.length >
             0 && (
-            <div
-              className="
-                mt-8
-              "
-            >
-              <div
+            <div className="mt-9">
+              <p
                 className="
-                  text-sm
+                  text-[13px]
                   font-semibold
                 "
               >
@@ -998,20 +1469,16 @@ export default function ProductDetails({
                 <span
                   className="
                     font-normal
-                    text-black/55
+                    text-[#211A18]/55
                   "
                 >
-                  {
-                    selectedColor
-                      ?.nameColor
-                  }
+                  {colorName}
                 </span>
-              </div>
+              </p>
 
               <div
                 className="
                   mt-4
-
                   flex
                   flex-wrap
                   gap-3
@@ -1022,29 +1489,24 @@ export default function ProductDetails({
                     color,
                     index
                   ) => {
-                    const image =
+                    const colorImage =
                       color.images?.find(
                         (
-                          item
+                          image
                         ) =>
-                          item.isDefault
+                          image.isDefault ===
+                          true
                       )?.url ||
                       color.images?.[0]
-                        ?.url;
-
-                    const hex =
-                      (
-                        color as ApiColor & {
-                          hex?: string;
-                        }
-                      ).hex;
+                        ?.url ||
+                      "";
 
                     return (
                       <button
                         key={
                           color._id ||
+                          color.id ||
                           color.slugProduct ||
-                          color.slugColor ||
                           index
                         }
                         type="button"
@@ -1052,10 +1514,6 @@ export default function ProductDetails({
                           selectColor(
                             index
                           )
-                        }
-                        title={
-                          color.nameProduct ||
-                          color.nameColor
                         }
                         className="
                           w-[76px]
@@ -1065,30 +1523,25 @@ export default function ProductDetails({
                         <div
                           className={`
                             aspect-[4/5]
-
                             overflow-hidden
-
                             rounded-lg
-
                             border-2
-
-                            transition
+                            bg-[#F3EEE8]
 
                             ${
                               selectedColorIndex ===
                               index
                                 ? "border-[#211A18]"
-                                : "border-transparent hover:border-black/20"
+                                : "border-transparent"
                             }
                           `}
                         >
-                          {image ? (
+                          {colorImage && (
                             <img
                               src={
-                                image
+                                colorImage
                               }
                               alt={
-                                color.nameProduct ||
                                 color.nameColor ||
                                 name
                               }
@@ -1098,41 +1551,15 @@ export default function ProductDetails({
                                 object-cover
                               "
                             />
-                          ) : (
-                            <div
-                              className="
-                                grid
-                                h-full
-                                place-items-center
-
-                                bg-[#f5f2ef]
-                              "
-                            >
-                              <span
-                                className="
-                                  h-8
-                                  w-8
-
-                                  rounded-full
-                                  border
-                                "
-                                style={{
-                                  backgroundColor:
-                                    hex ||
-                                    "#ddd",
-                                }}
-                              />
-                            </div>
                           )}
                         </div>
 
                         <span
                           className="
-                            mt-1
+                            mt-1.5
                             block
                             truncate
-
-                            text-[10px]
+                            text-[9px]
                           "
                         >
                           {
@@ -1147,30 +1574,23 @@ export default function ProductDetails({
             </div>
           )}
 
-          {/* =================================================
-              SIZE
-          ================================================= */}
+          {/* SIZES */}
 
           {sizes.length >
             0 && (
-            <div
-              className="
-                mt-8
-              "
-            >
-              <div
+            <div className="mt-9">
+              <p
                 className="
-                  text-sm
+                  text-[13px]
                   font-semibold
                 "
               >
                 Select Size
-              </div>
+              </p>
 
               <div
                 className="
-                  mt-3
-
+                  mt-4
                   flex
                   flex-wrap
                   gap-3
@@ -1181,17 +1601,24 @@ export default function ProductDetails({
                     size,
                     index
                   ) => {
-                    const disabled =
+                    const stock =
                       Number(
                         size.stock ||
                           0
-                      ) <= 0;
+                      );
+
+                    const disabled =
+                      stock <=
+                        0 ||
+                      size.isActive ===
+                        false;
 
                     return (
                       <button
                         key={
                           size._id ||
-                          `${size.size || size.name}-${index}`
+                          size.id ||
+                          index
                         }
                         type="button"
                         disabled={
@@ -1203,23 +1630,19 @@ export default function ProductDetails({
                           )
                         }
                         className={`
-                          min-w-12
-
+                          min-w-[48px]
                           rounded-lg
-
                           border
-
                           px-4
                           py-3
-
-                          text-xs
+                          text-[11px]
                           font-semibold
 
                           ${
                             selectedSizeIndex ===
                             index
                               ? "border-[#211A18] bg-[#211A18] text-white"
-                              : "border-black/20"
+                              : "border-black/20 bg-white"
                           }
 
                           ${
@@ -1243,128 +1666,153 @@ export default function ProductDetails({
 
           {/* STOCK */}
 
-          <div
-            className="
-              mt-7
-              text-sm
-            "
-          >
-            {currentStock >
+          <div className="mt-7">
+            {currentStock <=
             0 ? (
-              <span
+              <p
                 className="
+                  text-[13px]
+                  font-semibold
+                  text-red-600
+                "
+              >
+                Out of Stock
+              </p>
+            ) : isLowStock ? (
+              <div
+                className="
+                  inline-flex
+                  items-center
+                  gap-2
+                  rounded-lg
+                  border
+                  border-[#F0CAD5]
+                  bg-[#FFF5F7]
+                  px-3
+                  py-2
+                "
+              >
+                <span
+                  className="
+                    h-2
+                    w-2
+                    animate-pulse
+                    rounded-full
+                    bg-[#9D173E]
+                  "
+                />
+
+                <p
+                  className="
+                    text-[12px]
+                    font-semibold
+                    text-[#9D173E]
+                  "
+                >
+                  Few stocks are
+                  available, grab it
+                  now
+                </p>
+              </div>
+            ) : (
+              <p
+                className="
+                  text-[13px]
+                  font-medium
                   text-green-700
                 "
               >
                 In Stock (
                 {currentStock})
-              </span>
-            ) : (
-              <span
-                className="
-                  text-red-600
-                "
-              >
-                Out of Stock
-              </span>
+              </p>
             )}
           </div>
 
-          {/* QUANTITY */}
+          {/* ACTIONS */}
 
           <div
             className="
               mt-6
-
               grid
-              grid-cols-[130px_1fr]
-
+              grid-cols-[110px_minmax(0,1fr)_48px]
               gap-3
+
+              sm:grid-cols-[130px_minmax(0,1fr)_48px]
             "
           >
+            {/* QUANTITY */}
+
             <div
               className="
                 flex
                 h-12
                 items-center
                 justify-between
-
                 rounded-lg
-
                 border
-                border-black/40
-
-                px-4
+                border-black/30
+                px-3
               "
             >
               <button
                 type="button"
-                onClick={() =>
-                  setQuantity(
-                    (
-                      value
-                    ) =>
-                      Math.max(
-                        1,
-                        value -
-                          1
-                      )
-                  )
+                onClick={
+                  decreaseQuantity
+                }
+                disabled={
+                  quantity <=
+                  1
                 }
               >
                 −
               </button>
 
-              <strong>
+              <span
+                className="
+                  text-sm
+                  font-semibold
+                "
+              >
                 {quantity}
-              </strong>
+              </span>
 
               <button
                 type="button"
-                disabled={
-                  quantity >=
-                    currentStock ||
-                  currentStock <=
-                    0
+                onClick={
+                  increaseQuantity
                 }
-                onClick={() =>
-                  setQuantity(
-                    (
-                      value
-                    ) =>
-                      Math.min(
-                        currentStock,
-                        value +
-                          1
-                      )
-                  )
+                disabled={
+                  currentStock <=
+                    0 ||
+                  quantity >=
+                    currentStock
                 }
               >
                 +
               </button>
             </div>
 
+            {/* ADD TO BAG */}
+
             <button
               type="button"
+              onClick={() =>
+                void handleAddToBag()
+              }
               disabled={
+                cartBusy ||
                 currentStock <=
-                  0 ||
-                (sizes.length >
-                  0 &&
-                  !selectedSize)
+                  0
               }
               className="
                 h-12
-
                 rounded-lg
-
                 bg-[#2F2D2D]
-
                 px-5
-
-                text-xs
+                text-[11px]
                 font-semibold
                 uppercase
+                tracking-[0.04em]
                 text-white
 
                 transition
@@ -1375,97 +1823,150 @@ export default function ProductDetails({
                 disabled:bg-[#aaa]
               "
             >
-              {currentStock <=
-              0
-                ? "Out Of Stock"
-                : sizes.length >
-                      0 &&
-                    !selectedSize
-                  ? "Select Size"
-                  : "Add To Bag"}
+              {cartBusy
+                ? "Adding..."
+                : currentStock <=
+                    0
+                  ? "Out Of Stock"
+                  : !selectedSize
+                    ? "Select Size"
+                    : "Add To Bag"}
+            </button>
+
+            {/* WISHLIST */}
+
+            <button
+              type="button"
+              onClick={() =>
+                void toggleWishlist()
+              }
+              disabled={
+                wishlistBusy
+              }
+              aria-label={
+                wishlisted
+                  ? "Remove from wishlist"
+                  : "Add to wishlist"
+              }
+              title={
+                wishlisted
+                  ? "Remove from wishlist"
+                  : "Add to wishlist"
+              }
+              className={`
+                flex
+                h-12
+                w-12
+                items-center
+                justify-center
+
+                rounded-lg
+
+                border
+
+                text-[21px]
+
+                transition
+
+                ${
+                  wishlisted
+                    ? "border-[#9D173E] bg-[#9D173E] text-white"
+                    : "border-[#9D173E]/30 bg-white text-[#9D173E] hover:bg-[#FFF2F5]"
+                }
+
+                disabled:opacity-50
+              `}
+            >
+              {wishlistBusy
+                ? "…"
+                : wishlisted
+                  ? "♥"
+                  : "♡"}
             </button>
           </div>
+
+          {/* MESSAGE */}
+
+          {actionMessage && (
+            <div
+              className={`
+                mt-4
+                rounded-lg
+                border
+                px-4
+                py-3
+                text-[11px]
+                font-medium
+
+                ${
+                  actionError
+                    ? "border-red-200 bg-red-50 text-red-600"
+                    : "border-green-200 bg-green-50 text-green-700"
+                }
+              `}
+            >
+              {
+                actionMessage
+              }
+            </div>
+          )}
         </div>
       </section>
 
-      {/* ===================================================
-          DESCRIPTION
-      =================================================== */}
+      {/* DESCRIPTION */}
 
-      <section
-        className="
-          border-t
-          border-black/10
-
-          px-4
-          py-12
-
-          md:px-6
-        "
-      >
-        <div
+      {descriptionHtml && (
+        <section
           className="
-            mx-auto
-            max-w-[1180px]
+            border-t
+            border-black/10
+            px-4
+            py-12
+
+            md:px-6
           "
         >
-          <p
+          <div
             className="
-              text-[9px]
-              font-semibold
-              uppercase
-              tracking-[0.18em]
-              text-[#9D173E]
+              mx-auto
+              max-w-[1180px]
             "
           >
-            Product Information
-          </p>
+            <p
+              className="
+                text-[9px]
+                font-semibold
+                uppercase
+                tracking-[0.18em]
+                text-[#9D173E]
+              "
+            >
+              Product Information
+            </p>
 
-          <h2
-            className="
-              mt-2
+            <h2
+              className="
+                mt-2
+                text-2xl
+                font-semibold
+              "
+            >
+              Product Description
+            </h2>
 
-              text-2xl
-              font-semibold
-              text-[#211A18]
-            "
-          >
-            Product Description
-          </h2>
-
-          {descriptionHtml ? (
             <div
               className="
-                prose
-
+                product-description
                 mt-6
-
-                max-w-4xl
-
-                text-sm
-                leading-7
-                text-[#554A45]
               "
               dangerouslySetInnerHTML={{
                 __html:
                   descriptionHtml,
               }}
             />
-          ) : (
-            <p
-              className="
-                mt-5
-
-                text-sm
-                text-black/45
-              "
-            >
-              No description
-              available.
-            </p>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
     </main>
   );
-}   
+}

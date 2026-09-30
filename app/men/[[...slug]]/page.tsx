@@ -7,7 +7,6 @@ import Header from "@/src/components/Header/Header";
 import MenCatalog from "@/src/components/Men/MenCatalog";
 
 import {
-  getMenBanners,
   getMenPageDescription,
   getMenPageTitle,
   isValidMenPath,
@@ -16,19 +15,25 @@ import {
 
 import {
   getActiveProducts,
+  getDefaultColor,
   normalizeStoreProduct,
+  type ApiColor,
   type ApiProduct,
 } from "@/src/services/products";
 
+import {
+  getCategoryBanners,
+} from "@/src/Services/categoryBanners";
+
 /* =========================================================
-   DYNAMIC
+   FRESH DATA
 ========================================================= */
 
 export const dynamic =
   "force-dynamic";
 
 /* =========================================================
-   TYPES
+   PROPS
 ========================================================= */
 
 type MenPageProps = {
@@ -38,7 +43,61 @@ type MenPageProps = {
 };
 
 /* =========================================================
-   MEN ROOT CATEGORY ALIASES
+   PRICE TYPE
+========================================================= */
+
+type PriceFields = {
+  originalPrice?:
+    | number
+    | string;
+
+  showPrice?:
+    | number
+    | string;
+
+  discountPrice?:
+    | number
+    | string;
+
+  sellingPrice?:
+    | number
+    | string;
+
+  salePrice?:
+    | number
+    | string;
+
+  price?:
+    | number
+    | string;
+
+  discountedPrice?:
+    | number
+    | string;
+
+  mrp?:
+    | number
+    | string;
+
+  compareAtPrice?:
+    | number
+    | string;
+
+  actualPrice?:
+    | number
+    | string;
+};
+
+type PriceColor =
+  ApiColor &
+    PriceFields;
+
+type PriceProduct =
+  ApiProduct &
+    PriceFields;
+
+/* =========================================================
+   MEN ROOTS
 ========================================================= */
 
 const MEN_ROOT_SLUGS =
@@ -50,7 +109,183 @@ const MEN_ROOT_SLUGS =
   ]);
 
 /* =========================================================
-   IS MEN PRODUCT
+   NORMALIZE ROUTE
+========================================================= */
+
+function normalizeRouteValue(
+  value?: string
+): string {
+  return String(
+    value || ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+/* =========================================================
+   POSITIVE PRICE
+========================================================= */
+
+function pickPositiveNumber(
+  ...values: unknown[]
+): number | undefined {
+  for (
+    const value of values
+  ) {
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      continue;
+    }
+
+    const number =
+      Number(value);
+
+    if (
+      Number.isFinite(
+        number
+      ) &&
+      number > 0
+    ) {
+      return number;
+    }
+  }
+
+  return undefined;
+}
+
+/* =========================================================
+   GET MEN CARD PRICES
+========================================================= */
+
+function getMenCardPrices(
+  product: ApiProduct
+): {
+  showPrice: number;
+  originalPrice: number;
+  discountPercent: number;
+} {
+  const defaultColor =
+    getDefaultColor(
+      product
+    ) as
+      | PriceColor
+      | null;
+
+  const rootProduct =
+    product as PriceProduct;
+
+  /* =======================================================
+     SHOW PRICE
+  ======================================================= */
+
+  const showPriceCandidate =
+    pickPositiveNumber(
+      defaultColor
+        ?.showPrice,
+
+      rootProduct
+        .showPrice,
+
+      defaultColor
+        ?.sellingPrice,
+
+      defaultColor
+        ?.salePrice,
+
+      defaultColor
+        ?.price,
+
+      defaultColor
+        ?.discountedPrice,
+
+      rootProduct
+        .sellingPrice,
+
+      rootProduct
+        .salePrice,
+
+      rootProduct
+        .price,
+
+      rootProduct
+        .discountedPrice
+    );
+
+  /* =======================================================
+     ORIGINAL PRICE
+  ======================================================= */
+
+  const originalPriceCandidate =
+    pickPositiveNumber(
+      defaultColor
+        ?.originalPrice,
+
+      rootProduct
+        .originalPrice,
+
+      defaultColor
+        ?.mrp,
+
+      defaultColor
+        ?.compareAtPrice,
+
+      defaultColor
+        ?.actualPrice,
+
+      rootProduct
+        .mrp,
+
+      rootProduct
+        .compareAtPrice,
+
+      rootProduct
+        .actualPrice
+    );
+
+  /* =======================================================
+     FINAL VALUES
+  ======================================================= */
+
+  const showPrice =
+    showPriceCandidate ??
+    originalPriceCandidate ??
+    0;
+
+  const originalPrice =
+    originalPriceCandidate ??
+    showPrice;
+
+  const discountPercent =
+    originalPrice >
+      showPrice &&
+    originalPrice > 0 &&
+    showPrice > 0
+      ? Math.round(
+          ((originalPrice -
+            showPrice) /
+            originalPrice) *
+            100
+        )
+      : 0;
+
+  return {
+    showPrice,
+
+    originalPrice:
+      originalPrice >
+      showPrice
+        ? originalPrice
+        : showPrice,
+
+    discountPercent,
+  };
+}
+
+/* =========================================================
+   MEN PRODUCT CHECK
 ========================================================= */
 
 function isMenProduct(
@@ -61,18 +296,23 @@ function isMenProduct(
       product
     );
 
-  return normalized
-    .categorySlugs
-    .some(
-      (slug) =>
-        MEN_ROOT_SLUGS.has(
-          slug
-        )
+  const slugs =
+    normalized.categorySlugs.map(
+      normalizeRouteValue
     );
+
+  return slugs.some(
+    (
+      slug
+    ) =>
+      MEN_ROOT_SLUGS.has(
+        slug
+      )
+  );
 }
 
 /* =========================================================
-   MATCH CURRENT ROUTE
+   ROUTE MATCH
 ========================================================= */
 
 function matchesMenRoute(
@@ -85,22 +325,25 @@ function matchesMenRoute(
       product
     );
 
-  const categorySlugs =
-    normalized.categorySlugs;
+  const slugs =
+    normalized.categorySlugs.map(
+      normalizeRouteValue
+    );
 
   /* =======================================================
-     MUST BELONG TO MEN
+     MEN CHECK
   ======================================================= */
 
-  const belongsToMen =
-    categorySlugs.some(
-      (slug) =>
+  if (
+    !slugs.some(
+      (
+        slug
+      ) =>
         MEN_ROOT_SLUGS.has(
           slug
         )
-    );
-
-  if (!belongsToMen) {
+    )
+  ) {
     return false;
   }
 
@@ -108,20 +351,39 @@ function matchesMenRoute(
      /men
   ======================================================= */
 
-  if (!category) {
+  if (
+    !category
+  ) {
     return true;
   }
 
+  const categorySlug =
+    normalizeRouteValue(
+      category
+    );
+
+  const subcategorySlug =
+    normalizeRouteValue(
+      subcategory
+    );
+
   /* =======================================================
-     /men/offers
+     OFFERS
   ======================================================= */
 
   if (
-    category === "offers"
+    categorySlug ===
+    "offers"
   ) {
+    const prices =
+      getMenCardPrices(
+        product
+      );
+
     return (
-      normalized.actualPrice >
-      normalized.sellingPrice
+      prices.originalPrice >
+        prices.showPrice &&
+      prices.showPrice > 0
     );
   }
 
@@ -130,32 +392,26 @@ function matchesMenRoute(
   ======================================================= */
 
   if (
-    !categorySlugs.includes(
-      category
+    !slugs.includes(
+      categorySlug
     )
   ) {
     return false;
   }
 
-  /* =======================================================
-     NO SUBCATEGORY
-  ======================================================= */
-
-  if (!subcategory) {
+  if (
+    !subcategorySlug
+  ) {
     return true;
   }
 
-  /* =======================================================
-     SUBCATEGORY
-  ======================================================= */
-
-  return categorySlugs.includes(
-    subcategory
+  return slugs.includes(
+    subcategorySlug
   );
 }
 
 /* =========================================================
-   API PRODUCT -> MEN PRODUCT
+   MAP API PRODUCT -> MEN PRODUCT
 ========================================================= */
 
 function mapProductToMenProduct(
@@ -166,32 +422,28 @@ function mapProductToMenProduct(
       product
     );
 
-  const hierarchy =
-    normalized
-      .categorySlugs
-      .filter(
-        (slug) =>
-          !MEN_ROOT_SLUGS.has(
-            slug
-          )
-      );
-
-  const mainCategory =
-    hierarchy[0] ||
-    "men";
-
-  const subcategories =
-    hierarchy.slice(1);
+  const prices =
+    getMenCardPrices(
+      product
+    );
 
   return {
+    /* ID */
+
     id:
       normalized.id,
+
+    /* NAME */
 
     name:
       normalized.name,
 
+    /* SLUG */
+
     slug:
       normalized.slug,
+
+    /* IMAGES */
 
     image1:
       normalized.image1,
@@ -199,20 +451,41 @@ function mapProductToMenProduct(
     image2:
       normalized.image2,
 
-    actualPrice:
-      normalized.actualPrice,
+    /* =====================================================
+       PRICE
+
+       discountedPrice = SHOW PRICE
+       actualPrice     = ORIGINAL PRICE
+    ===================================================== */
 
     discountedPrice:
-      normalized.sellingPrice,
+      prices.showPrice,
+
+    actualPrice:
+      prices.originalPrice,
+
+    /* CATEGORY */
 
     category:
-      mainCategory,
+      normalized.categorySlugs[
+        1
+      ] ||
+      normalized.categorySlugs[
+        0
+      ] ||
+      "men",
 
-    subcategories,
+    subcategories:
+      normalized.categorySlugs,
+
+    /* OFFER */
 
     onOffer:
-      normalized.actualPrice >
-      normalized.sellingPrice,
+      prices.originalPrice >
+        prices.showPrice &&
+      prices.showPrice > 0,
+
+    /* FLAGS */
 
     isFeatured:
       normalized.isFeatured,
@@ -223,7 +496,7 @@ function mapProductToMenProduct(
 }
 
 /* =========================================================
-   MEN PAGE
+   PAGE
 ========================================================= */
 
 export default async function MenPage({
@@ -232,33 +505,21 @@ export default async function MenPage({
   const resolvedParams =
     await params;
 
-  const slugParts =
-    resolvedParams.slug ??
-    [];
-
-  /* =======================================================
-     MAX:
-
-     /men
-     /men/underwear
-     /men/underwear/trunks
-  ======================================================= */
-
-  if (
-    slugParts.length >
-    2
-  ) {
-    notFound();
-  }
+  const route =
+    Array.isArray(
+      resolvedParams.slug
+    )
+      ? resolvedParams.slug
+      : [];
 
   const category =
-    slugParts[0];
+    route[0];
 
   const subcategory =
-    slugParts[1];
+    route[1];
 
   /* =======================================================
-     URL VALIDATION
+     VALIDATE
   ======================================================= */
 
   if (
@@ -271,82 +532,88 @@ export default async function MenPage({
   }
 
   /* =======================================================
-     FETCH ACTIVE PRODUCTS
+     PRODUCTS API
   ======================================================= */
 
-  const apiProducts =
+  const activeProducts =
     await getActiveProducts();
 
   /* =======================================================
-     DEBUG
-
-     Terminal me count show hoga.
-     Isse pata chalega API data aa raha hai ya nahi.
+     MEN PRODUCTS
   ======================================================= */
 
-  console.log(
-    "[MEN PAGE] Active products:",
-    apiProducts.length
-  );
-
-  /* =======================================================
-     ONLY MEN PRODUCTS
-  ======================================================= */
-
-  const menApiProducts =
-    apiProducts.filter(
+  const menProducts =
+    activeProducts.filter(
       isMenProduct
     );
 
-  console.log(
-    "[MEN PAGE] Men products:",
-    menApiProducts.length
-  );
-
   /* =======================================================
-     CURRENT CATEGORY PRODUCTS
+     CURRENT ROUTE PRODUCTS
   ======================================================= */
 
-  const products =
-    menApiProducts
-      .filter(
-        (product) =>
-          matchesMenRoute(
-            product,
-            category,
-            subcategory
-          )
-      )
+  const visibleProducts =
+    menProducts.filter(
+      (
+        product
+      ) =>
+        matchesMenRoute(
+          product,
+          category,
+          subcategory
+        )
+    );
+
+  /* =======================================================
+     MAP PRODUCTS
+  ======================================================= */
+
+  const products: MenProduct[] =
+    visibleProducts
       .map(
         mapProductToMenProduct
       )
       .filter(
-        (product) =>
+        (
+          product
+        ) =>
           Boolean(
-            product.id
-          ) &&
-          Boolean(
-            product.slug
+            product.id &&
+              product.slug
           )
       );
 
-  console.log(
-    "[MEN PAGE] Visible products:",
-    products.length
-  );
-
   /* =======================================================
-     BANNER
+     CATEGORY BANNERS
+
+     IMPORTANT:
+
+     /men
+     -> Men category banner
+
+     /men/trunks
+     -> Trunks banner
+
+     /men/underwear/trunks
+     -> Trunks banner
+
+     Exact/deepest selected category only.
+
+     Agar category me image nahi hai:
+     -> banners = []
+     -> banner show nahi hoga
   ======================================================= */
 
   const banners =
-    getMenBanners(
-      category,
-      subcategory
-    );
+    await getCategoryBanners({
+      rootCategory:
+        "men",
+
+      path:
+        route,
+    });
 
   /* =======================================================
-     TEXT
+     PAGE TITLE
   ======================================================= */
 
   const title =
@@ -355,11 +622,38 @@ export default async function MenPage({
       subcategory
     );
 
+  /* =======================================================
+     PAGE DESCRIPTION
+  ======================================================= */
+
   const description =
     getMenPageDescription(
       category,
       subcategory
     );
+
+  /* =======================================================
+     DEBUG
+
+     Testing ke baad remove kar sakte ho.
+  ======================================================= */
+
+  console.log(
+    "[MEN PAGE]",
+    {
+      route,
+
+      category,
+
+      subcategory,
+
+      products:
+        products.length,
+
+      banners:
+        banners.length,
+    }
+  );
 
   /* =======================================================
      RENDER
@@ -373,18 +667,23 @@ export default async function MenPage({
         products={
           products
         }
+
         banners={
           banners
         }
+
         title={
           title
         }
+
         description={
           description
         }
+
         category={
           category
         }
+
         subcategory={
           subcategory
         }

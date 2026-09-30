@@ -7,31 +7,34 @@ import Header from "@/src/components/Header/Header";
 import WomenCatalog from "@/src/components/Women/WomenCatalog";
 
 import {
-  getWomenBanners,
   getWomenPageDescription,
   getWomenPageTitle,
   isValidWomenPath,
+  normalizeWomenSlug,
   type WomenProduct,
 } from "@/src/data/women";
 
 import {
+  getCategoryBanners,
+} from "@/src/Services/categoryBanners";
+
+import {
   getActiveProducts,
-  getProductCategorySlugs,
-  getProductId,
-  getProductImageUrls,
-  isProductOnOffer,
+  getDefaultColor,
+  normalizeStoreProduct,
+  type ApiColor,
   type ApiProduct,
-} from "@/src/services/products";
+} from "@/src/Services/products";
 
 /* =========================================================
-   DYNAMIC PAGE
+   FRESH DATA
 ========================================================= */
 
 export const dynamic =
   "force-dynamic";
 
 /* =========================================================
-   PROPS
+   PAGE PROPS
 ========================================================= */
 
 type WomenPageProps = {
@@ -41,91 +44,559 @@ type WomenPageProps = {
 };
 
 /* =========================================================
+   ROOT CATEGORY
+========================================================= */
+
+const ROOT_CATEGORY =
+  "women";
+
+/* =========================================================
+   WOMEN ROOT ALIASES
+========================================================= */
+
+const WOMEN_ROOT_SLUGS =
+  new Set([
+    "women",
+    "woman",
+    "womens",
+    "womenswear",
+    "female",
+  ]);
+
+/* =========================================================
+   CATEGORY ALIASES
+========================================================= */
+
+const CATEGORY_ALIASES: Record<
+  string,
+  string[]
+> = {
+  bra: [
+    "bra",
+    "bras",
+  ],
+
+  bras: [
+    "bras",
+    "bra",
+  ],
+
+  panty: [
+    "panty",
+    "panties",
+  ],
+
+  panties: [
+    "panties",
+    "panty",
+  ],
+
+  "sports-bra": [
+    "sports-bra",
+    "sports-bras",
+  ],
+
+  "sports-bras": [
+    "sports-bras",
+    "sports-bra",
+  ],
+
+  "maternity-bra": [
+    "maternity-bra",
+    "maternity-bras",
+  ],
+
+  "maternity-bras": [
+    "maternity-bras",
+    "maternity-bra",
+  ],
+
+  "t-shirt-bra": [
+    "t-shirt-bra",
+    "t-shirt-bras",
+  ],
+
+  "t-shirt-bras": [
+    "t-shirt-bras",
+    "t-shirt-bra",
+  ],
+
+  "padded-bra": [
+    "padded-bra",
+    "padded-bras",
+  ],
+
+  "padded-bras": [
+    "padded-bras",
+    "padded-bra",
+  ],
+
+  "non-padded-bra": [
+    "non-padded-bra",
+    "non-padded-bras",
+  ],
+
+  "non-padded-bras": [
+    "non-padded-bras",
+    "non-padded-bra",
+  ],
+
+  "seamless-panty": [
+    "seamless-panty",
+    "seamless-panties",
+  ],
+
+  "seamless-panties": [
+    "seamless-panties",
+    "seamless-panty",
+  ],
+
+  hipster: [
+    "hipster",
+    "hipsters",
+  ],
+
+  hipsters: [
+    "hipsters",
+    "hipster",
+  ],
+
+  thong: [
+    "thong",
+    "thongs",
+  ],
+
+  thongs: [
+    "thongs",
+    "thong",
+  ],
+
+  "g-string": [
+    "g-string",
+    "g-strings",
+  ],
+
+  "g-strings": [
+    "g-strings",
+    "g-string",
+  ],
+};
+
+/* =========================================================
+   PRICE TYPES
+========================================================= */
+
+type PriceFields = {
+  originalPrice?:
+    | number
+    | string;
+
+  showPrice?:
+    | number
+    | string;
+
+  discountPrice?:
+    | number
+    | string;
+
+  sellingPrice?:
+    | number
+    | string;
+
+  salePrice?:
+    | number
+    | string;
+
+  price?:
+    | number
+    | string;
+
+  discountedPrice?:
+    | number
+    | string;
+
+  mrp?:
+    | number
+    | string;
+
+  compareAtPrice?:
+    | number
+    | string;
+
+  actualPrice?:
+    | number
+    | string;
+};
+
+type PriceColor =
+  ApiColor &
+    PriceFields;
+
+type PriceProduct =
+  ApiProduct &
+    PriceFields;
+
+/* =========================================================
+   POSITIVE NUMBER
+========================================================= */
+
+function pickPositiveNumber(
+  ...values: unknown[]
+): number | undefined {
+  for (
+    const value of values
+  ) {
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      continue;
+    }
+
+    const number =
+      Number(value);
+
+    if (
+      Number.isFinite(
+        number
+      ) &&
+      number > 0
+    ) {
+      return number;
+    }
+  }
+
+  return undefined;
+}
+
+/* =========================================================
+   CATEGORY ALIASES
+========================================================= */
+
+function getAliases(
+  value?: string
+): string[] {
+  const slug =
+    normalizeWomenSlug(
+      value
+    );
+
+  if (!slug) {
+    return [];
+  }
+
+  return Array.from(
+    new Set([
+      slug,
+
+      ...(
+        CATEGORY_ALIASES[
+          slug
+        ] || []
+      ),
+    ])
+  );
+}
+
+/* =========================================================
+   ALL PRODUCT CATEGORY SLUGS
+
+   normalized.categorySlugs
+   +
+   raw backend categories
+========================================================= */
+
+function getProductCategorySlugs(
+  product: ApiProduct
+): string[] {
+  const normalized =
+    normalizeStoreProduct(
+      product
+    );
+
+  const slugs =
+    new Set<string>();
+
+  if (
+    Array.isArray(
+      normalized.categorySlugs
+    )
+  ) {
+    for (
+      const slug of
+        normalized.categorySlugs
+    ) {
+      const value =
+        normalizeWomenSlug(
+          slug
+        );
+
+      if (
+        value
+      ) {
+        slugs.add(
+          value
+        );
+      }
+    }
+  }
+
+  const rawCategories =
+    (product as any)
+      ?.categories;
+
+  if (
+    Array.isArray(
+      rawCategories
+    )
+  ) {
+    for (
+      const category of
+        rawCategories
+    ) {
+      if (
+        typeof category ===
+        "string"
+      ) {
+        const value =
+          normalizeWomenSlug(
+            category
+          );
+
+        if (
+          value
+        ) {
+          slugs.add(
+            value
+          );
+        }
+
+        continue;
+      }
+
+      const categorySlug =
+        normalizeWomenSlug(
+          category?.slug
+        );
+
+      const categoryName =
+        normalizeWomenSlug(
+          category?.name
+        );
+
+      if (
+        categorySlug
+      ) {
+        slugs.add(
+          categorySlug
+        );
+      }
+
+      if (
+        categoryName
+      ) {
+        slugs.add(
+          categoryName
+        );
+      }
+    }
+  }
+
+  return Array.from(
+    slugs
+  );
+}
+
+/* =========================================================
+   WOMEN CARD PRICE
+========================================================= */
+
+function getWomenCardPrices(
+  product: ApiProduct
+): {
+  showPrice: number;
+  originalPrice: number;
+  discountPercent: number;
+} {
+  const defaultColor =
+    getDefaultColor(
+      product
+    ) as
+      | PriceColor
+      | null;
+
+  const rootProduct =
+    product as PriceProduct;
+
+  const showPriceCandidate =
+    pickPositiveNumber(
+      defaultColor
+        ?.showPrice,
+
+      rootProduct
+        .showPrice,
+
+      defaultColor
+        ?.sellingPrice,
+
+      defaultColor
+        ?.salePrice,
+
+      defaultColor
+        ?.price,
+
+      defaultColor
+        ?.discountedPrice,
+
+      rootProduct
+        .sellingPrice,
+
+      rootProduct
+        .salePrice,
+
+      rootProduct
+        .price,
+
+      rootProduct
+        .discountedPrice
+    );
+
+  const originalPriceCandidate =
+    pickPositiveNumber(
+      defaultColor
+        ?.originalPrice,
+
+      rootProduct
+        .originalPrice,
+
+      defaultColor
+        ?.mrp,
+
+      defaultColor
+        ?.compareAtPrice,
+
+      defaultColor
+        ?.actualPrice,
+
+      rootProduct
+        .mrp,
+
+      rootProduct
+        .compareAtPrice,
+
+      rootProduct
+        .actualPrice
+    );
+
+  const showPrice =
+    showPriceCandidate ??
+    originalPriceCandidate ??
+    0;
+
+  const originalPrice =
+    originalPriceCandidate ??
+    showPrice;
+
+  const finalOriginal =
+    originalPrice >
+      showPrice
+      ? originalPrice
+      : showPrice;
+
+  const discountPercent =
+    finalOriginal >
+      showPrice &&
+    finalOriginal >
+      0 &&
+    showPrice >
+      0
+      ? Math.round(
+          ((finalOriginal -
+            showPrice) /
+            finalOriginal) *
+            100
+        )
+      : 0;
+
+  return {
+    showPrice,
+
+    originalPrice:
+      finalOriginal,
+
+    discountPercent,
+  };
+}
+
+/* =========================================================
    WOMEN PRODUCT CHECK
 ========================================================= */
 
 function isWomenProduct(
   product: ApiProduct
 ): boolean {
-  const categorySlugs =
+  const slugs =
     getProductCategorySlugs(
       product
     );
 
-  return categorySlugs.includes(
-    "women"
+  return slugs.some(
+    (
+      slug
+    ) =>
+      WOMEN_ROOT_SLUGS.has(
+        slug
+      )
   );
 }
 
 /* =========================================================
-   CHECK ROUTE EXISTS
+   CATEGORY MATCH
 ========================================================= */
 
-function womenRouteExists(
-  products: ApiProduct[],
-  category?: string,
-  subcategory?: string
+function matchesCategorySlug(
+  productSlugs: string[],
+  routeSlug?: string
 ): boolean {
-  if (!category) {
-    return true;
-  }
+  const aliases =
+    getAliases(
+      routeSlug
+    );
 
-  if (category === "offers") {
-    return true;
-  }
-
-  return products.some(
-    (product) => {
-      const slugs =
-        getProductCategorySlugs(
-          product
-        );
-
-      if (
-        !slugs.includes("women")
-      ) {
-        return false;
-      }
-
-      if (
-        !slugs.includes(category)
-      ) {
-        return false;
-      }
-
-      if (
-        subcategory &&
-        !slugs.includes(
-          subcategory
-        )
-      ) {
-        return false;
-      }
-
-      return true;
-    }
+  return aliases.some(
+    (
+      alias
+    ) =>
+      productSlugs.includes(
+        alias
+      )
   );
 }
 
 /* =========================================================
-   WOMEN ROUTE FILTER
+   ROUTE MATCH
 ========================================================= */
 
 function matchesWomenRoute(
   product: ApiProduct,
-  category?: string,
-  subcategory?: string
+  route: string[]
 ): boolean {
-  const categorySlugs =
+  const productSlugs =
     getProductCategorySlugs(
       product
     );
 
-  /* Product must belong to Women */
+  /* ROOT WOMEN */
 
   if (
-    !categorySlugs.includes(
-      "women"
+    !productSlugs.some(
+      (
+        slug
+      ) =>
+        WOMEN_ROOT_SLUGS.has(
+          slug
+        )
     )
   ) {
     return false;
@@ -133,145 +604,122 @@ function matchesWomenRoute(
 
   /* /women */
 
-  if (!category) {
+  if (
+    route.length ===
+    0
+  ) {
     return true;
   }
 
   /* /women/offers */
 
-  if (category === "offers") {
-    return isProductOnOffer(
-      product
+  if (
+    route.length ===
+      1 &&
+    normalizeWomenSlug(
+      route[0]
+    ) === "offers"
+  ) {
+    const prices =
+      getWomenCardPrices(
+        product
+      );
+
+    return (
+      prices.originalPrice >
+        prices.showPrice &&
+      prices.showPrice >
+        0
     );
   }
 
-  /* /women/bra */
+  /* CATEGORY PATH */
 
-  if (
-    !categorySlugs.includes(
-      category
-    )
-  ) {
-    return false;
-  }
-
-  /* No sub category */
-
-  if (!subcategory) {
-    return true;
-  }
-
-  /* /women/bra/sports-bra */
-
-  return categorySlugs.includes(
-    subcategory
+  return route.every(
+    (
+      routeSlug
+    ) =>
+      matchesCategorySlug(
+        productSlugs,
+        routeSlug
+      )
   );
 }
 
 /* =========================================================
-   MAP API -> WOMEN PRODUCT
+   MAP PRODUCT
 ========================================================= */
 
 function mapProductToWomenProduct(
   product: ApiProduct
 ): WomenProduct {
+  const normalized =
+    normalizeStoreProduct(
+      product
+    );
+
+  const prices =
+    getWomenCardPrices(
+      product
+    );
+
   const categorySlugs =
     getProductCategorySlugs(
       product
     );
 
-  const imageUrls =
-    getProductImageUrls(
-      product
-    );
-
-  const image1 =
-    imageUrls[0] || "";
-
-  const image2 =
-    imageUrls[1] ||
-    image1;
-
-  const sellingPrice =
-    Number(
-      product.price
-    ) || 0;
-
-  const compareAtPrice =
-    Number(
-      product.compareAtPrice ||
-        0
-    );
-
-  const actualPrice =
-    compareAtPrice >
-    sellingPrice
-      ? compareAtPrice
-      : sellingPrice;
-
-  /*
-   * Example:
-   *
-   * women
-   * bra
-   * sports-bra
-   *
-   * Main category = bra
-   * Sub category = sports-bra
-   */
-
-  const hierarchy =
+  const nonRootCategories =
     categorySlugs.filter(
-      (slug) =>
-        slug !== "women"
+      (
+        slug
+      ) =>
+        !WOMEN_ROOT_SLUGS.has(
+          slug
+        )
     );
-
-  const mainCategory =
-    hierarchy[0] ||
-    "women";
-
-  const subcategories =
-    hierarchy.slice(1);
 
   return {
     id:
-      getProductId(
-        product
-      ),
+      normalized.id,
 
     name:
-      product.name,
+      normalized.name,
 
     slug:
-      product.slug,
+      normalized.slug,
 
-    image1,
+    image1:
+      normalized.image1,
 
-    image2,
-
-    actualPrice,
+    image2:
+      normalized.image2,
 
     discountedPrice:
-      sellingPrice,
+      prices.showPrice,
+
+    actualPrice:
+      prices.originalPrice,
 
     category:
-      mainCategory,
+      nonRootCategories[
+        0
+      ] ||
+      ROOT_CATEGORY,
 
-    subcategories,
+    subcategories:
+      categorySlugs,
 
     onOffer:
-      actualPrice >
-      sellingPrice,
+      prices.originalPrice >
+        prices.showPrice &&
+      prices.showPrice >
+        0,
 
     isFeatured:
-      Boolean(
-        product.isFeatured
-      ),
+      normalized.isFeatured,
 
     isNewLaunch:
-      Boolean(
-        product.isNewLaunch
-      ),
+      normalized.isNewLaunch,
   };
 }
 
@@ -285,97 +733,121 @@ export default async function WomenPage({
   const resolvedParams =
     await params;
 
-  const slugParts =
-    resolvedParams.slug ??
-    [];
+  /* =======================================================
+     ROUTE
+  ======================================================= */
 
-  /*
-   * Supported:
-   *
-   * /women
-   * /women/bra
-   * /women/bra/sports-bra
-   */
+  const route =
+    Array.isArray(
+      resolvedParams.slug
+    )
+      ? resolvedParams.slug
+          .map(
+            normalizeWomenSlug
+          )
+          .filter(
+            Boolean
+          )
+      : [];
+
+  /* =======================================================
+     VALIDATE
+  ======================================================= */
 
   if (
-    slugParts.length > 2
+    !isValidWomenPath(
+      route
+    )
   ) {
     notFound();
   }
 
   const category =
-    slugParts[0];
+    route[0];
 
   const subcategory =
-    slugParts[1];
-
-  /* Validate URL syntax */
-
-  if (
-    !isValidWomenPath(
-      category,
-      subcategory
-    )
-  ) {
-    notFound();
-  }
+    route[1];
 
   /* =======================================================
-     FETCH ALL ACTIVE PRODUCTS
+     PRODUCTS + BANNER API
+
+     Banner exact selected category ka aayega.
+
+     /women
+     -> women
+
+     /women/bra
+     -> bra
+
+     /women/bra/sports-bra
+     -> sports-bra
+
+     No image
+     -> []
   ======================================================= */
 
-  const allProducts =
-    await getActiveProducts();
+  const [
+    activeProducts,
+    banners,
+  ] =
+    await Promise.all([
+      getActiveProducts(),
+
+      getCategoryBanners({
+        rootCategory:
+          ROOT_CATEGORY,
+
+        path:
+          route,
+      }),
+    ]);
 
   /* =======================================================
-     ALL WOMEN PRODUCTS
+     WOMEN PRODUCTS
   ======================================================= */
 
   const womenProducts =
-    allProducts.filter(
-      isWomenProduct
-    );
-
-  /* =======================================================
-     INVALID CATEGORY -> 404
-  ======================================================= */
-
-  if (
-    !womenRouteExists(
-      womenProducts,
-      category,
-      subcategory
+    Array.isArray(
+      activeProducts
     )
-  ) {
-    notFound();
-  }
+      ? activeProducts.filter(
+          isWomenProduct
+        )
+      : [];
 
   /* =======================================================
-     FILTER CURRENT ROUTE
+     CURRENT CATEGORY PRODUCTS
   ======================================================= */
 
-  const products =
-    womenProducts
-      .filter((product) =>
+  const visibleProducts =
+    womenProducts.filter(
+      (
+        product
+      ) =>
         matchesWomenRoute(
           product,
-          category,
-          subcategory
+          route
         )
-      )
-      .map(
-        mapProductToWomenProduct
-      );
+    );
 
   /* =======================================================
-     BANNERS
+     MAP PRODUCTS
   ======================================================= */
 
-  const banners =
-    getWomenBanners(
-      category,
-      subcategory
-    );
+  const products: WomenProduct[] =
+    visibleProducts
+      .map(
+        mapProductToWomenProduct
+      )
+      .filter(
+        (
+          product
+        ) =>
+          Boolean(
+            product.id &&
+              product.slug
+          )
+      );
 
   /* =======================================================
      TITLE
@@ -383,8 +855,7 @@ export default async function WomenPage({
 
   const title =
     getWomenPageTitle(
-      category,
-      subcategory
+      route
     );
 
   /* =======================================================
@@ -393,9 +864,51 @@ export default async function WomenPage({
 
   const description =
     getWomenPageDescription(
-      category,
-      subcategory
+      route
     );
+
+  /* =======================================================
+     DEBUG
+  ======================================================= */
+
+  console.log(
+    "[WOMEN STOREFRONT]",
+    {
+      route,
+
+      category,
+
+      subcategory,
+
+      selectedBannerCategory:
+        route.length >
+        0
+          ? route[
+              route.length -
+                1
+            ]
+          : ROOT_CATEGORY,
+
+      banners:
+        banners.length,
+
+      activeProducts:
+        Array.isArray(
+          activeProducts
+        )
+          ? activeProducts.length
+          : 0,
+
+      womenProducts:
+        womenProducts.length,
+
+      visibleProducts:
+        visibleProducts.length,
+
+      finalProducts:
+        products.length,
+    }
+  );
 
   /* =======================================================
      RENDER
@@ -406,13 +919,26 @@ export default async function WomenPage({
       <Header />
 
       <WomenCatalog
-        products={products}
-        banners={banners}
-        title={title}
+        products={
+          products
+        }
+
+        banners={
+          banners
+        }
+
+        title={
+          title
+        }
+
         description={
           description
         }
-        category={category}
+
+        category={
+          category
+        }
+
         subcategory={
           subcategory
         }

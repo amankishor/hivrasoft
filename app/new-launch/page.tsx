@@ -1,216 +1,1092 @@
 import Header from "@/src/components/Header/Header";
-import NewLaunchCatalog from "@/src/components/NewLaunch/NewLaunchCatalog";
+
+import NewLaunchCatalog, {
+  type NewLaunchProduct,
+} from "@/src/components/NewLaunch/NewLaunchCatalog";
+
+import {
+  getDefaultColor,
+  normalizeStoreProduct,
+  type ApiProduct,
+} from "@/src/Services/products";
 
 /* =========================================================
    API
 ========================================================= */
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
+const RAW_API_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace(
+    /\/+$/,
+    ""
+  ) || "http://localhost:5000";
 
-export const dynamic = "force-dynamic";
+const API_URL =
+  RAW_API_URL.replace(
+    /\/api$/i,
+    ""
+  );
+
+export const dynamic =
+  "force-dynamic";
 
 /* =========================================================
    TYPES
 ========================================================= */
 
-type MediaImage = {
+type MediaItem = {
   url?: string;
+
   secure_url?: string;
+
+  secureUrl?: string;
+
   src?: string;
+
   imageUrl?: string;
 
-  publicId?: string;
-  public_id?: string;
+  poster?: string;
 
-  alt?: string;
-  name?: string;
-};
-
-type ProductImage = {
-  url: string;
-  publicId?: string;
-};
-
-type ProductCategory = {
-  _id?: string;
-  id?: string;
-
-  name?: string;
-  slug?: string;
-};
-
-type ProductColor = {
-  name?: string;
-  hex?: string;
-
-  images?: ProductImage[];
+  isDefault?: boolean;
 
   isActive?: boolean;
-};
-
-type ApiProduct = {
-  _id?: string;
-  id?: string;
-
-  name?: string;
-  slug?: string;
-
-  shortDescription?: string;
-
-  price?: number;
-  compareAtPrice?: number;
-
-  mainImages?: ProductImage[];
-
-  colors?: ProductColor[];
-
-  categories?: ProductCategory[];
-
-  status?: string;
-
-  isNewLaunch?: boolean;
 };
 
 type ApiCategory = {
   _id?: string;
+
   id?: string;
 
   name?: string;
+
   slug?: string;
 
-  description?: string;
-
   images?: Array<
-    string | MediaImage
+    string | MediaItem
   >;
 
   categoryImages?: Array<
-    string | MediaImage
+    string | MediaItem
   >;
 
   image?:
     | string
-    | MediaImage;
+    | MediaItem;
 
   bannerImage?:
     | string
-    | MediaImage;
+    | MediaItem;
 
   desktopImage?:
     | string
-    | MediaImage;
+    | MediaItem;
 
   thumbnail?:
     | string
-    | MediaImage;
+    | MediaItem;
+};
+
+type ApiBanner = {
+  _id?: string;
+
+  id?: string;
+
+  title?: string;
+
+  slug?: string;
+
+  image?: string;
+
+  imageUrl?: string;
+
+  desktopImage?: string;
+
+  bannerImage?: string;
+
+  media?: Array<
+    string | MediaItem
+  >;
+
+  images?: Array<
+    string | MediaItem
+  >;
+
+  items?: Array<
+    string | MediaItem
+  >;
 
   isActive?: boolean;
 };
 
 /* =========================================================
-   NORMALIZE
+   HELPERS
 ========================================================= */
 
-function normalize(
+function normalizeSlug(
   value?: string
-) {
-  return String(value || "")
+): string {
+  return String(
+    value || ""
+  )
     .trim()
     .toLowerCase()
-    .replace(/[_\s]+/g, "-");
+    .replace(
+      /&/g,
+      "and"
+    )
+    .replace(
+      /['"]/g,
+      ""
+    )
+    .replace(
+      /[^a-z0-9]+/g,
+      "-"
+    )
+    .replace(
+      /^-+|-+$/g,
+      ""
+    );
 }
 
 /* =========================================================
-   IMAGE URL HELPER
+   POSITIVE NUMBER
 ========================================================= */
 
-function getImageUrl(
-  image?:
+function positiveNumber(
+  ...values: unknown[]
+): number | undefined {
+  for (
+    const value of values
+  ) {
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      continue;
+    }
+
+    const number =
+      Number(
+        value
+      );
+
+    if (
+      Number.isFinite(
+        number
+      ) &&
+      number > 0
+    ) {
+      return number;
+    }
+  }
+
+  return undefined;
+}
+
+/* =========================================================
+   MEDIA URL
+========================================================= */
+
+function getMediaUrl(
+  media?:
     | string
-    | MediaImage
+    | MediaItem
     | null
-) {
-  if (!image) {
+): string {
+  if (
+    !media
+  ) {
     return "";
   }
 
   if (
-    typeof image === "string"
+    typeof media ===
+    "string"
   ) {
-    return image;
+    return media.trim();
   }
 
-  return (
-    image.url ||
-    image.secure_url ||
-    image.imageUrl ||
-    image.src ||
-    ""
+  return String(
+    media.url ||
+      media.secure_url ||
+      media.secureUrl ||
+      media.imageUrl ||
+      media.src ||
+      media.poster ||
+      ""
+  ).trim();
+}
+
+/* =========================================================
+   EXTRACT ARRAY
+========================================================= */
+
+function extractProductArray(
+  data: any
+): ApiProduct[] {
+  if (
+    Array.isArray(
+      data
+    )
+  ) {
+    return data;
+  }
+
+  const candidates = [
+    data?.products,
+
+    data?.items,
+
+    data?.results,
+
+    data?.data,
+
+    data?.data?.products,
+
+    data?.data?.items,
+
+    data?.data?.results,
+  ];
+
+  for (
+    const candidate of
+      candidates
+  ) {
+    if (
+      Array.isArray(
+        candidate
+      )
+    ) {
+      return candidate;
+    }
+  }
+
+  return [];
+}
+
+/* =========================================================
+   NEW LAUNCH PRODUCTS API
+
+   THIS IS THE CORRECT API:
+
+   GET /api/products/new-launches
+========================================================= */
+
+async function getNewLaunchProducts(): Promise<
+  ApiProduct[]
+> {
+  try {
+    const response =
+      await fetch(
+        `${API_URL}/api/products/new-launches`,
+        {
+          cache:
+            "no-store",
+
+          headers: {
+            Accept:
+              "application/json",
+          },
+        }
+      );
+
+    if (
+      !response.ok
+    ) {
+      console.error(
+        "[NEW LAUNCH API]",
+        response.status
+      );
+
+      return [];
+    }
+
+    const data =
+      await response.json();
+
+    const products =
+      extractProductArray(
+        data
+      );
+
+    console.log(
+      "[NEW LAUNCH API PRODUCTS]",
+      products.length
+    );
+
+    return products;
+  } catch (
+    error
+  ) {
+    console.error(
+      "[NEW LAUNCH API ERROR]",
+      error
+    );
+
+    return [];
+  }
+}
+
+/* =========================================================
+   CATEGORY SLUGS
+========================================================= */
+
+function getCategorySlugs(
+  product: ApiProduct
+): string[] {
+  const normalized =
+    normalizeStoreProduct(
+      product
+    );
+
+  const result =
+    new Set<string>();
+
+  /* normalized */
+
+  if (
+    Array.isArray(
+      normalized.categorySlugs
+    )
+  ) {
+    for (
+      const item of
+        normalized.categorySlugs
+    ) {
+      const slug =
+        normalizeSlug(
+          item
+        );
+
+      if (
+        slug
+      ) {
+        result.add(
+          slug
+        );
+      }
+    }
+  }
+
+  /* raw */
+
+  const rawCategories =
+    (product as any)
+      ?.categories;
+
+  if (
+    Array.isArray(
+      rawCategories
+    )
+  ) {
+    for (
+      const category of
+        rawCategories
+    ) {
+      if (
+        typeof category ===
+        "string"
+      ) {
+        const slug =
+          normalizeSlug(
+            category
+          );
+
+        if (
+          slug
+        ) {
+          result.add(
+            slug
+          );
+        }
+
+        continue;
+      }
+
+      const slug =
+        normalizeSlug(
+          category?.slug
+        );
+
+      const name =
+        normalizeSlug(
+          category?.name
+        );
+
+      if (
+        slug
+      ) {
+        result.add(
+          slug
+        );
+      }
+
+      if (
+        name
+      ) {
+        result.add(
+          name
+        );
+      }
+    }
+  }
+
+  return Array.from(
+    result
   );
 }
 
 /* =========================================================
-   GET CATEGORY BANNER
+   GENDER
+
+   Men + New Launch
+   => men tab
+
+   Women + New Launch
+   => women tab
 ========================================================= */
 
-function getCategoryBannerUrl(
-  category: ApiCategory | null
-) {
-  if (!category) {
+function getGender(
+  product: ApiProduct
+):
+  | "men"
+  | "women"
+  | null {
+  const slugs =
+    getCategorySlugs(
+      product
+    );
+
+  if (
+    slugs.some(
+      (
+        slug
+      ) =>
+        [
+          "women",
+          "woman",
+          "womens",
+          "womenswear",
+          "female",
+        ].includes(
+          slug
+        )
+    )
+  ) {
+    return "women";
+  }
+
+  if (
+    slugs.some(
+      (
+        slug
+      ) =>
+        [
+          "men",
+          "mens",
+          "menswear",
+          "male",
+        ].includes(
+          slug
+        )
+    )
+  ) {
+    return "men";
+  }
+
+  return null;
+}
+
+/* =========================================================
+   PRICE
+========================================================= */
+
+function getPrices(
+  product: ApiProduct
+): {
+  price: number;
+
+  compareAtPrice: number;
+} {
+  const defaultColor =
+    getDefaultColor(
+      product
+    ) as any;
+
+  const raw =
+    product as any;
+
+  const price =
+    positiveNumber(
+      defaultColor
+        ?.showPrice,
+
+      raw.showPrice,
+
+      defaultColor
+        ?.sellingPrice,
+
+      raw.sellingPrice,
+
+      defaultColor
+        ?.salePrice,
+
+      raw.salePrice,
+
+      defaultColor
+        ?.price,
+
+      raw.price,
+
+      defaultColor
+        ?.discountedPrice,
+
+      raw.discountedPrice
+    ) ||
+    0;
+
+  const compareAtPrice =
+    positiveNumber(
+      defaultColor
+        ?.originalPrice,
+
+      raw.originalPrice,
+
+      defaultColor
+        ?.mrp,
+
+      raw.mrp,
+
+      defaultColor
+        ?.compareAtPrice,
+
+      raw.compareAtPrice,
+
+      defaultColor
+        ?.actualPrice,
+
+      raw.actualPrice
+    ) ||
+    price;
+
+  return {
+    price,
+
+    compareAtPrice:
+      compareAtPrice >
+      price
+        ? compareAtPrice
+        : price,
+  };
+}
+
+/* =========================================================
+   DESCRIPTION
+========================================================= */
+
+function getDescription(
+  product: ApiProduct
+): string {
+  const raw =
+    product as any;
+
+  const defaultColor =
+    getDefaultColor(
+      product
+    ) as any;
+
+  return String(
+    defaultColor
+      ?.shortDescription ||
+      raw.shortDescription ||
+      raw.description ||
+      ""
+  ).trim();
+}
+
+/* =========================================================
+   COLOR COUNT
+========================================================= */
+
+function getColorCount(
+  product: ApiProduct
+): number {
+  const colors =
+    (product as any)
+      ?.colors;
+
+  if (
+    !Array.isArray(
+      colors
+    )
+  ) {
+    return 0;
+  }
+
+  return colors.filter(
+    (
+      color: any
+    ) =>
+      color &&
+      color.isActive !==
+        false
+  ).length;
+}
+
+/* =========================================================
+   MAP PRODUCT
+========================================================= */
+
+function mapProduct(
+  product: ApiProduct
+): NewLaunchProduct | null {
+  const normalized =
+    normalizeStoreProduct(
+      product
+    );
+
+  const gender =
+    getGender(
+      product
+    );
+
+  if (
+    !gender
+  ) {
+    console.warn(
+      "[NEW LAUNCH NO GENDER]",
+      {
+        name:
+          normalized.name,
+
+        categories:
+          getCategorySlugs(
+            product
+          ),
+      }
+    );
+
+    return null;
+  }
+
+  if (
+    !normalized.id ||
+    !normalized.slug
+  ) {
+    return null;
+  }
+
+  const prices =
+    getPrices(
+      product
+    );
+
+  return {
+    id:
+      normalized.id,
+
+    name:
+      normalized.name,
+
+    slug:
+      normalized.slug,
+
+    shortDescription:
+      getDescription(
+        product
+      ),
+
+    price:
+      prices.price,
+
+    compareAtPrice:
+      prices.compareAtPrice,
+
+    image:
+      normalized.image1,
+
+    hoverImage:
+      normalized.image2 ||
+      normalized.image1,
+
+    colorCount:
+      getColorCount(
+        product
+      ),
+
+    gender,
+  };
+}
+
+/* =========================================================
+   BANNER EXTRACTION
+========================================================= */
+
+function extractBanner(
+  data: any
+): ApiBanner | null {
+  if (
+    !data
+  ) {
+    return null;
+  }
+
+  if (
+    data.banner &&
+    typeof data.banner ===
+      "object"
+  ) {
+    return data.banner;
+  }
+
+  if (
+    data.data?.banner &&
+    typeof data.data
+      .banner ===
+      "object"
+  ) {
+    return data.data.banner;
+  }
+
+  if (
+    data.data &&
+    typeof data.data ===
+      "object" &&
+    !Array.isArray(
+      data.data
+    )
+  ) {
+    return data.data;
+  }
+
+  if (
+    typeof data ===
+      "object" &&
+    (
+      data.slug ||
+      data.title ||
+      data.images ||
+      data.media
+    )
+  ) {
+    return data;
+  }
+
+  return null;
+}
+
+/* =========================================================
+   GET BANNER IMAGE
+========================================================= */
+
+function getBannerImage(
+  banner:
+    ApiBanner | null
+): string {
+  if (
+    !banner
+  ) {
     return "";
   }
 
-  /* CATEGORY IMAGES */
+  const direct =
+    getMediaUrl(
+      banner.desktopImage
+    ) ||
+    getMediaUrl(
+      banner.bannerImage
+    ) ||
+    getMediaUrl(
+      banner.image
+    ) ||
+    getMediaUrl(
+      banner.imageUrl
+    );
 
   if (
-    Array.isArray(
-      category.images
-    ) &&
-    category.images.length > 0
+    direct
   ) {
-    const url =
-      getImageUrl(
-        category.images[0]
+    return direct;
+  }
+
+  const collections = [
+    banner.images,
+
+    banner.media,
+
+    banner.items,
+  ];
+
+  for (
+    const collection of
+      collections
+  ) {
+    if (
+      !Array.isArray(
+        collection
+      )
+    ) {
+      continue;
+    }
+
+    const defaultImage =
+      collection.find(
+        (
+          item
+        ) =>
+          typeof item !==
+            "string" &&
+          item?.isDefault ===
+            true &&
+          item?.isActive !==
+            false
       );
 
-    if (url) {
-      return url;
+    const defaultUrl =
+      getMediaUrl(
+        defaultImage
+      );
+
+    if (
+      defaultUrl
+    ) {
+      return defaultUrl;
+    }
+
+    for (
+      const item of
+        collection
+    ) {
+      if (
+        typeof item !==
+          "string" &&
+        item?.isActive ===
+          false
+      ) {
+        continue;
+      }
+
+      const url =
+        getMediaUrl(
+          item
+        );
+
+      if (
+        url
+      ) {
+        return url;
+      }
     }
   }
 
-  /* ALTERNATIVE CATEGORY IMAGES */
+  return "";
+}
 
-  if (
-    Array.isArray(
-      category.categoryImages
-    ) &&
-    category.categoryImages.length > 0
-  ) {
-    const url =
-      getImageUrl(
-        category.categoryImages[0]
+/* =========================================================
+   FETCH BANNER
+
+   FIRST:
+   /api/banners/slug/new-launch
+========================================================= */
+
+async function getNewLaunchBanner(): Promise<{
+  image: string;
+
+  title: string;
+}> {
+  try {
+    const response =
+      await fetch(
+        `${API_URL}/api/banners/slug/new-launch`,
+        {
+          cache:
+            "no-store",
+
+          headers: {
+            Accept:
+              "application/json",
+          },
+        }
       );
 
-    if (url) {
-      return url;
+    if (
+      response.ok
+    ) {
+      const data =
+        await response.json();
+
+      const banner =
+        extractBanner(
+          data
+        );
+
+      const image =
+        getBannerImage(
+          banner
+        );
+
+      if (
+        image
+      ) {
+        return {
+          image,
+
+          title:
+            banner?.title ||
+            "New Launch",
+        };
+      }
     }
+  } catch (
+    error
+  ) {
+    console.error(
+      "[NEW LAUNCH BANNER ERROR]",
+      error
+    );
   }
 
-  /* FALLBACKS */
+  /*
+   * No banner found:
+   * fallback to New Launch category image.
+   */
+
+  return getNewLaunchCategoryImage();
+}
+
+/* =========================================================
+   CATEGORY RESPONSE
+========================================================= */
+
+function extractCategory(
+  data: any
+): ApiCategory | null {
+  if (
+    !data
+  ) {
+    return null;
+  }
+
+  if (
+    data.category &&
+    typeof data.category ===
+      "object"
+  ) {
+    return data.category;
+  }
+
+  if (
+    data.data?.category &&
+    typeof data.data
+      .category ===
+      "object"
+  ) {
+    return data.data.category;
+  }
+
+  if (
+    data.data &&
+    typeof data.data ===
+      "object" &&
+    !Array.isArray(
+      data.data
+    )
+  ) {
+    return data.data;
+  }
+
+  if (
+    typeof data ===
+      "object"
+  ) {
+    return data;
+  }
+
+  return null;
+}
+
+/* =========================================================
+   CATEGORY IMAGE
+========================================================= */
+
+function getCategoryImage(
+  category:
+    ApiCategory | null
+): string {
+  if (
+    !category
+  ) {
+    return "";
+  }
+
+  const lists = [
+    category.images,
+
+    category.categoryImages,
+  ];
+
+  for (
+    const list of lists
+  ) {
+    if (
+      !Array.isArray(
+        list
+      )
+    ) {
+      continue;
+    }
+
+    const defaultItem =
+      list.find(
+        (
+          item
+        ) =>
+          typeof item !==
+            "string" &&
+          item?.isDefault ===
+            true &&
+          item?.isActive !==
+            false
+      );
+
+    const defaultUrl =
+      getMediaUrl(
+        defaultItem
+      );
+
+    if (
+      defaultUrl
+    ) {
+      return defaultUrl;
+    }
+
+    for (
+      const item of list
+    ) {
+      const url =
+        getMediaUrl(
+          item
+        );
+
+      if (
+        url
+      ) {
+        return url;
+      }
+    }
+  }
 
   return (
-    getImageUrl(
-      category.bannerImage
-    ) ||
-    getImageUrl(
+    getMediaUrl(
       category.desktopImage
     ) ||
-    getImageUrl(
+    getMediaUrl(
+      category.bannerImage
+    ) ||
+    getMediaUrl(
       category.image
     ) ||
-    getImageUrl(
+    getMediaUrl(
       category.thumbnail
     ) ||
     ""
@@ -218,346 +1094,74 @@ function getCategoryBannerUrl(
 }
 
 /* =========================================================
-   EXTRACT CATEGORY
+   FALLBACK CATEGORY
+
+   GET /api/categories/slug/new-launch
 ========================================================= */
 
-function extractCategory(
-  result: unknown
-): ApiCategory | null {
-  if (
-    !result ||
-    typeof result !== "object"
-  ) {
-    return null;
-  }
+async function getNewLaunchCategoryImage(): Promise<{
+  image: string;
 
-  const object =
-    result as Record<
-      string,
-      unknown
-    >;
-
-  if (
-    object.category &&
-    typeof object.category ===
-      "object" &&
-    !Array.isArray(
-      object.category
-    )
-  ) {
-    return object.category as ApiCategory;
-  }
-
-  if (
-    object.data &&
-    typeof object.data ===
-      "object" &&
-    !Array.isArray(
-      object.data
-    )
-  ) {
-    const data =
-      object.data as Record<
-        string,
-        unknown
-      >;
-
-    if (
-      data.category &&
-      typeof data.category ===
-        "object" &&
-      !Array.isArray(
-        data.category
-      )
-    ) {
-      return data.category as ApiCategory;
-    }
-
-    return object.data as ApiCategory;
-  }
-
-  return result as ApiCategory;
-}
-
-/* =========================================================
-   FETCH NEW LAUNCH CATEGORY
-========================================================= */
-
-/* =========================================================
-   FETCH NEW LAUNCH CATEGORY
-========================================================= */
-
-async function getNewLaunchCategory(): Promise<
-  ApiCategory | null
-> {
+  title: string;
+}> {
   try {
-    /* =====================================================
-       FIRST: DIRECT SLUG
-    ===================================================== */
-
-    const directResponse =
+    const response =
       await fetch(
         `${API_URL}/api/categories/slug/new-launch`,
         {
-          cache: "no-store",
+          cache:
+            "no-store",
+
+          headers: {
+            Accept:
+              "application/json",
+          },
         }
       );
-
-    if (directResponse.ok) {
-      const result: unknown =
-        await directResponse.json();
-
-      const category =
-        extractCategory(result);
-
-      if (category) {
-        return category;
-      }
-    }
-
-    /* =====================================================
-       FALLBACK: ALL ACTIVE CATEGORIES
-    ===================================================== */
-
-    const response =
-      await fetch(
-        `${API_URL}/api/categories/active`,
-        {
-          cache: "no-store",
-        }
-      );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const result: unknown =
-      await response.json();
-
-    let categories:
-      ApiCategory[] = [];
-
-    if (Array.isArray(result)) {
-      categories =
-        result as ApiCategory[];
-    } else if (
-      result &&
-      typeof result === "object"
-    ) {
-      const object =
-        result as Record<
-          string,
-          unknown
-        >;
-
-      if (
-        Array.isArray(
-          object.categories
-        )
-      ) {
-        categories =
-          object.categories as ApiCategory[];
-      } else if (
-        Array.isArray(
-          object.data
-        )
-      ) {
-        categories =
-          object.data as ApiCategory[];
-      } else if (
-        object.data &&
-        typeof object.data ===
-          "object"
-      ) {
-        const data =
-          object.data as Record<
-            string,
-            unknown
-          >;
-
-        if (
-          Array.isArray(
-            data.categories
-          )
-        ) {
-          categories =
-            data.categories as ApiCategory[];
-        }
-      }
-    }
-
-    const newLaunchCategory =
-      categories.find(
-        (category) => {
-          const slug =
-            normalize(
-              category.slug
-            );
-
-          const name =
-            normalize(
-              category.name
-            );
-
-          return (
-            slug ===
-              "new-launch" ||
-            name ===
-              "new-launch"
-          );
-        }
-      );
-
-    return (
-      newLaunchCategory ||
-      null
-    );
-  } catch (error) {
-    console.log(
-      "New Launch category fetch issue:",
-      error
-    );
-
-    return null;
-  }
-}
-
-/* =========================================================
-   NEW LAUNCH PRODUCT CHECK
-========================================================= */
-
-function isNewLaunchProduct(
-  product: ApiProduct
-) {
-  /* PRODUCT FLAG SUPPORT */
-
-  if (
-    product.isNewLaunch === true
-  ) {
-    return true;
-  }
-
-  /* CATEGORY SUPPORT */
-
-  if (
-    !Array.isArray(
-      product.categories
-    )
-  ) {
-    return false;
-  }
-
-  return product.categories.some(
-    (category) => {
-      const slug =
-        normalize(
-          category.slug
-        );
-
-      const name =
-        normalize(
-          category.name
-        );
-
-      return (
-        slug ===
-          "new-launch" ||
-        name ===
-          "new-launch"
-      );
-    }
-  );
-}
-
-/* =========================================================
-   FETCH ACTIVE PRODUCTS
-========================================================= */
-
-async function getProducts(): Promise<
-  ApiProduct[]
-> {
-  try {
-    const response =
-      await fetch(
-        `${API_URL}/api/products/active`,
-        {
-          cache: "no-store",
-        }
-      );
-
-    if (!response.ok) {
-      console.error(
-        "Products API failed:",
-        response.status
-      );
-
-      return [];
-    }
-
-    const result: unknown =
-      await response.json();
 
     if (
-      Array.isArray(result)
+      !response.ok
     ) {
-      return result as ApiProduct[];
+      return {
+        image: "",
+
+        title:
+          "New Launch",
+      };
     }
 
-    if (
-      result &&
-      typeof result === "object"
-    ) {
-      const object =
-        result as Record<
-          string,
-          unknown
-        >;
+    const data =
+      await response.json();
 
-      if (
-        Array.isArray(
-          object.products
-        )
-      ) {
-        return object.products as ApiProduct[];
-      }
+    const category =
+      extractCategory(
+        data
+      );
 
-      if (
-        Array.isArray(
-          object.data
-        )
-      ) {
-        return object.data as ApiProduct[];
-      }
+    return {
+      image:
+        getCategoryImage(
+          category
+        ),
 
-      if (
-        object.data &&
-        typeof object.data ===
-          "object"
-      ) {
-        const data =
-          object.data as Record<
-            string,
-            unknown
-          >;
-
-        if (
-          Array.isArray(
-            data.products
-          )
-        ) {
-          return data.products as ApiProduct[];
-        }
-      }
-    }
-
-    return [];
-  } catch (error) {
+      title:
+        category?.name ||
+        "New Launch",
+    };
+  } catch (
+    error
+  ) {
     console.error(
-      "Products fetch error:",
+      "[NEW LAUNCH CATEGORY ERROR]",
       error
     );
 
-    return [];
+    return {
+      image: "",
+
+      title:
+        "New Launch",
+    };
   }
 }
 
@@ -567,129 +1171,71 @@ async function getProducts(): Promise<
 
 export default async function NewLaunchPage() {
   const [
-    products,
-    category,
+    apiProducts,
+    banner,
   ] =
     await Promise.all([
-      getProducts(),
-      getNewLaunchCategory(),
+      getNewLaunchProducts(),
+
+      getNewLaunchBanner(),
     ]);
 
   /* =======================================================
-     BANNER
+     MAP
   ======================================================= */
 
-  const bannerUrl =
-    getCategoryBannerUrl(
-      category
-    );
+  const products =
+    apiProducts
+      .map(
+        mapProduct
+      )
+      .filter(
+        (
+          item
+        ): item is NewLaunchProduct =>
+          Boolean(
+            item
+          )
+      );
 
   /* =======================================================
-     FILTER NEW LAUNCH PRODUCTS
+     DEBUG
   ======================================================= */
 
-  const newLaunchProducts =
-    products.filter(
-      isNewLaunchProduct
-    );
+  console.log(
+    "[NEW LAUNCH FINAL]",
+    {
+      apiProducts:
+        apiProducts.length,
+
+      mapped:
+        products.length,
+
+      men:
+        products.filter(
+          (
+            product
+          ) =>
+            product.gender ===
+            "men"
+        ).length,
+
+      women:
+        products.filter(
+          (
+            product
+          ) =>
+            product.gender ===
+            "women"
+        ).length,
+
+      banner:
+        banner.image,
+    }
+  );
 
   /* =======================================================
-     PRODUCT MAPPING
-  ======================================================= */
-
-  const mappedProducts =
-    newLaunchProducts.map(
-      (
-        product,
-        index
-      ) => {
-        const mainImages =
-          Array.isArray(
-            product.mainImages
-          )
-            ? product.mainImages.filter(
-                (image) =>
-                  Boolean(
-                    image?.url
-                  )
-              )
-            : [];
-
-        const activeColors =
-          Array.isArray(
-            product.colors
-          )
-            ? product.colors.filter(
-                (color) =>
-                  color.isActive !==
-                  false
-              )
-            : [];
-
-        const colorImages =
-          Array.isArray(
-            activeColors[0]
-              ?.images
-          )
-            ? activeColors[0]
-                .images!
-            : [];
-
-        return {
-          id:
-            product._id ||
-            product.id ||
-            String(index),
-
-          name:
-            product.name ||
-            "Product",
-
-          slug:
-            product.slug ||
-            "",
-
-          shortDescription:
-            product.shortDescription ||
-            "",
-
-          price:
-            Number(
-              product.price
-            ) || 0,
-
-          compareAtPrice:
-            Number(
-              product.compareAtPrice ||
-                0
-            ),
-
-          image:
-            mainImages[0]
-              ?.url ||
-            colorImages[0]
-              ?.url ||
-            "",
-
-          hoverImage:
-            mainImages[1]
-              ?.url ||
-            colorImages[1]
-              ?.url ||
-            mainImages[0]
-              ?.url ||
-            colorImages[0]
-              ?.url ||
-            "",
-
-          colorCount:
-            activeColors.length,
-        };
-      }
-    );
-
-  /* =======================================================
-     RENDER
+     UI
   ======================================================= */
 
   return (
@@ -698,13 +1244,15 @@ export default async function NewLaunchPage() {
 
       <NewLaunchCatalog
         products={
-          mappedProducts
+          products
         }
+
         bannerUrl={
-          bannerUrl
+          banner.image
         }
+
         categoryName={
-          category?.name ||
+          banner.title ||
           "New Launch"
         }
       />
